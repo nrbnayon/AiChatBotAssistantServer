@@ -1,8 +1,9 @@
-// controllers\authController.js
+// controllers/authController.js
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import User from "../models/User.js";
 import userService from "../services/userService.js";
+import { safeCookie } from "../helper/cookieHelper.js";
 
 dotenv.config();
 
@@ -16,23 +17,30 @@ const generateTokens = (user) => {
     id: user._id || user.id,
     email: user.email,
     role: user.role || "USER",
+    authProvider: user.authProvider,
     hasGoogleAuth: !!user.googleAccessToken,
     hasMicrosoftAuth: !!user.microsoftAccessToken,
     hasYahooAuth: !!user.yahooAccessToken,
   };
+  console.log("[DEBUG] Generating tokens for payload:", payload);
+  console.log("[DEBUG] JWT_SECRET:", process.env.JWT_SECRET);
   const accessToken = jwt.sign(payload, process.env.JWT_SECRET, {
     expiresIn: "1d",
   });
   const refreshToken = jwt.sign(
     { id: payload.id },
     process.env.REFRESH_TOKEN_SECRET,
-    { expiresIn: "30d" }
+    {
+      expiresIn: "30d",
+    }
   );
+  console.log("[DEBUG] Generated Tokens:", { accessToken, refreshToken });
   return { accessToken, refreshToken };
 };
 
 const authError = (req, res) => {
   const message = req.query.message || "Authentication failed";
+  console.log("[DEBUG] Auth Error:", message);
   res.redirect(`${getFrontendUrl}/login?error=${encodeURIComponent(message)}`);
 };
 
@@ -41,27 +49,64 @@ const oauthCallback = (req, res) => {
   const state = req.query.state
     ? JSON.parse(Buffer.from(req.query.state, "base64").toString())
     : {};
+
+  console.log("[DEBUG] OAuth Callback - Tokens:", {
+    accessToken,
+    refreshToken,
+  });
+  console.log("[DEBUG] OAuth Callback - State:", state);
+
   if (!accessToken) {
+    console.log("[DEBUG] No access token in OAuth callback");
     return res.redirect(
       `${getFrontendUrl}/login?error=${encodeURIComponent(
-        "Authentication failed: No access token provided"
+        "Authentication failed: No access token"
       )}`
     );
   }
-  res.redirect(
-    `${getFrontendUrl}/auth-callback?token=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(
-      state.redirect || "/"
-    )}`
-  );
+
+  safeCookie.set(res, "accessToken", accessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 24 * 60 * 60 * 1000,
+  });
+  safeCookie.set(res, "refreshToken", refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  });
+
+  const redirectUrl = `${getFrontendUrl}/auth-callback?token=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(
+    state.redirect || "/"
+  )}`;
+  console.log("[DEBUG] Redirecting to:", redirectUrl);
+  res.redirect(redirectUrl);
 };
 
 const localLogin = async (req, res) => {
   try {
-    const { email, password, rememberMe } = req.body;
+    const { email, password } = req.body;
     const user = await userService.handleLocalLogin(email, password);
     const { accessToken, refreshToken } = generateTokens(user);
+
     user.refreshToken = refreshToken;
     await user.save();
+
+    safeCookie.set(res, "accessToken", accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 24 * 60 * 60 * 1000,
+    });
+    safeCookie.set(res, "refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+
     res.json({
       success: true,
       accessToken,
@@ -69,6 +114,7 @@ const localLogin = async (req, res) => {
       user: { id: user._id, email: user.email, name: user.name },
     });
   } catch (error) {
+    console.log("[DEBUG] Local Login Error:", error.message);
     res.status(401).json({ success: false, message: error.message });
   }
 };
@@ -81,10 +127,26 @@ const register = async (req, res) => {
       password,
       name,
       authProvider: "local",
+      subscription: { plan: "free", dailyTokens: 100 },
     });
     const { accessToken, refreshToken } = generateTokens(user);
+
     user.refreshToken = refreshToken;
     await user.save();
+
+    safeCookie.set(res, "accessToken", accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 24 * 60 * 60 * 1000,
+    });
+    safeCookie.set(res, "refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+
     res.json({
       success: true,
       accessToken,
@@ -92,60 +154,48 @@ const register = async (req, res) => {
       user: { id: user._id, email: user.email, name: user.name },
     });
   } catch (error) {
+    console.log("[DEBUG] Register Error:", error.message);
     res.status(400).json({ success: false, message: error.message });
   }
 };
 
 const refresh = async (req, res) => {
   try {
-    const { refreshToken } = req.body;
+    console.log("[DEBUG] Refresh - Body:", req.body);
+    console.log("[DEBUG] Refresh - Cookies:", req.cookies);
+    const refreshToken = req.body.refreshToken || req.cookies.refreshToken;
+    if (!refreshToken) {
+      throw new Error("Refresh token required");
+    }
     const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+    console.log("[DEBUG] Refresh - Decoded Refresh Token:", decoded);
     const user = await User.findById(decoded.id);
-    if (!user || user.refreshToken !== refreshToken)
+
+    if (!user || user.refreshToken !== refreshToken) {
       throw new Error("Invalid refresh token");
+    }
+
     const { accessToken, refreshToken: newRefreshToken } = generateTokens(user);
     user.refreshToken = newRefreshToken;
     await user.save();
+
+    safeCookie.set(res, "accessToken", accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 24 * 60 * 60 * 1000,
+    });
+    safeCookie.set(res, "refreshToken", newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+
     res.json({ success: true, accessToken, refreshToken: newRefreshToken });
   } catch (error) {
+    console.log("[DEBUG] Refresh Error:", error.message);
     res.status(401).json({ success: false, message: error.message });
-  }
-};
-
-const getMe = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id).select("-password");
-    if (!user) throw new Error("User not found");
-    res.json({ success: true, user });
-  } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
-  }
-};
-
-const updateProfile = async (req, res) => {
-  try {
-    const user = await userService.updateProfile(req.user.id, req.body);
-    res.json({ success: true, user });
-  } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
-  }
-};
-
-const updateSubscription = async (req, res) => {
-  try {
-    const user = await userService.updateSubscription(req.user.id, req.body);
-    res.json({ success: true, user });
-  } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
-  }
-};
-
-const deleteMe = async (req, res) => {
-  try {
-    await userService.deleteUser(req.user.id);
-    res.json({ success: true, message: "User deleted" });
-  } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
   }
 };
 
@@ -156,56 +206,34 @@ const logout = async (req, res) => {
       user.refreshToken = null;
       await user.save();
     }
+
+    safeCookie.clear(res, "accessToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+    });
+    safeCookie.clear(res, "refreshToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+    });
+
     req.logout((err) => {
       if (err) throw new Error("Logout failed");
       res.json({ success: true, message: "Logged out successfully" });
     });
   } catch (error) {
+    console.log("[DEBUG] Logout Error:", error.message);
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-const getAllUsers = async (req, res) => {
-  try {
-    const users = await userService.getAllUsers();
-    res.json({ success: true, users });
-  } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
-  }
-};
-
 export {
-  getFrontendUrl,
   generateTokens,
   authError,
-  oauthCallback as googleCallback,
-  oauthCallback as microsoftCallback,
-  oauthCallback as yahooCallback,
+  oauthCallback,
   localLogin,
   register,
   refresh,
-  getMe,
-  updateProfile,
-  updateSubscription,
-  deleteMe,
   logout,
-  getAllUsers,
-};
-
-export default {
-  getFrontendUrl,
-  generateTokens,
-  authError,
-  googleCallback: oauthCallback,
-  microsoftCallback: oauthCallback,
-  yahooCallback: oauthCallback,
-  localLogin,
-  register,
-  refresh,
-  getMe,
-  updateProfile,
-  updateSubscription,
-  deleteMe,
-  logout,
-  getAllUsers,
 };

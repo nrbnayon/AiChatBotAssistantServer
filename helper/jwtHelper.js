@@ -1,18 +1,7 @@
-//helper\jwtHelper.js
+// helpers/jwtHelper.js
 import jwt from "jsonwebtoken";
 import { StatusCodes } from "http-status-codes";
 
-const defaultConfig = {
-  jwt: {
-    secret: process.env.JWT_SECRET || "your-secret-key",
-    refresh_secret:
-      process.env.REFRESH_TOKEN_SECRET || "your-refresh-secret-key",
-    expire_in: process.env.JWT_EXPIRE_IN || "24h",
-    refresh_expires_in: process.env.JWT_REFRESH_EXPIRES_IN || "7d",
-  },
-};
-
-// Custom API Error class
 class ApiError extends Error {
   constructor(statusCode, message) {
     super(message);
@@ -36,31 +25,23 @@ const verifyToken = (token, secret) => {
 };
 
 const createAccessToken = (payload) => {
-  if (!defaultConfig.jwt.secret) {
+  if (!process.env.JWT_SECRET) {
     throw new ApiError(
       StatusCodes.INTERNAL_SERVER_ERROR,
       "JWT secret is not defined"
     );
   }
-  return createToken(
-    payload,
-    defaultConfig.jwt.secret,
-    defaultConfig.jwt.expire_in
-  );
+  return createToken(payload, process.env.JWT_SECRET, "1d");
 };
 
 const createRefreshToken = (payload) => {
-  if (!defaultConfig.jwt.refresh_secret) {
+  if (!process.env.REFRESH_TOKEN_SECRET) {
     throw new ApiError(
       StatusCodes.INTERNAL_SERVER_ERROR,
       "JWT refresh secret is not defined"
     );
   }
-  return createToken(
-    payload,
-    defaultConfig.jwt.refresh_secret,
-    defaultConfig.jwt.refresh_expires_in
-  );
+  return createToken(payload, process.env.REFRESH_TOKEN_SECRET, "30d");
 };
 
 export const jwtHelper = {

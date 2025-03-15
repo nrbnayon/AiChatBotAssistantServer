@@ -23,7 +23,10 @@
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "passport-microsoft": "^2.1.0",
-    "passport-yahoo-oauth": "^0.2.0"
+    "passport-yahoo-oauth": "^0.2.0",
+    "stripe": "^17.7.0",
+    "express-rate-limit": "^7.2.0",
+    "http-status-codes": "^2.3.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"

@@ -1,3 +1,4 @@
+// middleware\rateLimit.js
 import User from "../models/User.js";
 
 const rateLimit = (options = {}) => {
@@ -70,4 +71,24 @@ const authRateLimit = (options = {}) => {
   };
 };
 
-export { rateLimit, authRateLimit };
+// Adding the rateLimitMiddleware as an alias for rateLimit to maintain backward compatibility
+const rateLimitMiddleware = rateLimit;
+
+export { rateLimit, authRateLimit, rateLimitMiddleware };
+
+
+// import rateLimit from "express-rate-limit";
+
+// export const authRateLimit = () =>
+//   rateLimit({
+//     windowMs: 15 * 60 * 1000, // 15 minutes
+//     max: 100, // Limit each IP to 100 requests per windowMs
+//     message: "Too many requests from this IP, please try again later.",
+//   });
+
+// export const rateLimitMiddleware = (options = {}) =>
+//   rateLimit({
+//     windowMs: options.windowMs || 600000, // 10 minutes
+//     max: options.max || 100, // Limit each IP to 100 requests per windowMs
+//     message: "Too many requests from this IP, please try again later.",
+//   });

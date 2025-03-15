@@ -1,4 +1,4 @@
-// config\passport.js
+// config/passport.js
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { Strategy as MicrosoftStrategy } from "passport-microsoft";
@@ -31,6 +31,10 @@ const oauthCallback = async (
       provider === "microsoft"
         ? profile._json.mail || profile._json.userPrincipalName
         : profile.emails[0].value;
+
+    console.log("[DEBUG] OAuth Callback - Profile:", profile);
+    console.log("[DEBUG] OAuth Callback - Email:", email);
+
     let user = await User.findOne({ email });
 
     const providerFields = {
@@ -53,8 +57,19 @@ const oauthCallback = async (
 
     const { idField, accessTokenField, refreshTokenField } =
       providerFields[provider];
-    const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } =
-      generateTokens(user || {});
+
+    // Extract profile picture based on provider
+    let profilePicture = null;
+    if (provider === "google") {
+      profilePicture =
+        profile.photos && profile.photos.length > 0
+          ? profile.photos[0].value
+          : null;
+    } else if (provider === "microsoft") {
+      profilePicture = profile._json.photo || profile._json.picture || null;
+    } else if (provider === "yahoo") {
+      profilePicture = profile._json.profile_image || null;
+    }
 
     if (user) {
       user[idField] = profile.id;
@@ -62,7 +77,12 @@ const oauthCallback = async (
       user[refreshTokenField] = refreshToken;
       user.authProvider = provider;
       user.verified = true;
-      user.refreshToken = jwtRefreshToken;
+
+      // Only update profile picture if a new one is provided; otherwise, keep the existing one
+      if (profilePicture) {
+        user.profilePicture = profilePicture;
+      }
+
       await user.save();
     } else {
       user = await User.create({
@@ -73,15 +93,24 @@ const oauthCallback = async (
         [refreshTokenField]: refreshToken,
         authProvider: provider,
         verified: true,
-        refreshToken: jwtRefreshToken,
+        profilePicture: profilePicture, // Set profile picture if available, null otherwise
+        subscription: { plan: "free", dailyTokens: 100 },
       });
     }
 
+    const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } =
+      generateTokens(user);
+
+    user.refreshToken = jwtRefreshToken;
+    await user.save();
+
+    console.log("[DEBUG] OAuth Callback - User:", user);
     return done(null, user, {
       accessToken: jwtAccessToken,
       refreshToken: jwtRefreshToken,
     });
   } catch (error) {
+    console.log("[DEBUG] OAuth Callback Error:", error.message);
     return done(error, null);
   }
 };
@@ -131,8 +160,7 @@ passport.use(
       callbackURL:
         process.env.NODE_ENV === "production"
           ? process.env.YAHOO_REDIRECT_URI
-          : process.env.YAHOO_DEV_REDIRECT_URI ||
-            "http://localhost:4000/api/v1/auth/yahoo/callback",
+          : process.env.YAHOO_DEV_REDIRECT_URI,
       scope: ["profile", "email", "mail-r"],
     },
     (accessToken, refreshToken, profile, done) =>

@@ -1,13 +1,14 @@
+// index.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import mongoose from "mongoose";
 import cookieParser from "cookie-parser";
 import session from "express-session";
 import passport from "passport";
-import authRoutes from "./routes/authRouter.js";
-import emailRoutes from "./routes/emails.js";
-import aiRoutes from "./routes/ai.js";
+import connectDB from "./config/database.js";
+import authRoutes from "./routes/authRoutes.js";
+import userRoutes from "./routes/userRoutes.js";
+import stripeRoutes from "./routes/stripeRoutes.js";
 import "./config/passport.js";
 
 dotenv.config();
@@ -18,11 +19,10 @@ const PORT = process.env.PORT || 4000;
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
-  "http://192.168.10.206:5173",
-  "http://172.16.0.2:3000",
   "https://email-aichatbot.netlify.app",
-  "https://email-ai-chat-bot-server.vercel.app",
-];
+  process.env.FRONTEND_URL,
+  process.env.FRONTEND_LIVE_URL,
+].filter(Boolean);
 
 app.use(cookieParser());
 app.use(
@@ -43,14 +43,13 @@ app.use(passport.session());
 
 app.use(
   cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) === -1) {
-        const msg =
-          "The CORS policy for this site does not allow access from the specified Origin.";
-        return callback(new Error(msg), false);
+    origin: (origin, callback) => {
+      console.log("[DEBUG] Request Origin:", origin);
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
       }
-      return callback(null, true);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -68,34 +67,29 @@ app.use((req, res, next) => {
 });
 
 app.get("/", (req, res) => {
-  res.send("Hello developer! How can I help you?");
+  res.send("Welcome to the User Management API!");
 });
 
 app.use("/api/v1/auth", authRoutes);
-app.use("/api/v1/emails", emailRoutes);
-app.use("/api/v1/ai", aiRoutes);
+app.use("/api/v1/users", userRoutes);
+app.use("/api/v1/stripe", stripeRoutes);
 
-// Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res
-    .status(500)
-    .json({ error: "Something went wrong!", message: err.message });
-});
-
-// Catch-all 404 handler
-app.use((req, res) => {
-  console.log(`404 - Route not found: ${req.method} ${req.path}`);
-  res.status(404).json({ error: "Route not found", path: req.path });
-});
-
-mongoose
-  .connect(process.env.MONGODB_URI)
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-    });
-  })
-  .catch((error) => {
-    console.error("MongoDB connection error:", error);
+  res.status(err.statusCode || 500).json({
+    success: false,
+    message: err.message || "Something went wrong!",
   });
+});
+
+app.use((req, res) => {
+  res
+    .status(404)
+    .json({ success: false, message: "Route not found", path: req.path });
+});
+
+connectDB().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+});

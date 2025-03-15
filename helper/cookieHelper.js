@@ -1,29 +1,19 @@
-// helper\cookieHelper.js
+// helper/cookieHelper.js
 const defaultConfig = {
   cookies: {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    domain: undefined,
   },
 };
 
-// Create base options function to reduce duplication
-const getBaseOptions = () => {
-  const options = {
-    httpOnly: defaultConfig.cookies.httpOnly,
-    secure: defaultConfig.cookies.secure,
-    sameSite: defaultConfig.cookies.sameSite,
-    path: defaultConfig.cookies.path,
-  };
-
-  if (defaultConfig.cookies.domain) {
-    return { ...options, domain: defaultConfig.cookies.domain };
-  }
-
-  return options;
-};
+const getBaseOptions = () => ({
+  httpOnly: defaultConfig.cookies.httpOnly,
+  secure: defaultConfig.cookies.secure,
+  sameSite: defaultConfig.cookies.sameSite,
+  path: defaultConfig.cookies.path,
+});
 
 export const cookieHelper = {
   getAccessTokenOptions: () => ({
@@ -33,7 +23,7 @@ export const cookieHelper = {
 
   getRefreshTokenOptions: () => ({
     ...getBaseOptions(),
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   }),
 };
 
@@ -43,24 +33,11 @@ export const safeCookie = {
       res.cookie(name, value, options);
       console.log(`Cookie '${name}' set successfully`);
     } catch (error) {
-      console.error(
-        `Failed to set cookie '${name}':`,
-        error instanceof Error ? error.message : String(error)
-      );
-
-      try {
-        const simpleOptions = { ...options };
-        delete simpleOptions.domain;
-        res.cookie(name, value, simpleOptions);
-        console.log(`Cookie '${name}' set with fallback options`);
-      } catch (fallbackError) {
-        console.error(
-          `Critical: Failed to set cookie '${name}' even with fallback:`,
-          fallbackError instanceof Error
-            ? fallbackError.message
-            : String(fallbackError)
-        );
-      }
+      console.error(`Failed to set cookie '${name}':`, error.message);
+      const simpleOptions = { ...options };
+      delete simpleOptions.domain;
+      res.cookie(name, value, simpleOptions);
+      console.log(`Cookie '${name}' set with fallback options`);
     }
   },
 
@@ -69,24 +46,11 @@ export const safeCookie = {
       res.clearCookie(name, options);
       console.log(`Cookie '${name}' cleared successfully`);
     } catch (error) {
-      console.error(
-        `Failed to clear cookie '${name}':`,
-        error instanceof Error ? error.message : String(error)
-      );
-
-      try {
-        const simpleOptions = { ...options };
-        delete simpleOptions.domain;
-        res.clearCookie(name, simpleOptions);
-        console.log(`Cookie '${name}' cleared with fallback options`);
-      } catch (fallbackError) {
-        console.error(
-          `Critical: Failed to clear cookie '${name}' even with fallback:`,
-          fallbackError instanceof Error
-            ? fallbackError.message
-            : String(fallbackError)
-        );
-      }
+      console.error(`Failed to clear cookie '${name}':`, error.message);
+      const simpleOptions = { ...options };
+      delete simpleOptions.domain;
+      res.clearCookie(name, simpleOptions);
+      console.log(`Cookie '${name}' cleared with fallback options`);
     }
   },
 };
