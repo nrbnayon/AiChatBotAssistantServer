@@ -1,11 +1,11 @@
-// config\passport.js
+// config/passport.js
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { Strategy as MicrosoftStrategy } from "passport-microsoft";
 import { Strategy as YahooStrategy } from "passport-yahoo-oauth";
 import dotenv from "dotenv";
 import User from "../models/User.js";
-import { generateTokens } from "../controllers/authController.js";
+import { generateTokens } from "../controllers/authController.js"; // Named import
 
 dotenv.config();
 

@@ -1,3 +1,4 @@
+// controllers/authController.js
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import User from "../models/User.js";
@@ -189,6 +190,26 @@ const getAllUsers = async (req, res) => {
   }
 };
 
+// Explicitly export all functions, including generateTokens
+export {
+  getFrontendUrl,
+  generateTokens, // Explicitly exported here
+  authError,
+  googleCallback,
+  microsoftCallback,
+  yahooCallback,
+  localLogin,
+  register,
+  refresh,
+  getMe,
+  updateProfile,
+  updateSubscription,
+  deleteMe,
+  logout,
+  getAllUsers,
+};
+
+// Optionally keep the default export for compatibility
 export default {
   getFrontendUrl,
   generateTokens,
