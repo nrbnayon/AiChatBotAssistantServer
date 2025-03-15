@@ -1,4 +1,4 @@
-// routes\emails.js
+// emails fetched from dynamic provider
 import express from "express";
 import { google } from "googleapis";
 import dotenv from "dotenv";

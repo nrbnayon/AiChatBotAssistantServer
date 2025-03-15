@@ -58,7 +58,6 @@ const oauthCallback = async (
     const { idField, accessTokenField, refreshTokenField } =
       providerFields[provider];
 
-    // Extract profile picture based on provider
     let profilePicture = null;
     if (provider === "google") {
       profilePicture =
@@ -77,8 +76,8 @@ const oauthCallback = async (
       user[refreshTokenField] = refreshToken;
       user.authProvider = provider;
       user.verified = true;
+      user.lastSync = new Date(); // Update lastSync on login
 
-      // Only update profile picture if a new one is provided; otherwise, keep the existing one
       if (profilePicture) {
         user.profilePicture = profilePicture;
       }
@@ -93,8 +92,9 @@ const oauthCallback = async (
         [refreshTokenField]: refreshToken,
         authProvider: provider,
         verified: true,
-        profilePicture: profilePicture, // Set profile picture if available, null otherwise
+        profilePicture: profilePicture,
         subscription: { plan: "free", dailyTokens: 100 },
+        lastSync: new Date(), // Set lastSync on creation
       });
     }
 
@@ -128,6 +128,8 @@ passport.use(
         "profile",
         "email",
         "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.modify",
+        "https://www.googleapis.com/auth/gmail.send",
       ],
     },
     (accessToken, refreshToken, profile, done) =>
@@ -144,7 +146,7 @@ passport.use(
         process.env.NODE_ENV === "production"
           ? process.env.MICROSOFT_LIVE_REDIRECT_URI
           : process.env.MICROSOFT_REDIRECT_URI,
-      scope: ["user.read", "mail.read"],
+      scope: ["user.read", "mail.read", "mail.readwrite", "mail.send"],
       tenant: "common",
     },
     (accessToken, refreshToken, profile, done) =>
@@ -161,7 +163,7 @@ passport.use(
         process.env.NODE_ENV === "production"
           ? process.env.YAHOO_REDIRECT_URI
           : process.env.YAHOO_DEV_REDIRECT_URI,
-      scope: ["profile", "email", "mail-r"],
+      scope: ["profile", "email", "mail-r", "mail-w"],
     },
     (accessToken, refreshToken, profile, done) =>
       oauthCallback(accessToken, refreshToken, profile, done, "yahoo")

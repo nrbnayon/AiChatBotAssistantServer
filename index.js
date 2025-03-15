@@ -9,6 +9,7 @@ import connectDB from "./config/database.js";
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import stripeRoutes from "./routes/stripeRoutes.js";
+import emailRoutes from "./routes/emailRoutes.js";
 import "./config/passport.js";
 
 dotenv.config();
@@ -73,6 +74,7 @@ app.get("/", (req, res) => {
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/stripe", stripeRoutes);
+app.use("/api/v1/emails", emailRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

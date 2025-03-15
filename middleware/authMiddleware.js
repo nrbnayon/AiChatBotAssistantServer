@@ -1,8 +1,8 @@
-// middleware/authMiddleware.js
 import jwt from "jsonwebtoken";
 import { StatusCodes } from "http-status-codes";
 import User from "../models/User.js";
 import { safeCookie, cookieHelper } from "../helper/cookieHelper.js";
+import { createEmailService } from "../services/emailService.js";
 
 class ApiError extends Error {
   constructor(statusCode, message) {
@@ -58,12 +58,35 @@ const auth =
           throw new ApiError(StatusCodes.FORBIDDEN, "Insufficient permissions");
         }
 
-        req.user = {
-          id: decoded.id,
-          role: decoded.role,
-          email: decoded.email,
-          authProvider: decoded.authProvider,
-        };
+        // Trigger email sync if status is PENDING
+        if (user.emailSyncStatus === "PENDING") {
+          req.user = {
+            id: decoded.id,
+            role: decoded.role,
+            email: decoded.email,
+            authProvider: decoded.authProvider,
+          };
+          const emailService = await createEmailService(req);
+          await emailService.syncEmails();
+          // Refresh the user object after sync
+          const updatedUser = await User.findById(decoded.id).select(
+            "-password"
+          );
+          req.user = {
+            id: updatedUser._id,
+            role: updatedUser.role,
+            email: updatedUser.email,
+            authProvider: updatedUser.authProvider,
+          };
+        } else {
+          req.user = {
+            id: user._id,
+            role: user.role,
+            email: user.email,
+            authProvider: user.authProvider,
+          };
+        }
+
         return next();
       } catch (error) {
         if (error instanceof jwt.TokenExpiredError) {
