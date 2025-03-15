@@ -1,3 +1,4 @@
+// controllers\authController.js
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import User from "../models/User.js";
@@ -40,6 +41,13 @@ const oauthCallback = (req, res) => {
   const state = req.query.state
     ? JSON.parse(Buffer.from(req.query.state, "base64").toString())
     : {};
+  if (!accessToken) {
+    return res.redirect(
+      `${getFrontendUrl}/login?error=${encodeURIComponent(
+        "Authentication failed: No access token provided"
+      )}`
+    );
+  }
   res.redirect(
     `${getFrontendUrl}/auth-callback?token=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(
       state.redirect || "/"
@@ -107,6 +115,7 @@ const refresh = async (req, res) => {
 const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("-password");
+    if (!user) throw new Error("User not found");
     res.json({ success: true, user });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -169,7 +178,9 @@ export {
   getFrontendUrl,
   generateTokens,
   authError,
-  oauthCallback, // Single callback handler for all OAuth providers
+  oauthCallback as googleCallback,
+  oauthCallback as microsoftCallback,
+  oauthCallback as yahooCallback,
   localLogin,
   register,
   refresh,
@@ -185,7 +196,9 @@ export default {
   getFrontendUrl,
   generateTokens,
   authError,
-  oauthCallback,
+  googleCallback: oauthCallback,
+  microsoftCallback: oauthCallback,
+  yahooCallback: oauthCallback,
   localLogin,
   register,
   refresh,

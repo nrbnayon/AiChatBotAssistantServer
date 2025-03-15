@@ -1,3 +1,4 @@
+// config\passport.js
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { Strategy as MicrosoftStrategy } from "passport-microsoft";
@@ -18,6 +19,73 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
+const oauthCallback = async (
+  accessToken,
+  refreshToken,
+  profile,
+  done,
+  provider
+) => {
+  try {
+    const email =
+      provider === "microsoft"
+        ? profile._json.mail || profile._json.userPrincipalName
+        : profile.emails[0].value;
+    let user = await User.findOne({ email });
+
+    const providerFields = {
+      google: {
+        idField: "googleId",
+        accessTokenField: "googleAccessToken",
+        refreshTokenField: "googleRefreshToken",
+      },
+      microsoft: {
+        idField: "microsoftId",
+        accessTokenField: "microsoftAccessToken",
+        refreshTokenField: "microsoftRefreshToken",
+      },
+      yahoo: {
+        idField: "yahooId",
+        accessTokenField: "yahooAccessToken",
+        refreshTokenField: "yahooRefreshToken",
+      },
+    };
+
+    const { idField, accessTokenField, refreshTokenField } =
+      providerFields[provider];
+    const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } =
+      generateTokens(user || {});
+
+    if (user) {
+      user[idField] = profile.id;
+      user[accessTokenField] = accessToken;
+      user[refreshTokenField] = refreshToken;
+      user.authProvider = provider;
+      user.verified = true;
+      user.refreshToken = jwtRefreshToken;
+      await user.save();
+    } else {
+      user = await User.create({
+        email,
+        name: profile.displayName,
+        [idField]: profile.id,
+        [accessTokenField]: accessToken,
+        [refreshTokenField]: refreshToken,
+        authProvider: provider,
+        verified: true,
+        refreshToken: jwtRefreshToken,
+      });
+    }
+
+    return done(null, user, {
+      accessToken: jwtAccessToken,
+      refreshToken: jwtRefreshToken,
+    });
+  } catch (error) {
+    return done(error, null);
+  }
+};
+
 passport.use(
   new GoogleStrategy(
     {
@@ -33,38 +101,8 @@ passport.use(
         "https://www.googleapis.com/auth/gmail.readonly",
       ],
     },
-    async (accessToken, refreshToken, profile, done) => {
-      try {
-        let user = await User.findOne({ email: profile.emails[0].value });
-        const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } =
-          generateTokens(user || {});
-        if (user) {
-          user.googleId = profile.id;
-          user.googleAccessToken = accessToken;
-          user.googleRefreshToken = refreshToken;
-          user.authProvider = "google";
-          user.refreshToken = jwtRefreshToken;
-          await user.save();
-        } else {
-          user = await User.create({
-            email: profile.emails[0].value,
-            name: profile.displayName,
-            googleId: profile.id,
-            googleAccessToken: accessToken,
-            googleRefreshToken: refreshToken,
-            authProvider: "google",
-            verified: true,
-            refreshToken: jwtRefreshToken,
-          });
-        }
-        return done(null, user, {
-          accessToken: jwtAccessToken,
-          refreshToken: jwtRefreshToken,
-        });
-      } catch (error) {
-        return done(error, null);
-      }
-    }
+    (accessToken, refreshToken, profile, done) =>
+      oauthCallback(accessToken, refreshToken, profile, done, "google")
   )
 );
 
@@ -80,39 +118,8 @@ passport.use(
       scope: ["user.read", "mail.read"],
       tenant: "common",
     },
-    async (accessToken, refreshToken, profile, done) => {
-      try {
-        const email = profile._json.mail || profile._json.userPrincipalName;
-        let user = await User.findOne({ email });
-        const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } =
-          generateTokens(user || {});
-        if (user) {
-          user.microsoftId = profile.id;
-          user.microsoftAccessToken = accessToken;
-          user.microsoftRefreshToken = refreshToken;
-          user.authProvider = "microsoft";
-          user.refreshToken = jwtRefreshToken;
-          await user.save();
-        } else {
-          user = await User.create({
-            email,
-            name: profile.displayName,
-            microsoftId: profile.id,
-            microsoftAccessToken: accessToken,
-            microsoftRefreshToken: refreshToken,
-            authProvider: "microsoft",
-            verified: true,
-            refreshToken: jwtRefreshToken,
-          });
-        }
-        return done(null, user, {
-          accessToken: jwtAccessToken,
-          refreshToken: jwtRefreshToken,
-        });
-      } catch (error) {
-        return done(error, null);
-      }
-    }
+    (accessToken, refreshToken, profile, done) =>
+      oauthCallback(accessToken, refreshToken, profile, done, "microsoft")
   )
 );
 
@@ -128,38 +135,8 @@ passport.use(
             "http://localhost:4000/api/v1/auth/yahoo/callback",
       scope: ["profile", "email", "mail-r"],
     },
-    async (accessToken, refreshToken, profile, done) => {
-      try {
-        let user = await User.findOne({ email: profile.emails[0].value });
-        const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } =
-          generateTokens(user || {});
-        if (user) {
-          user.yahooId = profile.id;
-          user.yahooAccessToken = accessToken;
-          user.yahooRefreshToken = refreshToken;
-          user.authProvider = "yahoo";
-          user.refreshToken = jwtRefreshToken;
-          await user.save();
-        } else {
-          user = await User.create({
-            email: profile.emails[0].value,
-            name: profile.displayName,
-            yahooId: profile.id,
-            yahooAccessToken: accessToken,
-            yahooRefreshToken: refreshToken,
-            authProvider: "yahoo",
-            verified: true,
-            refreshToken: jwtRefreshToken,
-          });
-        }
-        return done(null, user, {
-          accessToken: jwtAccessToken,
-          refreshToken: jwtRefreshToken,
-        });
-      } catch (error) {
-        return done(error, null);
-      }
-    }
+    (accessToken, refreshToken, profile, done) =>
+      oauthCallback(accessToken, refreshToken, profile, done, "yahoo")
   )
 );
 

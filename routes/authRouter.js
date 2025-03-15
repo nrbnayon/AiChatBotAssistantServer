@@ -1,3 +1,4 @@
+// routes\authRouter.js
 import express from "express";
 import passport from "../config/passport.js";
 import userController from "../controllers/authController.js";
@@ -6,10 +7,13 @@ import { rateLimit, authRateLimit } from "../middleware/rateLimit.js";
 
 const router = express.Router();
 
-// Google OAuth
 router.get(
   "/google",
   authRateLimit(),
+  (req, res, next) => {
+    console.log("Google OAuth route hit");
+    next();
+  },
   passport.authenticate("google", {
     scope: [
       "profile",
@@ -19,6 +23,7 @@ router.get(
     state: Buffer.from(JSON.stringify({ redirect: "/" })).toString("base64"),
   })
 );
+
 router.get(
   "/google/callback",
   authRateLimit(),
@@ -26,10 +31,9 @@ router.get(
     failureRedirect: "/api/v1/auth/error",
     session: true,
   }),
-  userController.oauthCallback
+  userController.googleCallback
 );
 
-// Microsoft OAuth
 router.get(
   "/microsoft",
   authRateLimit(),
@@ -38,6 +42,7 @@ router.get(
     state: Buffer.from(JSON.stringify({ redirect: "/" })).toString("base64"),
   })
 );
+
 router.get(
   "/microsoft/callback",
   authRateLimit(),
@@ -45,10 +50,9 @@ router.get(
     failureRedirect: "/api/v1/auth/error",
     session: true,
   }),
-  userController.oauthCallback
+  userController.microsoftCallback
 );
 
-// Yahoo OAuth
 router.get(
   "/yahoo",
   authRateLimit(),
@@ -56,6 +60,7 @@ router.get(
     state: Buffer.from(JSON.stringify({ redirect: "/" })).toString("base64"),
   })
 );
+
 router.get(
   "/yahoo/callback",
   authRateLimit(),
@@ -63,10 +68,9 @@ router.get(
     failureRedirect: "/api/v1/auth/error",
     session: true,
   }),
-  userController.oauthCallback
+  userController.yahooCallback
 );
 
-// Other routes
 router.get("/error", userController.authError);
 router.post("/login", authRateLimit(), userController.localLogin);
 router.post("/register", authRateLimit(), userController.register);
