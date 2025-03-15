@@ -15,13 +15,14 @@ router.get(
       "email",
       "https://www.googleapis.com/auth/gmail.readonly",
     ],
+    state: Buffer.from(JSON.stringify({ redirect: "/" })).toString("base64"),
   })
 );
 router.get(
   "/google/callback",
   authRateLimit(),
   passport.authenticate("google", {
-    failureRedirect: `${userController.getFrontendUrl}/login`,
+    failureRedirect: "/api/v1/auth/error",
     session: true,
   }),
   userController.googleCallback
@@ -30,31 +31,42 @@ router.get(
 router.get(
   "/microsoft",
   authRateLimit(),
-  passport.authenticate("microsoft", { prompt: "select_account" })
+  passport.authenticate("microsoft", {
+    prompt: "select_account",
+    state: Buffer.from(JSON.stringify({ redirect: "/" })).toString("base64"),
+  })
 );
 router.get(
   "/microsoft/callback",
   authRateLimit(),
   passport.authenticate("microsoft", {
-    failureRedirect: `${userController.getFrontendUrl}/login`,
+    failureRedirect: "/api/v1/auth/error",
     session: true,
   }),
   userController.microsoftCallback
 );
 
-router.get("/yahoo", authRateLimit(), passport.authenticate("yahoo"));
+router.get(
+  "/yahoo",
+  authRateLimit(),
+  passport.authenticate("yahoo", {
+    state: Buffer.from(JSON.stringify({ redirect: "/" })).toString("base64"),
+  })
+);
 router.get(
   "/yahoo/callback",
   authRateLimit(),
   passport.authenticate("yahoo", {
-    failureRedirect: `${userController.getFrontendUrl}/login`,
+    failureRedirect: "/api/v1/auth/error",
     session: true,
   }),
   userController.yahooCallback
 );
 
+router.get("/error", userController.authError);
 router.post("/login", authRateLimit(), userController.localLogin);
 router.post("/register", authRateLimit(), userController.register);
+router.post("/refresh", authRateLimit(), userController.refresh);
 
 router.get("/me", authenticate, rateLimit(), userController.getMe);
 router.put("/profile", authenticate, rateLimit(), userController.updateProfile);

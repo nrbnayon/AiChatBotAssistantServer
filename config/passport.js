@@ -5,6 +5,7 @@ import { Strategy as MicrosoftStrategy } from "passport-microsoft";
 import { Strategy as YahooStrategy } from "passport-yahoo-oauth";
 import dotenv from "dotenv";
 import User from "../models/User.js";
+import { generateTokens } from "../controllers/authController.js";
 
 dotenv.config();
 
@@ -36,11 +37,14 @@ passport.use(
     async (accessToken, refreshToken, profile, done) => {
       try {
         let user = await User.findOne({ email: profile.emails[0].value });
+        const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } =
+          generateTokens(user || {});
         if (user) {
           user.googleId = profile.id;
           user.googleAccessToken = accessToken;
           user.googleRefreshToken = refreshToken;
           user.authProvider = "google";
+          user.refreshToken = jwtRefreshToken;
           await user.save();
         } else {
           user = await User.create({
@@ -51,9 +55,13 @@ passport.use(
             googleRefreshToken: refreshToken,
             authProvider: "google",
             verified: true,
+            refreshToken: jwtRefreshToken,
           });
         }
-        return done(null, user);
+        return done(null, user, {
+          accessToken: jwtAccessToken,
+          refreshToken: jwtRefreshToken,
+        });
       } catch (error) {
         return done(error, null);
       }
@@ -77,11 +85,14 @@ passport.use(
       try {
         const email = profile._json.mail || profile._json.userPrincipalName;
         let user = await User.findOne({ email });
+        const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } =
+          generateTokens(user || {});
         if (user) {
           user.microsoftId = profile.id;
           user.microsoftAccessToken = accessToken;
           user.microsoftRefreshToken = refreshToken;
           user.authProvider = "microsoft";
+          user.refreshToken = jwtRefreshToken;
           await user.save();
         } else {
           user = await User.create({
@@ -92,9 +103,13 @@ passport.use(
             microsoftRefreshToken: refreshToken,
             authProvider: "microsoft",
             verified: true,
+            refreshToken: jwtRefreshToken,
           });
         }
-        return done(null, user);
+        return done(null, user, {
+          accessToken: jwtAccessToken,
+          refreshToken: jwtRefreshToken,
+        });
       } catch (error) {
         return done(error, null);
       }
@@ -107,16 +122,24 @@ passport.use(
     {
       consumerKey: process.env.YAHOO_CLIENT_ID,
       consumerSecret: process.env.YAHOO_CLIENT_SECRET,
-      callbackURL: process.env.YAHOO_REDIRECT_URI,
+      callbackURL:
+        process.env.NODE_ENV === "production"
+          ? process.env.YAHOO_REDIRECT_URI
+          : process.env.YAHOO_DEV_REDIRECT_URI ||
+            "http://localhost:4000/api/v1/auth/yahoo/callback",
+      scope: ["profile", "email", "mail-r"],
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
         let user = await User.findOne({ email: profile.emails[0].value });
+        const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } =
+          generateTokens(user || {});
         if (user) {
           user.yahooId = profile.id;
           user.yahooAccessToken = accessToken;
           user.yahooRefreshToken = refreshToken;
           user.authProvider = "yahoo";
+          user.refreshToken = jwtRefreshToken;
           await user.save();
         } else {
           user = await User.create({
@@ -127,9 +150,13 @@ passport.use(
             yahooRefreshToken: refreshToken,
             authProvider: "yahoo",
             verified: true,
+            refreshToken: jwtRefreshToken,
           });
         }
-        return done(null, user);
+        return done(null, user, {
+          accessToken: jwtAccessToken,
+          refreshToken: jwtRefreshToken,
+        });
       } catch (error) {
         return done(error, null);
       }

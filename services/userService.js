@@ -23,7 +23,6 @@ const updateProfile = async (userId, profileData) => {
   const updates = Object.keys(profileData)
     .filter((key) => allowedFields.includes(key))
     .reduce((obj, key) => ({ ...obj, [key]: profileData[key] }), {});
-
   return await User.findByIdAndUpdate(
     userId,
     { ...updates, lastSync: new Date() },

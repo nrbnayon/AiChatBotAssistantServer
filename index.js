@@ -19,6 +19,9 @@ const PORT = process.env.PORT || 4000;
 // Define allowed origins
 const allowedOrigins = [
   "http://localhost:5173",
+  "http://localhost:3000",
+  "http://192.168.10.206:5173",
+  "http://172.16.0.2:3000",
   "https://email-aichatbot.netlify.app",
   "https://email-ai-chat-bot-server.vercel.app",
 ];

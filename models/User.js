@@ -47,6 +47,7 @@ const userSchema = new mongoose.Schema({
   microsoftRefreshToken: String,
   yahooAccessToken: String,
   yahooRefreshToken: String,
+  refreshToken: String,
   status: {
     type: String,
     enum: ["ACTIVE", "INACTIVE", "BLOCKED"],

@@ -7,7 +7,7 @@ const rateLimit = (options = {}) => {
     try {
       if (!req.user) return next();
 
-      const user = await User.findById(req.user._id);
+      const user = await User.findById(req.user.id);
       const now = new Date();
 
       if (

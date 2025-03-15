@@ -10,44 +10,78 @@ const getFrontendUrl =
     ? process.env.FRONTEND_LIVE_URL
     : process.env.FRONTEND_URL;
 
-const generateToken = (user) => {
-  return jwt.sign(
-    {
-      id: user._id,
-      email: user.email,
-      role: user.role,
-      hasGoogleAuth: !!user.googleAccessToken,
-      hasMicrosoftAuth: !!user.microsoftAccessToken,
-      hasYahooAuth: !!user.yahooAccessToken,
-    },
-    process.env.JWT_SECRET,
-    { expiresIn: "1d" }
+const generateTokens = (user) => {
+  const payload = {
+    id: user._id || user.id,
+    email: user.email,
+    role: user.role || "USER",
+    hasGoogleAuth: !!user.googleAccessToken,
+    hasMicrosoftAuth: !!user.microsoftAccessToken,
+    hasYahooAuth: !!user.yahooAccessToken,
+  };
+  const accessToken = jwt.sign(payload, process.env.JWT_SECRET, {
+    expiresIn: "1d",
+  });
+  const refreshToken = jwt.sign(
+    { id: payload.id },
+    process.env.REFRESH_TOKEN_SECRET,
+    { expiresIn: "30d" }
   );
+  return { accessToken, refreshToken };
+};
+
+const authError = (req, res) => {
+  const message = req.query.message || "Authentication failed";
+  res.redirect(`${getFrontendUrl}/login?error=${encodeURIComponent(message)}`);
 };
 
 const googleCallback = (req, res) => {
-  const token = generateToken(req.user);
-  res.redirect(`${getFrontendUrl}/auth-callback?token=${token}`);
+  const { accessToken, refreshToken } = req.authInfo || {};
+  const state = req.query.state
+    ? JSON.parse(Buffer.from(req.query.state, "base64").toString())
+    : {};
+  res.redirect(
+    `${getFrontendUrl}/auth-callback?token=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(
+      state.redirect || "/"
+    )}`
+  );
 };
 
 const microsoftCallback = (req, res) => {
-  const token = generateToken(req.user);
-  res.redirect(`${getFrontendUrl}/auth-callback?token=${token}`);
+  const { accessToken, refreshToken } = req.authInfo || {};
+  const state = req.query.state
+    ? JSON.parse(Buffer.from(req.query.state, "base64").toString())
+    : {};
+  res.redirect(
+    `${getFrontendUrl}/auth-callback?token=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(
+      state.redirect || "/"
+    )}`
+  );
 };
 
 const yahooCallback = (req, res) => {
-  const token = generateToken(req.user);
-  res.redirect(`${getFrontendUrl}/auth-callback?token=${token}`);
+  const { accessToken, refreshToken } = req.authInfo || {};
+  const state = req.query.state
+    ? JSON.parse(Buffer.from(req.query.state, "base64").toString())
+    : {};
+  res.redirect(
+    `${getFrontendUrl}/auth-callback?token=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(
+      state.redirect || "/"
+    )}`
+  );
 };
 
 const localLogin = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, rememberMe } = req.body;
     const user = await userService.handleLocalLogin(email, password);
-    const token = generateToken(user);
+    const { accessToken, refreshToken } = generateTokens(user);
+    user.refreshToken = refreshToken;
+    await user.save();
     res.json({
       success: true,
-      token,
+      accessToken,
+      refreshToken,
       user: { id: user._id, email: user.email, name: user.name },
     });
   } catch (error) {
@@ -64,10 +98,13 @@ const register = async (req, res) => {
       name,
       authProvider: "local",
     });
-    const token = generateToken(user);
+    const { accessToken, refreshToken } = generateTokens(user);
+    user.refreshToken = refreshToken;
+    await user.save();
     res.json({
       success: true,
-      token,
+      accessToken,
+      refreshToken,
       user: { id: user._id, email: user.email, name: user.name },
     });
   } catch (error) {
@@ -75,9 +112,25 @@ const register = async (req, res) => {
   }
 };
 
+const refresh = async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+    const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+    const user = await User.findById(decoded.id);
+    if (!user || user.refreshToken !== refreshToken)
+      throw new Error("Invalid refresh token");
+    const { accessToken, refreshToken: newRefreshToken } = generateTokens(user);
+    user.refreshToken = newRefreshToken;
+    await user.save();
+    res.json({ success: true, accessToken, refreshToken: newRefreshToken });
+  } catch (error) {
+    res.status(401).json({ success: false, message: error.message });
+  }
+};
+
 const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select("-password");
+    const user = await User.findById(req.user.id).select("-password");
     res.json({ success: true, user });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -86,7 +139,7 @@ const getMe = async (req, res) => {
 
 const updateProfile = async (req, res) => {
   try {
-    const user = await userService.updateProfile(req.user._id, req.body);
+    const user = await userService.updateProfile(req.user.id, req.body);
     res.json({ success: true, user });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -95,7 +148,7 @@ const updateProfile = async (req, res) => {
 
 const updateSubscription = async (req, res) => {
   try {
-    const user = await userService.updateSubscription(req.user._id, req.body);
+    const user = await userService.updateSubscription(req.user.id, req.body);
     res.json({ success: true, user });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -104,19 +157,27 @@ const updateSubscription = async (req, res) => {
 
 const deleteMe = async (req, res) => {
   try {
-    await userService.deleteUser(req.user._id);
+    await userService.deleteUser(req.user.id);
     res.json({ success: true, message: "User deleted" });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
 };
 
-const logout = (req, res) => {
-  req.logout((err) => {
-    if (err)
-      return res.status(500).json({ success: false, message: "Logout failed" });
-    res.json({ success: true, message: "Logged out successfully" });
-  });
+const logout = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (user) {
+      user.refreshToken = null;
+      await user.save();
+    }
+    req.logout((err) => {
+      if (err) throw new Error("Logout failed");
+      res.json({ success: true, message: "Logged out successfully" });
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 };
 
 const getAllUsers = async (req, res) => {
@@ -130,11 +191,14 @@ const getAllUsers = async (req, res) => {
 
 export default {
   getFrontendUrl,
+  generateTokens,
+  authError,
   googleCallback,
   microsoftCallback,
   yahooCallback,
   localLogin,
   register,
+  refresh,
   getMe,
   updateProfile,
   updateSubscription,
