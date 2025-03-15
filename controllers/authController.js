@@ -1,4 +1,3 @@
-// controllers/authController.js
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import User from "../models/User.js";
@@ -36,31 +35,7 @@ const authError = (req, res) => {
   res.redirect(`${getFrontendUrl}/login?error=${encodeURIComponent(message)}`);
 };
 
-const googleCallback = (req, res) => {
-  const { accessToken, refreshToken } = req.authInfo || {};
-  const state = req.query.state
-    ? JSON.parse(Buffer.from(req.query.state, "base64").toString())
-    : {};
-  res.redirect(
-    `${getFrontendUrl}/auth-callback?token=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(
-      state.redirect || "/"
-    )}`
-  );
-};
-
-const microsoftCallback = (req, res) => {
-  const { accessToken, refreshToken } = req.authInfo || {};
-  const state = req.query.state
-    ? JSON.parse(Buffer.from(req.query.state, "base64").toString())
-    : {};
-  res.redirect(
-    `${getFrontendUrl}/auth-callback?token=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(
-      state.redirect || "/"
-    )}`
-  );
-};
-
-const yahooCallback = (req, res) => {
+const oauthCallback = (req, res) => {
   const { accessToken, refreshToken } = req.authInfo || {};
   const state = req.query.state
     ? JSON.parse(Buffer.from(req.query.state, "base64").toString())
@@ -190,14 +165,11 @@ const getAllUsers = async (req, res) => {
   }
 };
 
-// Explicitly export all functions, including generateTokens
 export {
   getFrontendUrl,
-  generateTokens, // Explicitly exported here
+  generateTokens,
   authError,
-  googleCallback,
-  microsoftCallback,
-  yahooCallback,
+  oauthCallback, // Single callback handler for all OAuth providers
   localLogin,
   register,
   refresh,
@@ -209,14 +181,11 @@ export {
   getAllUsers,
 };
 
-// Optionally keep the default export for compatibility
 export default {
   getFrontendUrl,
   generateTokens,
   authError,
-  googleCallback,
-  microsoftCallback,
-  yahooCallback,
+  oauthCallback,
   localLogin,
   register,
   refresh,

@@ -6,6 +6,7 @@ import { rateLimit, authRateLimit } from "../middleware/rateLimit.js";
 
 const router = express.Router();
 
+// Google OAuth
 router.get(
   "/google",
   authRateLimit(),
@@ -25,9 +26,10 @@ router.get(
     failureRedirect: "/api/v1/auth/error",
     session: true,
   }),
-  userController.googleCallback
+  userController.oauthCallback
 );
 
+// Microsoft OAuth
 router.get(
   "/microsoft",
   authRateLimit(),
@@ -43,9 +45,10 @@ router.get(
     failureRedirect: "/api/v1/auth/error",
     session: true,
   }),
-  userController.microsoftCallback
+  userController.oauthCallback
 );
 
+// Yahoo OAuth
 router.get(
   "/yahoo",
   authRateLimit(),
@@ -60,9 +63,10 @@ router.get(
     failureRedirect: "/api/v1/auth/error",
     session: true,
   }),
-  userController.yahooCallback
+  userController.oauthCallback
 );
 
+// Other routes
 router.get("/error", userController.authError);
 router.post("/login", authRateLimit(), userController.localLogin);
 router.post("/register", authRateLimit(), userController.register);

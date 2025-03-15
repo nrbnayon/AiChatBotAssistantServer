@@ -10,26 +10,21 @@ import emailRoutes from "./routes/emails.js";
 import aiRoutes from "./routes/ai.js";
 import "./config/passport.js";
 
-// Load environment variables
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// Define allowed origins
 const allowedOrigins = [
-  "http://localhost:5173",
   "http://localhost:3000",
+  "http://localhost:5173",
   "http://192.168.10.206:5173",
   "http://172.16.0.2:3000",
   "https://email-aichatbot.netlify.app",
   "https://email-ai-chat-bot-server.vercel.app",
 ];
 
-// Middleware - update order for better request handling
 app.use(cookieParser());
-
-// Session configuration
 app.use(
   session({
     secret: process.env.JWT_SECRET,
@@ -39,22 +34,17 @@ app.use(
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      maxAge: 24 * 60 * 60 * 1000,
     },
   })
 );
-
-// Initialize Passport
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Configure CORS properly - this should come AFTER session middleware
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
-
       if (allowedOrigins.indexOf(origin) === -1) {
         const msg =
           "The CORS policy for this site does not allow access from the specified Origin.";
@@ -69,12 +59,12 @@ app.use(
   })
 );
 
-// Configure body parser with increased limit for JSON
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Debug middleware for authentication
+// Debug middleware
 app.use((req, res, next) => {
+  console.log(`Request received: ${req.method} ${req.path}`);
   next();
 });
 
@@ -82,12 +72,17 @@ app.get("/", (req, res) => {
   res.send("Hello developer! How can I help you?");
 });
 
-// Routes
+// Mount routes
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/emails", emailRoutes);
 app.use("/api/v1/ai", aiRoutes);
 
-// Connect to MongoDB
+// Catch-all 404 handler
+app.use((req, res, next) => {
+  console.log(`404 - Route not found: ${req.method} ${req.path}`);
+  res.status(404).json({ error: "Route not found", path: req.path });
+});
+
 mongoose
   .connect(process.env.MONGODB_URI)
   .then(() => {
