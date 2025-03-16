@@ -10,6 +10,8 @@ import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import stripeRoutes from "./routes/stripeRoutes.js";
 import emailRoutes from "./routes/emailRoutes.js";
+import { globalErrorHandler } from "./utils/errorHandler.js";
+import requestLogger from "./utils/requestLogger.js";
 import "./config/passport.js";
 
 dotenv.config();
@@ -62,10 +64,8 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-app.use((req, res, next) => {
-  console.log(`Request received: ${req.method} ${req.path}`);
-  next();
-});
+// Request logger middleware - REPLACE your existing logger with this
+app.use(requestLogger);
 
 app.get("/", (req, res) => {
   res.send("Welcome to the User Management API!");
@@ -76,22 +76,29 @@ app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/stripe", stripeRoutes);
 app.use("/api/v1/emails", emailRoutes);
 
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(err.statusCode || 500).json({
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
     success: false,
-    message: err.message || "Something went wrong!",
+    message: "Route not found",
+    path: req.path,
+    hint:
+      process.env.NODE_ENV === "development"
+        ? "🧭 Lost in the API wilderness? Check your route spelling!"
+        : undefined,
   });
 });
 
-app.use((req, res) => {
-  res
-    .status(404)
-    .json({ success: false, message: "Route not found", path: req.path });
-});
+// Global error handler with fun messages
+app.use(globalErrorHandler);
 
 connectDB().then(() => {
   app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`
+    ╔═════════════════════════════════════╗
+    ║  🚀 Server launched successfully!   ║
+    ║  🌐 Running on port: ${PORT.toString().padEnd(14, " ")} ║
+    ╚═════════════════════════════════════╝
+    `);
   });
 });

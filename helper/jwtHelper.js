@@ -1,15 +1,7 @@
 // helpers/jwtHelper.js
 import jwt from "jsonwebtoken";
 import { StatusCodes } from "http-status-codes";
-
-class ApiError extends Error {
-  constructor(statusCode, message) {
-    super(message);
-    this.statusCode = statusCode;
-    this.name = this.constructor.name;
-    Error.captureStackTrace(this, this.constructor);
-  }
-}
+import { ApiError } from "../utils/errorHandler.js";
 
 const createToken = (payload, secret, expireTime) => {
   const options = { expiresIn: expireTime };

@@ -3,65 +3,15 @@ import express from "express";
 import { google } from "googleapis";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
-import jwt from "jsonwebtoken";
 import User from "../models/User.js";
+import auth from "../middleware/authMiddleware.js";
 
 dotenv.config();
 const router = express.Router();
 
-const isAuthenticated = (req, res, next) => {
-  // Check for JWT in Authorization header
-  const authHeader = req.headers.authorization;
-
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    const token = authHeader.split(" ")[1];
-
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-      // Use the decoded ID to find the user
-      User.findById(decoded.id)
-        .then((user) => {
-          if (!user) {
-            return res
-              .status(401)
-              .json({ success: false, message: "User not found" });
-          }
-
-          // Set the complete user object with all tokens to req.user
-          req.user = user;
-          return next();
-        })
-        .catch((err) => {
-          console.error("Error fetching user from database:", err);
-          return res
-            .status(500)
-            .json({ success: false, message: "Authentication error" });
-        });
-    } catch (err) {
-      // Check if user is authenticated via session as fallback
-      if (req.isAuthenticated()) {
-        return next();
-      } else {
-        return res
-          .status(401)
-          .json({ success: false, message: "Invalid authentication token" });
-      }
-    }
-  } else {
-    // No Bearer token, check session authentication
-    if (req.isAuthenticated()) {
-      return next();
-    } else {
-      return res
-        .status(401)
-        .json({ success: false, message: "Not authenticated" });
-    }
-  }
-};
 
 // Get Gmail emails from the last 2 months
-router.get("/gmail", isAuthenticated, async (req, res) => {
+router.get("/gmail", auth(), async (req, res) => {
   try {
     // Check if user has Google authentication
     if (req.user.hasGoogleAuth === false) {
@@ -244,7 +194,7 @@ router.get("/gmail", isAuthenticated, async (req, res) => {
 });
 
 // Get Outlook emails from the last 2 months
-router.get("/outlook", isAuthenticated, async (req, res) => {
+router.get("/outlook", auth(), async (req, res) => {
   try {
     // Check if user has Microsoft authentication
     if (!req.user.microsoftAccessToken) {

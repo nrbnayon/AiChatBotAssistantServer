@@ -1,0 +1,237 @@
+// utils/errorHandler.js
+/**
+ * Custom error class with status code
+ */
+class AppError extends Error {
+  constructor(message, statusCode) {
+    super(message);
+    this.statusCode = statusCode;
+    this.status = `${statusCode}`.startsWith("4") ? "fail" : "error";
+    this.isOperational = true;
+
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+
+/**
+ * Enhanced API error class with emoji and fun text
+ */
+class ApiError extends Error {
+  constructor(statusCode, message) {
+    const emoji = getErrorEmoji(statusCode);
+    const funMessage = getFunnyErrorMessage(statusCode);
+    super(`${emoji} ${message} ${funMessage}`);
+
+    this.statusCode = statusCode;
+    this.status = `${statusCode}`.startsWith("4") ? "fail" : "error";
+    this.isOperational = true;
+    this.name = this.constructor.name;
+
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+
+/**
+ * Get emoji based on status code
+ */
+const getErrorEmoji = (statusCode) => {
+  const statusMap = {
+    400: "🤦‍♂️",
+    401: "🔐",
+    403: "🚫",
+    404: "🔍",
+    500: "💥",
+    503: "⏳",
+  };
+
+  return statusMap[statusCode] || "⚠️";
+};
+
+/**
+ * Async function wrapper to catch errors and pass to next()
+ * @param {Function} fn - Async controller function
+ * @returns {Function} - Express middleware function
+ */
+const catchAsync = (fn) => {
+  return (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+};
+
+/**
+ * Fun error messages for developers
+ */
+const devErrorMessages = {
+  400: [
+    "🤦‍♂️ Bad request? More like bad code! Just kidding... maybe?",
+    "🧩 You've got a 400! Apparently the code is playing hard to get.",
+    "🔍 Error 400: Your request is like my morning coffee - not properly formed.",
+  ],
+  401: [
+    "🔐 Authentication failed. Your code needs an ID card!",
+    "🕵️‍♂️ Who ARE you? The server would like to know!",
+    "🚫 Access denied! Try bribing the server with cookies next time.",
+  ],
+  403: [
+    "🛑 The server knows who you are, it just doesn't like you.",
+    "🔒 Forbidden! Did you forget to say 'please'?",
+    "🚷 Error 403: You shall not pass! 🧙‍♂️",
+  ],
+  404: [
+    "🏜️ 404: Got lost in the backend wilderness!",
+    "👻 This resource is playing hide and seek... and winning.",
+    "🔭 Looking for something? It's not here. Not even under the couch.",
+  ],
+  500: [
+    "💥 Server crashed harder than my motivation on Monday morning.",
+    "🤯 Error 500: Server had a meltdown. Get it some ice cream!",
+    "🔥 The server is on fire! Not the good kind of fire.",
+  ],
+  503: [
+    "🛌 Service unavailable. The server decided to take a nap.",
+    "⏳ The server is experiencing an existential crisis. Try again later.",
+    "🚑 Error 503: Service temporarily down for emotional support.",
+  ],
+  default: [
+    "🤷‍♂️ Something broke. Have you tried turning it off and on again?",
+    "🧙‍♂️ Mysterious error appeared! Quick, capture it in a Pokéball!",
+    "🎲 Random error. The backend gods are not pleased with your offerings.",
+  ],
+};
+
+/**
+ * Get a random fun message based on status code
+ */
+const getFunnyErrorMessage = (statusCode) => {
+  const messages = devErrorMessages[statusCode] || devErrorMessages.default;
+  return messages[Math.floor(Math.random() * messages.length)];
+};
+
+/**
+ * Global error handler middleware
+ */
+const globalErrorHandler = (err, req, res, next) => {
+  err.statusCode = err.statusCode || 500;
+  err.status = err.status || "error";
+
+  // Check environment for error detail level
+  if (process.env.NODE_ENV === "development") {
+    handleDevelopmentError(err, res);
+  } else {
+    handleProductionError(err, res);
+  }
+};
+
+/**
+ * Development error handler with full details and funny messages
+ */
+const handleDevelopmentError = (err, res) => {
+  const funnyMessage = getFunnyErrorMessage(err.statusCode);
+
+  console.log("\n");
+  console.log("⛔️ ERROR ENCOUNTERED ⛔️");
+  console.log("------------------------");
+  console.log(`${funnyMessage}`);
+  console.log("------------------------\n");
+
+  return res.status(err.statusCode).json({
+    success: false,
+    status: err.status,
+    message: err.message,
+    funnyMessage: funnyMessage,
+    stack: err.stack,
+    error: err,
+  });
+};
+
+/**
+ * Production error handler with limited details
+ */
+const handleProductionError = (err, res) => {
+  // Operational errors we can send details to client
+  if (err.isOperational) {
+    return res.status(err.statusCode).json({
+      success: false,
+      status: err.status,
+      message: err.message,
+    });
+  }
+
+  // Programming or unknown errors - don't leak details
+  console.error("ERROR 💥", err);
+  return res.status(500).json({
+    success: false,
+    status: "error",
+    message: "Something went wrong",
+  });
+};
+
+/**
+ * Handle specific MongoDB errors with humorous messages
+ */
+const handleMongoErrors = (err) => {
+  if (err.name === "CastError") {
+    return new AppError(
+      `Invalid ${err.path}: ${err.value}. MongoDB is judging your type choices. 🧐`,
+      400
+    );
+  }
+  if (err.code === 11000) {
+    const field = Object.keys(err.keyValue)[0];
+    return new AppError(
+      `Duplicate field value: ${field}. This value is already taken! Be more creative. 🎨`,
+      400
+    );
+  }
+  if (err.name === "ValidationError") {
+    const errors = Object.values(err.errors).map((el) => el.message);
+    return new AppError(
+      `Invalid input data: ${errors.join(
+        ". "
+      )}. Your data failed the vibe check. 🔍`,
+      400
+    );
+  }
+  if (err.name === "JsonWebTokenError") {
+    return new AppError("Invalid token. Are you trying to hack us? 🕵️‍♂️", 401);
+  }
+  if (err.name === "TokenExpiredError") {
+    return new AppError(
+      "Your token has expired! Time flies when you're coding. ⏰",
+      401
+    );
+  }
+  return err;
+};
+
+/**
+ * Log error with fun ASCII art based on severity
+ */
+const logErrorWithStyle = (err) => {
+  const isServerError = err.statusCode >= 500;
+
+  if (isServerError) {
+    console.log(`
+    ╔═════════════════════════════════╗
+    ║    SERVER ERROR DETECTED! 😱    ║
+    ╚═════════════════════════════════╝
+    `);
+  } else {
+    console.log(`
+    ╔═════════════════════════════════╗
+    ║    CLIENT ERROR DETECTED! 🤔    ║
+    ╚═════════════════════════════════╝
+    `);
+  }
+
+  console.error(err);
+};
+
+export {
+  AppError,
+  ApiError,
+  catchAsync,
+  globalErrorHandler,
+  handleMongoErrors,
+  logErrorWithStyle,
+};
