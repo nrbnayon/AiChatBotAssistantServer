@@ -23,11 +23,14 @@ router.get("/oauth/:provider", authRateLimit(), (req, res, next) => {
         "profile",
         "email",
         "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.modify",
+        "https://www.googleapis.com/auth/gmail.send",
+        "https://www.googleapis.com/auth/gmail.compose",
       ],
     },
     microsoft: {
       strategy: "microsoft",
-      scope: ["user.read", "mail.read"],
+      scope: ["user.read", "mail.read", "Mail.Read", "Mail.Send"],
       options: { prompt: "select_account" },
     },
     yahoo: {
