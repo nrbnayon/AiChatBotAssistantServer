@@ -9,6 +9,7 @@
     "dev": "nodemon index.js --host"
   },
   "dependencies": {
+    "@ai-sdk/xai": "^1.1.15",
     "@azure/identity": "^4.8.0",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "bcryptjs": "^3.0.2",
@@ -25,6 +26,7 @@
     "http-status-codes": "^2.3.0",
     "imap-simple": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
+    "mime-types": "^2.1.35",
     "mongoose": "^8.12.1",
     "multer": "^1.4.5-lts.1",
     "node-fetch": "^3.3.2",

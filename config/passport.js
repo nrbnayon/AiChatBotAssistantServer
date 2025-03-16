@@ -76,7 +76,7 @@ const oauthCallback = async (
       user[refreshTokenField] = refreshToken;
       user.authProvider = provider;
       user.verified = true;
-      user.lastSync = new Date(); // Update lastSync on login
+      user.lastSync = new Date();
 
       if (profilePicture) {
         user.profilePicture = profilePicture;
@@ -94,7 +94,7 @@ const oauthCallback = async (
         verified: true,
         profilePicture: profilePicture,
         subscription: { plan: "free", dailyTokens: 100 },
-        lastSync: new Date(), // Set lastSync on creation
+        lastSync: new Date(),
       });
     }
 
@@ -103,14 +103,7 @@ const oauthCallback = async (
 
     user.refreshToken = jwtRefreshToken;
     await user.save();
-
-    console.log("[DEBUG] OAuth Callback - User:", user);
-    return done(null, user, {
-      accessToken: jwtAccessToken,
-      refreshToken: jwtRefreshToken,
-    });
   } catch (error) {
-    console.log("[DEBUG] OAuth Callback Error:", error.message);
     return done(error, null);
   }
 };
@@ -130,6 +123,7 @@ passport.use(
         "https://www.googleapis.com/auth/gmail.readonly",
         "https://www.googleapis.com/auth/gmail.modify",
         "https://www.googleapis.com/auth/gmail.send",
+        "https://www.googleapis.com/auth/gmail.compose",
       ],
     },
     (accessToken, refreshToken, profile, done) =>
@@ -146,7 +140,16 @@ passport.use(
         process.env.NODE_ENV === "production"
           ? process.env.MICROSOFT_LIVE_REDIRECT_URI
           : process.env.MICROSOFT_REDIRECT_URI,
-      scope: ["user.read", "mail.read", "mail.readwrite", "mail.send"],
+      scope: [
+        "User.Read",
+        "Mail.Read",
+        "Mail.ReadWrite",
+        "Mail.Send",
+        "user.read",
+        "mail.read",
+        "mail.readwrite",
+        "mail.send",
+      ],
       tenant: "common",
     },
     (accessToken, refreshToken, profile, done) =>
