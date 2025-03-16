@@ -27,11 +27,12 @@ router.get("/oauth/:provider", authRateLimit(), (req, res, next) => {
         "https://www.googleapis.com/auth/gmail.send",
         "https://www.googleapis.com/auth/gmail.compose",
       ],
+      options: { prompt: "select_account" },
     },
     microsoft: {
       strategy: "microsoft",
       scope: ["User.Read", "Mail.Read", "Mail.ReadWrite", "Mail.Send"],
-      // options: { prompt: "select_account" }, 
+      // options: { prompt: "select_account" },
     },
     yahoo: {
       strategy: "yahoo",
