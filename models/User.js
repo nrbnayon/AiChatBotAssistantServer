@@ -1,4 +1,3 @@
-// models/User.js
 import mongoose from "mongoose";
 
 const subscriptionSchema = new mongoose.Schema({
@@ -22,12 +21,15 @@ const userSchema = new mongoose.Schema({
   googleId: { type: String },
   googleAccessToken: { type: String },
   googleRefreshToken: { type: String },
+  googleAccessTokenExpires: { type: Number },
   microsoftId: { type: String },
   microsoftAccessToken: { type: String },
   microsoftRefreshToken: { type: String },
+  microsoftAccessTokenExpires: { type: Number },
   yahooId: { type: String },
   yahooAccessToken: { type: String },
   yahooRefreshToken: { type: String },
+  yahooAccessTokenExpires: { type: Number },
   profilePicture: { type: String },
   status: { type: String, default: "ACTIVE" },
   verified: { type: Boolean, default: false },

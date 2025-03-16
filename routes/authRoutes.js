@@ -32,7 +32,7 @@ router.get("/oauth/:provider", authRateLimit(), (req, res, next) => {
     microsoft: {
       strategy: "microsoft",
       scope: ["User.Read", "Mail.Read", "Mail.ReadWrite", "Mail.Send"],
-      // options: { prompt: "select_account" },
+      options: { prompt: "select_account" },
     },
     yahoo: {
       strategy: "yahoo",

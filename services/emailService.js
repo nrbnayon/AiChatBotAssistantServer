@@ -1,4 +1,3 @@
-// services/emailService.js
 import { google } from "googleapis";
 import fetch from "node-fetch";
 import Groq from "groq-sdk";
@@ -13,11 +12,11 @@ class EmailService {
   async getEmailClient() {
     switch (this.user.authProvider) {
       case "google":
-        return this.getGmailClient();
+        return await this.getGmailClient();
       case "microsoft":
-        return this.getMicrosoftClient();
+        return await this.getMicrosoftClient();
       case "yahoo":
-        return this.getYahooClient();
+        return await this.getYahooClient();
       default:
         throw new Error("Unsupported email provider");
     }
@@ -33,9 +32,13 @@ class EmailService {
       access_token: this.user.googleAccessToken,
       refresh_token: this.user.googleRefreshToken,
     });
-    if (this.user.googleAccessTokenExpires < Date.now()) {
+
+    const tokenExpiry = this.user.googleAccessTokenExpires || 0;
+    if (tokenExpiry < Date.now()) {
       const { credentials } = await oauth2Client.refreshAccessToken();
       this.user.googleAccessToken = credentials.access_token;
+      this.user.googleRefreshToken =
+        credentials.refresh_token || this.user.googleRefreshToken;
       this.user.googleAccessTokenExpires = credentials.expiry_date;
       await this.user.save();
     }
@@ -43,7 +46,8 @@ class EmailService {
   }
 
   async getMicrosoftClient() {
-    if (this.user.microsoftAccessTokenExpires < Date.now()) {
+    const tokenExpiry = this.user.microsoftAccessTokenExpires || 0;
+    if (tokenExpiry < Date.now()) {
       const response = await fetch(
         "https://login.microsoftonline.com/common/oauth2/v2.0/token",
         {
@@ -57,8 +61,11 @@ class EmailService {
           }),
         }
       );
-      const { access_token, expires_in } = await response.json();
+      if (!response.ok) throw new Error("Failed to refresh Microsoft token");
+      const { access_token, refresh_token, expires_in } = await response.json();
       this.user.microsoftAccessToken = access_token;
+      this.user.microsoftRefreshToken =
+        refresh_token || this.user.microsoftRefreshToken;
       this.user.microsoftAccessTokenExpires = Date.now() + expires_in * 1000;
       await this.user.save();
     }
@@ -69,7 +76,8 @@ class EmailService {
   }
 
   async getYahooClient() {
-    if (this.user.yahooAccessTokenExpires < Date.now()) {
+    const tokenExpiry = this.user.yahooAccessTokenExpires || 0;
+    if (tokenExpiry < Date.now()) {
       const response = await fetch(
         "https://api.login.yahoo.com/oauth2/get_token",
         {
@@ -83,14 +91,17 @@ class EmailService {
           }),
         }
       );
-      const { access_token, expires_in } = await response.json();
+      if (!response.ok) throw new Error("Failed to refresh Yahoo token");
+      const { access_token, refresh_token, expires_in } = await response.json();
       this.user.yahooAccessToken = access_token;
+      this.user.yahooRefreshToken =
+        refresh_token || this.user.yahooRefreshToken;
       this.user.yahooAccessTokenExpires = Date.now() + expires_in * 1000;
       await this.user.save();
     }
     return {
       accessToken: this.user.yahooAccessToken,
-      baseUrl: "https://api.login.yahoo.com",
+      baseUrl: "https://api.mail.yahoo.com",
     };
   }
 
@@ -103,26 +114,28 @@ class EmailService {
     const client = await this.getEmailClient();
     switch (this.user.authProvider) {
       case "google":
-        return this.fetchGmailEmails(client, {
+        return await this.fetchGmailEmails(client, {
           query,
           maxResults,
           pageToken,
           filter,
         });
       case "microsoft":
-        return this.fetchMicrosoftEmails(client, {
+        return await this.fetchMicrosoftEmails(client, {
           query,
           maxResults,
           pageToken,
           filter,
         });
       case "yahoo":
-        return this.fetchYahooEmails(client, {
+        return await this.fetchYahooEmails(client, {
           query,
           maxResults,
           pageToken,
           filter,
         });
+      default:
+        throw new Error("Unsupported provider for fetching emails");
     }
   }
 
@@ -156,8 +169,8 @@ class EmailService {
   }
 
   async fetchMicrosoftEmails(client, { query, maxResults, pageToken, filter }) {
-    let endpoint = `${client.baseUrl}/messages?$top=${maxResults}&$select=id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,bodyPreview,body,isRead,folderId,hasAttachments`;
-    if (pageToken) endpoint += `&$skip=${pageToken}`;
+    let endpoint = `${client.baseUrl}/messages?$top=${maxResults}&$select=id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,bodyPreview,body,isRead,parentFolderId,hasAttachments`;
+    if (pageToken) endpoint += `&$skiptoken=${pageToken}`;
     if (query) endpoint += `&$search="${query}"`;
     switch (filter) {
       case "read":
@@ -173,48 +186,60 @@ class EmailService {
     const response = await fetch(endpoint, {
       headers: { Authorization: `Bearer ${client.accessToken}` },
     });
+    if (!response.ok) throw new Error("Failed to fetch Microsoft emails");
     const data = await response.json();
     return {
       messages: data.value.map(this.formatMicrosoftEmail),
       nextPageToken: data["@odata.nextLink"]
-        ? data["@odata.nextLink"].split("$skip=")[1]
+        ? data["@odata.nextLink"].split("skiptoken=")[1]
         : null,
     };
   }
 
   async fetchYahooEmails(client, { query, maxResults, pageToken, filter }) {
-    const endpoint = `${client.baseUrl}/ws/v3/mailboxes?count=${maxResults}${
-      query ? `&query=${encodeURIComponent(query)}` : ""
-    }`;
+    let endpoint = `${client.baseUrl}/v1/messages?count=${maxResults}`;
+    if (query) endpoint += `&query=${encodeURIComponent(query)}`;
+    if (pageToken) endpoint += `&start=${pageToken}`;
     const response = await fetch(endpoint, {
       headers: { Authorization: `Bearer ${client.accessToken}` },
     });
+    if (!response.ok) throw new Error("Failed to fetch Yahoo emails");
     const data = await response.json();
-    let messages = data.mailbox[0]?.messages?.map(this.formatYahooEmail) || [];
-    if (filter === "read") messages = messages.filter((m) => m.read);
-    if (filter === "unread") messages = messages.filter((m) => !m.read);
+    let messages = data.messages?.map(this.formatYahooEmail) || [];
+    if (filter === "read") messages = messages.filter((m) => m.isRead);
+    if (filter === "unread") messages = messages.filter((m) => !m.isRead);
     if (filter === "archived")
       messages = messages.filter((m) => m.folder === "Archive");
-    return { messages, nextPageToken: null };
+    return { messages, nextPageToken: data.nextPageToken || null };
   }
 
   async getEmail(id) {
     const client = await this.getEmailClient();
     switch (this.user.authProvider) {
       case "google":
-        const email = await client.users.messages.get({
+        const gmailEmail = await client.users.messages.get({
           userId: "me",
           id,
           format: "full",
         });
-        return this.formatGmailEmail(email.data);
+        return this.formatGmailEmail(gmailEmail.data);
       case "microsoft":
-        const response = await fetch(`${client.baseUrl}/messages/${id}`, {
+        const msResponse = await fetch(`${client.baseUrl}/messages/${id}`, {
           headers: { Authorization: `Bearer ${client.accessToken}` },
         });
-        return this.formatMicrosoftEmail(await response.json());
+        if (!msResponse.ok) throw new Error("Failed to fetch Microsoft email");
+        return this.formatMicrosoftEmail(await msResponse.json());
       case "yahoo":
-        throw new Error("Yahoo single email fetch not fully supported");
+        const yahooResponse = await fetch(
+          `${client.baseUrl}/v1/message/${id}`,
+          {
+            headers: { Authorization: `Bearer ${client.accessToken}` },
+          }
+        );
+        if (!yahooResponse.ok) throw new Error("Failed to fetch Yahoo email");
+        return this.formatYahooEmail(await yahooResponse.json());
+      default:
+        throw new Error("Unsupported provider for fetching single email");
     }
   }
 
@@ -260,7 +285,7 @@ class EmailService {
     return {
       id: email.id,
       threadId: email.conversationId,
-      subject: email.subject,
+      subject: email.subject || "",
       from: email.from?.emailAddress?.address || "",
       to:
         email.toRecipients?.map((r) => r.emailAddress.address).join(", ") || "",
@@ -269,29 +294,29 @@ class EmailService {
       bcc:
         email.bccRecipients?.map((r) => r.emailAddress.address).join(", ") ||
         "",
-      date: email.receivedDateTime,
-      snippet: email.bodyPreview,
+      date: email.receivedDateTime || "",
+      snippet: email.bodyPreview || "",
       body: email.body?.content || "",
-      isRead: email.isRead,
-      isArchived: email.folderId === "archive",
+      isRead: email.isRead || false,
+      isArchived: email.parentFolderId === "archive",
       labels: [],
-      attachments: email.hasAttachments ? email.attachments : [],
+      attachments: email.hasAttachments ? email.attachments || [] : [],
     };
   }
 
   formatYahooEmail(email) {
     return {
-      id: email.messageId,
+      id: email.id,
       threadId: email.threadId,
-      subject: email.subject,
-      from: email.from,
-      to: email.to,
-      cc: email.cc || "",
-      bcc: email.bcc || "",
-      date: email.receivedDate,
-      snippet: email.snippet,
-      body: email.text,
-      isRead: email.read,
+      subject: email.subject || "",
+      from: email.from?.email || "",
+      to: email.to?.map((t) => t.email).join(", ") || "",
+      cc: email.cc?.map((c) => c.email).join(", ") || "",
+      bcc: email.bcc?.map((b) => b.email).join(", ") || "",
+      date: email.receivedDate || "",
+      snippet: email.snippet || "",
+      body: email.body || "",
+      isRead: email.isRead || false,
       isArchived: email.folder === "Archive",
       labels: [],
       attachments: email.attachments || [],
@@ -301,13 +326,13 @@ class EmailService {
   getGmailBody(payload) {
     if (!payload) return "";
     if (payload.body?.data)
-      return Buffer.from(payload.body.data, "base64").toString();
+      return Buffer.from(payload.body.data, "base64").toString("utf8");
     const htmlPart = payload.parts?.find((p) => p.mimeType === "text/html");
     const textPart = payload.parts?.find((p) => p.mimeType === "text/plain");
     return htmlPart?.body?.data
-      ? Buffer.from(htmlPart.body.data, "base64").toString()
+      ? Buffer.from(htmlPart.body.data, "base64").toString("utf8")
       : textPart?.body?.data
-      ? Buffer.from(textPart.body.data, "base64").toString()
+      ? Buffer.from(textPart.body.data, "base64").toString("utf8")
       : "";
   }
 
@@ -327,7 +352,7 @@ class EmailService {
     const client = await this.getEmailClient();
     switch (this.user.authProvider) {
       case "google":
-        return this.sendGmailEmail(client, {
+        return await this.sendGmailEmail(client, {
           to,
           cc,
           bcc,
@@ -337,7 +362,7 @@ class EmailService {
           isHtml,
         });
       case "microsoft":
-        return this.sendMicrosoftEmail(client, {
+        return await this.sendMicrosoftEmail(client, {
           to,
           cc,
           bcc,
@@ -347,7 +372,7 @@ class EmailService {
           isHtml,
         });
       case "yahoo":
-        return this.sendYahooEmail(client, {
+        return await this.sendYahooEmail(client, {
           to,
           cc,
           bcc,
@@ -356,6 +381,8 @@ class EmailService {
           attachments,
           isHtml,
         });
+      default:
+        throw new Error("Unsupported provider for sending email");
     }
   }
 
@@ -444,6 +471,7 @@ class EmailService {
       },
       body: JSON.stringify(email),
     });
+    if (!response.ok) throw new Error("Failed to send Microsoft email");
     return await response.json();
   }
 
@@ -451,10 +479,20 @@ class EmailService {
     client,
     { to, cc, bcc, subject, body, attachments, isHtml }
   ) {
-    const email = { to, subject, body };
-    if (cc) email.cc = cc;
-    if (bcc) email.bcc = bcc;
-    const response = await fetch(`${client.baseUrl}/ws/v3/messages`, {
+    const email = {
+      subject,
+      body: isHtml ? { html: body } : { text: body },
+      to: to.split(",").map((email) => ({ email: email.trim() })),
+      cc: cc ? cc.split(",").map((email) => ({ email: email.trim() })) : [],
+      bcc: bcc ? bcc.split(",").map((email) => ({ email: email.trim() })) : [],
+      attachments:
+        attachments?.map((att) => ({
+          name: att.originalname,
+          contentType: att.mimetype,
+          data: att.content.toString("base64"),
+        })) || [],
+    };
+    const response = await fetch(`${client.baseUrl}/v1/messages`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${client.accessToken}`,
@@ -462,66 +500,121 @@ class EmailService {
       },
       body: JSON.stringify(email),
     });
+    if (!response.ok) throw new Error("Failed to send Yahoo email");
     return await response.json();
   }
 
   async replyToEmail(id, { body, attachments, isHtml }) {
     const client = await this.getEmailClient();
-    if (this.user.authProvider === "google") {
-      const original = await client.users.messages.get({
-        userId: "me",
-        id,
-        format: "full",
-      });
-      const headers = original.data.payload.headers;
-      const subject = headers.find((h) => h.name === "Subject")?.value || "";
-      const from = headers.find((h) => h.name === "From")?.value || "";
-      const messageId =
-        headers.find((h) => h.name === "Message-ID")?.value || "";
-
-      const boundary = `boundary_${Date.now()}`;
-      const messageParts = [
-        `From: ${this.user.email}`,
-        `To: ${from}`,
-        `Subject: Re: ${subject.replace(/^Re: /i, "")}`,
-        `In-Reply-To: ${messageId}`,
-        `References: ${messageId}`,
-        "MIME-Version: 1.0",
-        `Content-Type: multipart/mixed; boundary=${boundary}`,
-        "",
-        `--${boundary}`,
-        isHtml
-          ? "Content-Type: text/html; charset=UTF-8"
-          : "Content-Type: text/plain; charset=UTF-8",
-        "",
-        body,
-      ];
-
-      if (attachments) {
-        attachments.forEach((att) => {
-          messageParts.push(
-            `--${boundary}`,
-            `Content-Type: ${att.mimetype}`,
-            "Content-Transfer-Encoding: base64",
-            `Content-Disposition: attachment; filename="${att.originalname}"`,
-            "",
-            att.content.toString("base64")
-          );
+    switch (this.user.authProvider) {
+      case "google":
+        const originalGmail = await client.users.messages.get({
+          userId: "me",
+          id,
+          format: "full",
         });
-      }
-      messageParts.push(`--${boundary}--`);
-
-      const raw = Buffer.from(messageParts.join("\r\n"))
-        .toString("base64")
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_");
-      const response = await client.users.messages.send({
-        userId: "me",
-        requestBody: { raw, threadId: original.data.threadId },
-      });
-      return response.data;
+        const gmailHeaders = originalGmail.data.payload.headers;
+        const gmailSubject =
+          gmailHeaders.find((h) => h.name === "Subject")?.value || "";
+        const gmailFrom =
+          gmailHeaders.find((h) => h.name === "From")?.value || "";
+        const gmailMessageId =
+          gmailHeaders.find((h) => h.name === "Message-ID")?.value || "";
+        const gmailBoundary = `boundary_${Date.now()}`;
+        const gmailParts = [
+          `From: ${this.user.email}`,
+          `To: ${gmailFrom}`,
+          `Subject: Re: ${gmailSubject.replace(/^Re: /i, "")}`,
+          `In-Reply-To: ${gmailMessageId}`,
+          `References: ${gmailMessageId}`,
+          "MIME-Version: 1.0",
+          `Content-Type: multipart/mixed; boundary=${gmailBoundary}`,
+          "",
+          `--${gmailBoundary}`,
+          isHtml
+            ? "Content-Type: text/html; charset=UTF-8"
+            : "Content-Type: text/plain; charset=UTF-8",
+          "",
+          body,
+        ];
+        if (attachments) {
+          attachments.forEach((att) => {
+            gmailParts.push(
+              `--${gmailBoundary}`,
+              `Content-Type: ${att.mimetype}`,
+              "Content-Transfer-Encoding: base64",
+              `Content-Disposition: attachment; filename="${att.originalname}"`,
+              "",
+              att.content.toString("base64")
+            );
+          });
+        }
+        gmailParts.push(`--${gmailBoundary}--`);
+        const gmailRaw = Buffer.from(gmailParts.join("\r\n"))
+          .toString("base64")
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_");
+        const gmailResponse = await client.users.messages.send({
+          userId: "me",
+          requestBody: { raw, threadId: originalGmail.data.threadId },
+        });
+        return gmailResponse.data;
+      case "microsoft":
+        const msOriginal = await this.getEmail(id);
+        const msEmail = {
+          message: {
+            subject: `Re: ${msOriginal.subject}`,
+            body: { contentType: isHtml ? "HTML" : "Text", content: body },
+            toRecipients: [{ emailAddress: { address: msOriginal.from } }],
+            inReplyTo: msOriginal.id,
+            attachments:
+              attachments?.map((att) => ({
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                name: att.originalname,
+                contentType: att.mimetype,
+                contentBytes: att.content.toString("base64"),
+              })) || [],
+          },
+        };
+        const msResponse = await fetch(`${client.baseUrl}/sendMail`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${client.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(msEmail),
+        });
+        if (!msResponse.ok)
+          throw new Error("Failed to reply to Microsoft email");
+        return await msResponse.json();
+      case "yahoo":
+        const yahooOriginal = await this.getEmail(id);
+        const yahooEmail = {
+          subject: `Re: ${yahooOriginal.subject}`,
+          body: isHtml ? { html: body } : { text: body },
+          to: [{ email: yahooOriginal.from }],
+          inReplyTo: yahooOriginal.id,
+          attachments:
+            attachments?.map((att) => ({
+              name: att.originalname,
+              contentType: att.mimetype,
+              data: att.content.toString("base64"),
+            })) || [],
+        };
+        const yahooResponse = await fetch(`${client.baseUrl}/v1/messages`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${client.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(yahooEmail),
+        });
+        if (!yahooResponse.ok)
+          throw new Error("Failed to reply to Yahoo email");
+        return await yahooResponse.json();
+      default:
+        throw new Error("Unsupported provider for replying to email");
     }
-    throw new Error("Reply only fully supported for Gmail");
   }
 
   async forwardEmail(
@@ -529,88 +622,170 @@ class EmailService {
     { to, cc, bcc, additionalMessage, attachments, isHtml }
   ) {
     const client = await this.getEmailClient();
-    if (this.user.authProvider === "google") {
-      const original = await client.users.messages.get({
-        userId: "me",
-        id,
-        format: "full",
-      });
-      const headers = original.data.payload.headers;
-      const subject = headers.find((h) => h.name === "Subject")?.value || "";
-
-      const boundary = `boundary_${Date.now()}`;
-      const messageParts = [
-        `From: ${this.user.email}`,
-        `To: ${to}`,
-        cc ? `Cc: ${cc}` : "",
-        bcc ? `Bcc: ${bcc}` : "",
-        `Subject: Fwd: ${subject.replace(/^Fwd: /i, "")}`,
-        "MIME-Version: 1.0",
-        `Content-Type: multipart/mixed; boundary=${boundary}`,
-        "",
-      ];
-
-      if (additionalMessage) {
-        messageParts.push(
-          `--${boundary}`,
-          isHtml
-            ? "Content-Type: text/html; charset=UTF-8"
-            : "Content-Type: text/plain; charset=UTF-8",
+    switch (this.user.authProvider) {
+      case "google":
+        const originalGmail = await client.users.messages.get({
+          userId: "me",
+          id,
+          format: "full",
+        });
+        const gmailHeaders = originalGmail.data.payload.headers;
+        const gmailSubject =
+          gmailHeaders.find((h) => h.name === "Subject")?.value || "";
+        const gmailBoundary = `boundary_${Date.now()}`;
+        const gmailParts = [
+          `From: ${this.user.email}`,
+          `To: ${to}`,
+          cc ? `Cc: ${cc}` : "",
+          bcc ? `Bcc: ${bcc}` : "",
+          `Subject: Fwd: ${gmailSubject.replace(/^Fwd: /i, "")}`,
+          "MIME-Version: 1.0",
+          `Content-Type: multipart/mixed; boundary=${gmailBoundary}`,
           "",
-          additionalMessage
-        );
-      }
-
-      messageParts.push(
-        `--${boundary}`,
-        "Content-Type: message/rfc822",
-        "",
-        ...headers.map((h) => `${h.name}: ${h.value}`),
-        "",
-        this.getGmailBody(original.data.payload)
-      );
-
-      const originalAttachments = await this.getGmailAttachmentsFull(
-        original.data.payload,
-        id,
-        client
-      );
-      originalAttachments.forEach((att) => {
-        messageParts.push(
-          `--${boundary}`,
-          `Content-Type: ${att.mimeType}`,
-          "Content-Transfer-Encoding: base64",
-          `Content-Disposition: attachment; filename="${att.filename}"`,
-          "",
-          att.data
-        );
-      });
-
-      if (attachments) {
-        attachments.forEach((att) => {
-          messageParts.push(
-            `--${boundary}`,
-            `Content-Type: ${att.mimetype}`,
-            "Content-Transfer-Encoding: base64",
-            `Content-Disposition: attachment; filename="${att.originalname}"`,
+        ];
+        if (additionalMessage) {
+          gmailParts.push(
+            `--${gmailBoundary}`,
+            isHtml
+              ? "Content-Type: text/html; charset=UTF-8"
+              : "Content-Type: text/plain; charset=UTF-8",
             "",
-            att.content.toString("base64")
+            additionalMessage
+          );
+        }
+        gmailParts.push(
+          `--${gmailBoundary}`,
+          "Content-Type: message/rfc822",
+          "",
+          ...gmailHeaders.map((h) => `${h.name}: ${h.value}`),
+          "",
+          this.getGmailBody(originalGmail.data.payload)
+        );
+        const gmailAttachments = await this.getGmailAttachmentsFull(
+          originalGmail.data.payload,
+          id,
+          client
+        );
+        gmailAttachments.forEach((att) => {
+          gmailParts.push(
+            `--${gmailBoundary}`,
+            `Content-Type: ${att.mimeType}`,
+            "Content-Transfer-Encoding: base64",
+            `Content-Disposition: attachment; filename="${att.filename}"`,
+            "",
+            att.data
           );
         });
-      }
-      messageParts.push(`--${boundary}--`);
-
-      const raw = Buffer.from(messageParts.join("\r\n"))
-        .toString("base64")
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_");
-      const response = await client.users.messages.send({
-        userId: "me",
-        requestBody: { raw },
-      });
-      return response.data;
+        if (attachments) {
+          attachments.forEach((att) => {
+            gmailParts.push(
+              `--${gmailBoundary}`,
+              `Content-Type: ${att.mimetype}`,
+              "Content-Transfer-Encoding: base64",
+              `Content-Disposition: attachment; filename="${att.originalname}"`,
+              "",
+              att.content.toString("base64")
+            );
+          });
+        }
+        gmailParts.push(`--${gmailBoundary}--`);
+        const gmailRaw = Buffer.from(gmailParts.join("\r\n"))
+          .toString("base64")
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_");
+        const gmailResponse = await client.users.messages.send({
+          userId: "me",
+          requestBody: { raw },
+        });
+        return gmailResponse.data;
+      case "microsoft":
+        const msOriginal = await this.getEmail(id);
+        const msEmail = {
+          message: {
+            subject: `Fwd: ${msOriginal.subject}`,
+            body: {
+              contentType: isHtml ? "HTML" : "Text",
+              content: additionalMessage
+                ? `${additionalMessage}\n\n--- Forwarded Message ---\n${msOriginal.body}`
+                : msOriginal.body,
+            },
+            toRecipients: to
+              .split(",")
+              .map((email) => ({ emailAddress: { address: email.trim() } })),
+            ccRecipients: cc
+              ? cc
+                  .split(",")
+                  .map((email) => ({ emailAddress: { address: email.trim() } }))
+              : [],
+            bccRecipients: bcc
+              ? bcc
+                  .split(",")
+                  .map((email) => ({ emailAddress: { address: email.trim() } }))
+              : [],
+            attachments: [
+              ...(msOriginal.attachments || []),
+              ...(attachments?.map((att) => ({
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                name: att.originalname,
+                contentType: att.mimetype,
+                contentBytes: att.content.toString("base64"),
+              })) || []),
+            ],
+          },
+        };
+        const msResponse = await fetch(`${client.baseUrl}/sendMail`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${client.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(msEmail),
+        });
+        if (!msResponse.ok)
+          throw new Error("Failed to forward Microsoft email");
+        return await msResponse.json();
+      case "yahoo":
+        const yahooOriginal = await this.getEmail(id);
+        const yahooEmail = {
+          subject: `Fwd: ${yahooOriginal.subject}`,
+          body: isHtml
+            ? {
+                html: additionalMessage
+                  ? `${additionalMessage}<br><br>--- Forwarded Message ---<br>${yahooOriginal.body}`
+                  : yahooOriginal.body,
+              }
+            : {
+                text: additionalMessage
+                  ? `${additionalMessage}\n\n--- Forwarded Message ---\n${yahooOriginal.body}`
+                  : yahooOriginal.body,
+              },
+          to: to.split(",").map((email) => ({ email: email.trim() })),
+          cc: cc ? cc.split(",").map((email) => ({ email: email.trim() })) : [],
+          bcc: bcc
+            ? bcc.split(",").map((email) => ({ email: email.trim() }))
+            : [],
+          attachments: [
+            ...(yahooOriginal.attachments || []),
+            ...(attachments?.map((att) => ({
+              name: att.originalname,
+              contentType: att.mimetype,
+              data: att.content.toString("base64"),
+            })) || []),
+          ],
+        };
+        const yahooResponse = await fetch(`${client.baseUrl}/v1/messages`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${client.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(yahooEmail),
+        });
+        if (!yahooResponse.ok) throw new Error("Failed to forward Yahoo email");
+        return await yahooResponse.json();
+      default:
+        throw new Error("Unsupported provider for forwarding email");
     }
-    throw new Error("Forward only fully supported for Gmail");
   }
 
   async getGmailAttachmentsFull(payload, messageId, client) {
@@ -635,22 +810,41 @@ class EmailService {
 
   async getAttachment(messageId, attachmentId) {
     const client = await this.getEmailClient();
-    if (this.user.authProvider === "google") {
-      const attachment = await client.users.messages.attachments.get({
-        userId: "me",
-        messageId,
-        id: attachmentId,
-      });
-      return {
-        data: Buffer.from(
-          attachment.data.data.replace(/-/g, "+").replace(/_/g, "/"),
-          "base64"
-        ),
-        mimeType: attachment.data.mimeType,
-        filename: attachment.data.filename,
-      };
+    switch (this.user.authProvider) {
+      case "google":
+        const attachment = await client.users.messages.attachments.get({
+          userId: "me",
+          messageId,
+          id: attachmentId,
+        });
+        return {
+          data: Buffer.from(
+            attachment.data.data.replace(/-/g, "+").replace(/_/g, "/"),
+            "base64"
+          ),
+          mimeType: attachment.data.mimeType,
+          filename: attachment.data.filename,
+        };
+      case "microsoft":
+        const response = await fetch(
+          `${client.baseUrl}/messages/${messageId}/attachments/${attachmentId}`,
+          {
+            headers: { Authorization: `Bearer ${client.accessToken}` },
+          }
+        );
+        if (!response.ok)
+          throw new Error("Failed to fetch Microsoft attachment");
+        const data = await response.json();
+        return {
+          data: Buffer.from(data.contentBytes, "base64"),
+          mimeType: data.contentType,
+          filename: data.name,
+        };
+      case "yahoo":
+        throw new Error("Yahoo attachment download not fully supported");
+      default:
+        throw new Error("Unsupported provider for attachment download");
     }
-    throw new Error("Attachment download only supported for Gmail");
   }
 
   async markAsRead(emailId, read = true) {
@@ -676,6 +870,18 @@ class EmailService {
           body: JSON.stringify({ isRead: read }),
         });
         break;
+      case "yahoo":
+        await fetch(`${client.baseUrl}/v1/message/${emailId}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${client.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ isRead: read }),
+        });
+        break;
+      default:
+        throw new Error("Unsupported provider for marking as read");
     }
   }
 
@@ -699,6 +905,18 @@ class EmailService {
           body: JSON.stringify({ destinationId: "archive" }),
         });
         break;
+      case "yahoo":
+        await fetch(`${client.baseUrl}/v1/message/${emailId}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${client.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ folder: "Archive" }),
+        });
+        break;
+      default:
+        throw new Error("Unsupported provider for archiving email");
     }
   }
 
@@ -718,13 +936,49 @@ class EmailService {
           body: JSON.stringify({ destinationId: "deleteditems" }),
         });
         break;
+      case "yahoo":
+        await fetch(`${client.baseUrl}/v1/message/${emailId}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${client.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ folder: "Trash" }),
+        });
+        break;
+      default:
+        throw new Error("Unsupported provider for trashing email");
     }
   }
 
   async untrashEmail(emailId) {
     const client = await this.getEmailClient();
-    if (this.user.authProvider === "google") {
-      await client.users.messages.untrash({ userId: "me", id: emailId });
+    switch (this.user.authProvider) {
+      case "google":
+        await client.users.messages.untrash({ userId: "me", id: emailId });
+        break;
+      case "microsoft":
+        await fetch(`${client.baseUrl}/messages/${emailId}/move`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${client.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ destinationId: "inbox" }),
+        });
+        break;
+      case "yahoo":
+        await fetch(`${client.baseUrl}/v1/message/${emailId}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${client.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ folder: "Inbox" }),
+        });
+        break;
+      default:
+        throw new Error("Unsupported provider for untrashing email");
     }
   }
 
@@ -740,6 +994,14 @@ class EmailService {
           headers: { Authorization: `Bearer ${client.accessToken}` },
         });
         break;
+      case "yahoo":
+        await fetch(`${client.baseUrl}/v1/message/${emailId}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${client.accessToken}` },
+        });
+        break;
+      default:
+        throw new Error("Unsupported provider for deleting email");
     }
   }
 
@@ -763,8 +1025,9 @@ class EmailService {
         userId: "me",
         requestBody: { ids, addLabelIds, removeLabelIds },
       });
+    } else {
+      throw new Error("Batch modification only supported for Gmail");
     }
-    throw new Error("Batch modification only supported for Gmail");
   }
 
   async getLabels() {
@@ -805,8 +1068,9 @@ class EmailService {
     const client = await this.getEmailClient();
     if (this.user.authProvider === "google") {
       await client.users.labels.delete({ userId: "me", id });
+    } else {
+      throw new Error("Label deletion only supported for Gmail");
     }
-    throw new Error("Label deletion only supported for Gmail");
   }
 
   async filterImportantEmails(
@@ -839,7 +1103,8 @@ class EmailService {
         `;
         const response = await this.grok.chat.completions.create({
           messages: [{ role: "user", content: prompt }],
-          model: "llama-3.3-70b-versatile",
+          model: "llama3-70b-8192",
+          temperature: 0.7,
         });
         const result = JSON.parse(
           response.choices[0]?.message?.content ||
@@ -864,24 +1129,29 @@ class EmailService {
       id: e.id,
       subject: e.subject,
       from: e.from,
+      to: e.to,
       snippet: e.snippet,
+      body: e.body,
     }));
 
     const fullPrompt = `
-      You are Grok, my email assistant and chatbot. Based on the following email context and my command, perform the requested email action or provide a response.
+      You are Grok, my email assistant and administrator. Based on the following email context and my command, perform the requested email action or provide a response.
       Email Context: ${JSON.stringify(emailContext, null, 2)}
       Command: "${prompt}"
       Available actions: send, reply, forward, markAsRead, markAsUnread, archive, trash, untrash, delete, modifyLabels, batchModify, getLabels, createLabel, updateLabel, deleteLabel, listEmails, getImportantEmails.
       Return a JSON object with the action to take, relevant parameters, and a message to display to the user.
+      If the command involves sending an email to someone (e.g., "tell X to send me a draft"), extract the recipient and craft the email content accordingly.
     `;
-
     const response = await this.grok.chat.completions.create({
       messages: [{ role: "user", content: fullPrompt }],
-      model: "llama-3.3-70b-versatile",
+      model: "llama3-70b-8192",
+      temperature: 0.7,
     });
-
-    const result = JSON.parse(response.choices[0]?.message?.content || "{}");
-    return this.executeEmailAction(result);
+    const result = JSON.parse(
+      response.choices[0]?.message?.content ||
+        '{"action": "unknown", "params": {}, "message": "Unknown command"}'
+    );
+    return await this.executeEmailAction(result);
   }
 
   async executeEmailAction({ action, params, message }) {
@@ -943,4 +1213,3 @@ export const createEmailService = async (req) => {
   if (!user) throw new Error("User not found");
   return new EmailService(user);
 };
-  
