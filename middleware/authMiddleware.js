@@ -3,7 +3,6 @@ import jwt from "jsonwebtoken";
 import { StatusCodes } from "http-status-codes";
 import User from "../models/User.js";
 import { safeCookie, cookieHelper } from "../helper/cookieHelper.js";
-// import { createEmailService } from "../services/emailService.js";
 import { ApiError, catchAsync } from "../utils/errorHandler.js";
 
 const logger = {
@@ -13,9 +12,6 @@ const logger = {
 
 const auth = (...roles) =>
   catchAsync(async (req, res, next) => {
-    // console.log("[DEBUG] Cookies:", req.cookies);
-    // console.log("[DEBUG] Authorization Header:", req.headers.authorization);
-
     const accessToken =
       req.cookies?.accessToken ||
       (req.headers.authorization?.startsWith("Bearer ")
@@ -26,15 +22,9 @@ const auth = (...roles) =>
       throw new ApiError(StatusCodes.UNAUTHORIZED, "Invalid or missing token");
     }
 
-    // console.log("[DEBUG] Access Token:", accessToken);
-
     try {
       const decoded = jwt.verify(accessToken, process.env.JWT_SECRET);
-      console.log("[DEBUG] Decoded Token:", decoded);
-
       const user = await User.findById(decoded.id);
-      // console.log("[DEBUG] Found User:", user);
-
       if (!user || user.status !== "ACTIVE") {
         throw new ApiError(
           StatusCodes.UNAUTHORIZED,
@@ -45,33 +35,6 @@ const auth = (...roles) =>
       if (roles.length && !roles.includes(user.role)) {
         throw new ApiError(StatusCodes.FORBIDDEN, "Insufficient permissions");
       }
-
-      // Trigger email sync if status is PENDING
-      // if (user.emailSyncStatus === "PENDING") {
-      //   req.user = {
-      //     id: decoded.id,
-      //     role: decoded.role,
-      //     email: decoded.email,
-      //     authProvider: decoded.authProvider,
-      //   };
-      //   const emailService = await createEmailService(req);
-      //   await emailService.syncEmails();
-      //   // Refresh the user object after sync
-      //   const updatedUser = await User.findById(decoded.id).select("-password");
-      //   req.user = {
-      //     id: updatedUser._id,
-      //     role: updatedUser.role,
-      //     email: updatedUser.email,
-      //     authProvider: updatedUser.authProvider,
-      //   };
-      // } else {
-      //   req.user = {
-      //     id: user._id,
-      //     role: user.role,
-      //     email: user.email,
-      //     authProvider: user.authProvider,
-      //   };
-      // }
 
       return next();
     } catch (error) {
@@ -126,7 +89,6 @@ const auth = (...roles) =>
           newAccessToken,
           cookieHelper.getAccessTokenOptions()
         );
-        // console.log("[DEBUG] New Access Token Set:", newAccessToken);
         return next();
       }
       throw new ApiError(StatusCodes.UNAUTHORIZED, "Invalid access token");

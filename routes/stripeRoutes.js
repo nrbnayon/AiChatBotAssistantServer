@@ -4,7 +4,7 @@ import {
   createCheckoutSession,
   handleWebhook,
 } from "../controllers/stripeController.js";
-import auth from "../middleware/authMiddleware.js";
+import auth, { setRefreshedTokenCookie } from "../middleware/authMiddleware.js";
 import { rateLimitMiddleware } from "../middleware/rateLimit.js";
 
 const router = express.Router();
@@ -12,6 +12,7 @@ const router = express.Router();
 router.post(
   "/create-checkout-session",
   auth(),
+  setRefreshedTokenCookie,
   rateLimitMiddleware(),
   createCheckoutSession
 );

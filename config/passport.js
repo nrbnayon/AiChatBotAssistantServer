@@ -207,7 +207,7 @@ const strategies = {
         process.env.NODE_ENV === "production"
           ? process.env.MICROSOFT_LIVE_REDIRECT_URI
           : process.env.MICROSOFT_REDIRECT_URI,
-      scope: ["user.read", "mail.read", "mail.readwrite", "mail.send"],
+      scope: ["User.Read", "Mail.Read", "Mail.ReadWrite", "Mail.Send"],
       tenant: "common",
     },
     Strategy: MicrosoftStrategy,

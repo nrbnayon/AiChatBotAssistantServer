@@ -30,8 +30,8 @@ router.get("/oauth/:provider", authRateLimit(), (req, res, next) => {
     },
     microsoft: {
       strategy: "microsoft",
-      scope: ["user.read", "mail.read", "Mail.Read", "Mail.Send"],
-      options: { prompt: "select_account" },
+      scope: ["User.Read", "Mail.Read", "Mail.ReadWrite", "Mail.Send"],
+      // options: { prompt: "select_account" }, 
     },
     yahoo: {
       strategy: "yahoo",
@@ -42,7 +42,6 @@ router.get("/oauth/:provider", authRateLimit(), (req, res, next) => {
   if (!providers[provider]) {
     return res.status(400).json({ message: "Invalid provider" });
   }
-
   const { strategy, scope, options = {} } = providers[provider];
   const state = Buffer.from(
     JSON.stringify({ redirect: req.query.redirect || "/" })
@@ -52,7 +51,6 @@ router.get("/oauth/:provider", authRateLimit(), (req, res, next) => {
 });
 
 router.get(
-  // "/oauth/callback/:provider",
   "/:provider/callback",
   authRateLimit(),
   (req, res, next) => {
