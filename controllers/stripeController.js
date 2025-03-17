@@ -97,8 +97,6 @@ const handleWebhook = catchAsync(async (req, res, next) => {
       console.log(`[DEBUG] Subscription updated for user ${userId} to ${plan}`);
     } catch (error) {
       console.error("[ERROR] Error updating subscription:", error.message);
-      // Log the error but don't throw it so the webhook responds with success
-      // This prevents Stripe from retrying the webhook unnecessarily
       console.error(error);
     }
   }
