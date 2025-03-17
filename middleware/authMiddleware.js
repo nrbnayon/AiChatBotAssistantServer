@@ -18,6 +18,8 @@ const auth = (...roles) =>
         ? req.headers.authorization.substring(7)
         : undefined);
 
+    console.log("[DEBUG] Get accessToken From Frontend:::", accessToken);
+
     if (!accessToken) {
       throw new ApiError(StatusCodes.UNAUTHORIZED, "Invalid or missing token");
     }
