@@ -1,3 +1,4 @@
+// controllers\userController.js
 import User from "../models/User.js";
 import userService from "../services/userService.js";
 import { StatusCodes } from "http-status-codes";
