@@ -235,6 +235,7 @@ const refresh = catchAsync(async (req, res, next) => {
 });
 
 const logout = catchAsync(async (req, res, next) => {
+  console.log("get logout user:::", req.user);
   if (!req.user || !req.user.id) {
     return next(new AppError("You are not logged in", 401));
   }

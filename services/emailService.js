@@ -1,3 +1,4 @@
+// services\emailService.js
 import { google } from "googleapis";
 import fetch from "node-fetch";
 import Groq from "groq-sdk";
