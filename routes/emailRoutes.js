@@ -1,9 +1,7 @@
-// routes/emailRoutes.js
 import express from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import mime from "mime-types";
 import auth from "../middleware/authMiddleware.js";
 import emailAuth from "../middleware/emailMiddleware.js";
 import { rateLimitMiddleware } from "../middleware/rateLimit.js";
@@ -75,7 +73,7 @@ router.get(
   emailAuth,
   catchAsync(async (req, res) => {
     const emailService = await createEmailService(req);
-    const { query, maxResults, pageToken, keywords } = req.query;
+    const { query, maxResults, pageToken, keywords, timeRange } = req.query;
     const result = await emailService.fetchEmails({
       query: query?.toString(),
       maxResults: parseInt(maxResults?.toString() || "100"),
@@ -84,7 +82,8 @@ router.get(
     const customKeywords = keywords ? keywords.split(",") : undefined;
     const importantEmails = await emailService.filterImportantEmails(
       result.messages,
-      customKeywords
+      customKeywords,
+      timeRange?.toString() || "weekly"
     );
     res.json({
       success: true,
@@ -203,9 +202,7 @@ router.post(
   auth(),
   emailAuth,
   catchAsync(async (req, res) => {
-    const emailService = await createEmail;
-
-    Service(req);
+    const emailService = await createEmailService(req);
     const { read } = req.body;
     await emailService.markAsRead(req.params.id, read !== "false");
     res.json({

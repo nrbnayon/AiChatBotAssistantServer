@@ -12,6 +12,7 @@ import stripeRoutes from "./routes/stripeRoutes.js";
 import emailRoutes from "./routes/emailRoutes.js";
 import { globalErrorHandler } from "./utils/errorHandler.js";
 import requestLogger from "./utils/requestLogger.js";
+import aiChatRoutes from "./routes/aiChatRoutes.js";
 import "./config/passport.js";
 
 dotenv.config();
@@ -75,6 +76,7 @@ app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/stripe", stripeRoutes);
 app.use("/api/v1/emails", emailRoutes);
+app.use("/api/v1/ai-assistant", aiChatRoutes);
 
 // 404 handler
 app.use((req, res) => {

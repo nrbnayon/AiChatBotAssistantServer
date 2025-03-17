@@ -42,7 +42,7 @@ const userSchema = new mongoose.Schema({
   dateOfBirth: { type: Date },
   createdAt: { type: Date, default: Date.now },
   lastSync: { type: Date, default: Date.now },
-  emailSyncStatus: { type: String, default: "PENDING" },
+  emailSyncStatus: { type: String, default: "COMPLETE" },
 });
 
 const User = mongoose.model("User", userSchema);

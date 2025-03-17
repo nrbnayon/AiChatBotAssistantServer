@@ -1,4 +1,3 @@
-// routes\aiChatRoutes.js
 import express from "express";
 import Groq from "groq-sdk";
 import auth from "../middleware/authMiddleware.js";
@@ -19,12 +18,13 @@ You are Grok, an AI email assistant and administrator with agentic capabilities.
 - Use only the provided email context.
 - Be precise, accurate, and concise.
 - If information is missing, say: "I cannot find this information in the provided emails."
-- For actions like sending emails, craft complete messages with subject, body, and appropriate tone.
+- For actions like sending emails, craft complete messages with subject, body, and professional tone.
 - Use markdown for clear formatting.
-- Support agentic features, e.g., "tell X to send me a draft" should result in sending an email to X.
+- Support agentic features, e.g., "tell X to send me a draft" should result in sending an email to X with a crafted message.
+- Return JSON for actions with "action", "params", and "message" fields; plain markdown for responses.
 
 ## Available Actions:
-- send, reply, forward, markAsRead, markAsUnread, archive, trash, untrash, delete, listEmails, getImportantEmails
+- send, reply, forward, markAsRead, markAsUnread, archive, trash, untrash, delete, listEmails, getImportantEmails, moveToFolder, createFolder
 `;
 
 router.post(
@@ -64,6 +64,7 @@ Analyze the email context and respond to the prompt. If the prompt requires an a
 - "params": parameters for the action (e.g., { to, subject, body })
 - "message": a user-friendly response
 If no action is required, return a plain text response in markdown.
+Example: "tell John to send me a draft" -> {"action": "send", "params": {"to": "john@example.com", "subject": "Request for Draft", "body": "Hi John, please send me the draft at your earliest convenience. Thanks!"}, "message": "Email sent to John requesting a draft."}
 `;
 
     const response = await groq.chat.completions.create({
@@ -92,7 +93,6 @@ If no action is required, return a plain text response in markdown.
         result = { success: true, message: content };
       }
     } catch (e) {
-      // If not JSON, treat as plain markdown response
       result = { success: true, message: content };
     }
 

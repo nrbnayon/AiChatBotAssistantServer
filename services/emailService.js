@@ -1,4 +1,3 @@
-// services\emailService.js
 import { google } from "googleapis";
 import fetch from "node-fetch";
 import Groq from "groq-sdk";
@@ -152,6 +151,9 @@ class EmailService {
       case "archived":
         params.q += " -in:inbox";
         break;
+      case "trash":
+        params.labelIds = ["TRASH"];
+        break;
     }
     const response = await client.users.messages.list(params);
     if (!response.data.messages) return { messages: [], nextPageToken: null };
@@ -170,20 +172,21 @@ class EmailService {
   }
 
   async fetchMicrosoftEmails(client, { query, maxResults, pageToken, filter }) {
-    let endpoint = `${client.baseUrl}/messages?$top=${maxResults}&$select=id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,bodyPreview,body,isRead,parentFolderId,hasAttachments`;
-    if (pageToken) endpoint += `&$skiptoken=${pageToken}`;
-    if (query) endpoint += `&$search="${query}"`;
-    switch (filter) {
-      case "read":
+    let endpoint;
+    if (filter === "archived") {
+      endpoint = `${client.baseUrl}/mailFolders/archive/messages?$top=${maxResults}&$select=id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,bodyPreview,body,isRead,hasAttachments`;
+    } else if (filter === "trash") {
+      endpoint = `${client.baseUrl}/mailFolders/deleteditems/messages?$top=${maxResults}&$select=id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,bodyPreview,body,isRead,hasAttachments`;
+    } else {
+      endpoint = `${client.baseUrl}/mailFolders/inbox/messages?$top=${maxResults}&$select=id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,bodyPreview,body,isRead,hasAttachments`;
+      if (filter === "read") {
         endpoint += "&$filter=isRead eq true";
-        break;
-      case "unread":
+      } else if (filter === "unread") {
         endpoint += "&$filter=isRead eq false";
-        break;
-      case "archived":
-        endpoint += "&$filter=parentFolderId eq 'archive'";
-        break;
+      }
     }
+    if (query) endpoint += `&$search="${query}"`;
+    if (pageToken) endpoint += `&$skiptoken=${pageToken}`;
     const response = await fetch(endpoint, {
       headers: { Authorization: `Bearer ${client.accessToken}` },
     });
@@ -211,6 +214,8 @@ class EmailService {
     if (filter === "unread") messages = messages.filter((m) => !m.isRead);
     if (filter === "archived")
       messages = messages.filter((m) => m.folder === "Archive");
+    if (filter === "trash")
+      messages = messages.filter((m) => m.folder === "Trash");
     return { messages, nextPageToken: data.nextPageToken || null };
   }
 
@@ -276,7 +281,12 @@ class EmailService {
       snippet: email.snippet,
       body: this.getGmailBody(email.payload),
       isRead: !email.labelIds?.includes("UNREAD"),
-      isArchived: !email.labelIds?.includes("INBOX"),
+      folder:
+        email.labelIds?.includes("TRASH") && !email.labelIds?.includes("INBOX")
+          ? "Trash"
+          : !email.labelIds?.includes("INBOX")
+          ? "Archive"
+          : "Inbox",
       labels: email.labelIds || [],
       attachments: this.getGmailAttachments(email.payload),
     };
@@ -299,7 +309,7 @@ class EmailService {
       snippet: email.bodyPreview || "",
       body: email.body?.content || "",
       isRead: email.isRead || false,
-      isArchived: email.parentFolderId === "archive",
+      folder: email.parentFolderId === "archive" ? "Archive" : "Inbox", // Simplified; extend for trash if needed
       labels: [],
       attachments: email.hasAttachments ? email.attachments || [] : [],
     };
@@ -318,7 +328,7 @@ class EmailService {
       snippet: email.snippet || "",
       body: email.body || "",
       isRead: email.isRead || false,
-      isArchived: email.folder === "Archive",
+      folder: email.folder || "Inbox",
       labels: [],
       attachments: email.attachments || [],
     };
@@ -473,7 +483,7 @@ class EmailService {
       body: JSON.stringify(email),
     });
     if (!response.ok) throw new Error("Failed to send Microsoft email");
-    return await response.json();
+    return { id: "sent" }; // Microsoft Graph doesn't return message ID
   }
 
   async sendYahooEmail(
@@ -587,7 +597,7 @@ class EmailService {
         });
         if (!msResponse.ok)
           throw new Error("Failed to reply to Microsoft email");
-        return await msResponse.json();
+        return { id: "replied" };
       case "yahoo":
         const yahooOriginal = await this.getEmail(id);
         const yahooEmail = {
@@ -744,7 +754,7 @@ class EmailService {
         });
         if (!msResponse.ok)
           throw new Error("Failed to forward Microsoft email");
-        return await msResponse.json();
+        return { id: "forwarded" };
       case "yahoo":
         const yahooOriginal = await this.getEmail(id);
         const yahooEmail = {
@@ -842,7 +852,7 @@ class EmailService {
           filename: data.name,
         };
       case "yahoo":
-        throw new Error("Yahoo attachment download not fully supported");
+        throw new Error("Yahoo attachment download not supported via this API");
       default:
         throw new Error("Unsupported provider for attachment download");
     }
@@ -1074,6 +1084,82 @@ class EmailService {
     }
   }
 
+  async moveEmailToFolder(emailId, folderName) {
+    const client = await this.getEmailClient();
+    switch (this.user.authProvider) {
+      case "google":
+        await client.users.messages.modify({
+          userId: "me",
+          id: emailId,
+          requestBody: {
+            addLabelIds: [folderName],
+            removeLabelIds: ["INBOX"],
+          },
+        });
+        break;
+      case "microsoft":
+        await fetch(`${client.baseUrl}/messages/${emailId}/move`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${client.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ destinationId: folderName }),
+        });
+        break;
+      case "yahoo":
+        await fetch(`${client.baseUrl}/v1/message/${emailId}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${client.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ folder: folderName }),
+        });
+        break;
+      default:
+        throw new Error("Unsupported provider for moving email to folder");
+    }
+  }
+
+  async createFolder(folderName) {
+    const client = await this.getEmailClient();
+    switch (this.user.authProvider) {
+      case "google":
+        await client.users.labels.create({
+          userId: "me",
+          requestBody: {
+            name: folderName,
+            labelListVisibility: "labelShow",
+            messageListVisibility: "show",
+          },
+        });
+        break;
+      case "microsoft":
+        await fetch(`${client.baseUrl}/mailFolders`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${client.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ displayName: folderName }),
+        });
+        break;
+      case "yahoo":
+        await fetch(`${client.baseUrl}/v1/folders`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${client.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ name: folderName }),
+        });
+        break;
+      default:
+        throw new Error("Unsupported provider for creating folder");
+    }
+  }
+
   async filterImportantEmails(
     emails,
     keywords = [
@@ -1082,12 +1168,15 @@ class EmailService {
       "priority",
       "deadline",
       "action required",
-    ]
+    ],
+    timeRange = "weekly"
   ) {
+    const timeInMs =
+      timeRange === "daily" ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000; // daily or weekly
     const recentEmails = emails.filter((email) => {
       const emailDate = new Date(email.date);
-      const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      return emailDate >= oneWeekAgo;
+      const cutoff = new Date(Date.now() - timeInMs);
+      return emailDate >= cutoff;
     });
 
     const importantEmails = await Promise.all(
@@ -1139,20 +1228,25 @@ class EmailService {
       You are Grok, my email assistant and administrator. Based on the following email context and my command, perform the requested email action or provide a response.
       Email Context: ${JSON.stringify(emailContext, null, 2)}
       Command: "${prompt}"
-      Available actions: send, reply, forward, markAsRead, markAsUnread, archive, trash, untrash, delete, modifyLabels, batchModify, getLabels, createLabel, updateLabel, deleteLabel, listEmails, getImportantEmails.
+      Available actions: send, reply, forward, markAsRead, markAsUnread, archive, trash, untrash, delete, modifyLabels, batchModify, getLabels, createLabel, updateLabel, deleteLabel, listEmails, getImportantEmails, moveToFolder, createFolder.
       Return a JSON object with the action to take, relevant parameters, and a message to display to the user.
-      If the command involves sending an email to someone (e.g., "tell X to send me a draft"), extract the recipient and craft the email content accordingly.
+      If the command involves sending an email (e.g., "tell X to send me a draft"), extract the recipient (e.g., X's email from context or assume format like "X@example.com" if not found) and craft the email content accordingly with a professional tone.
+      Example: "tell John to send me a draft" -> {"action": "send", "params": {"to": "john@example.com", "subject": "Request for Draft", "body": "Hi John, please send me the draft at your earliest convenience. Thanks!"}, "message": "Email sent to John requesting a draft."}
     `;
     const response = await this.grok.chat.completions.create({
       messages: [{ role: "user", content: fullPrompt }],
       model: "llama3-70b-8192",
       temperature: 0.7,
     });
-    const result = JSON.parse(
+    const content =
       response.choices[0]?.message?.content ||
-        '{"action": "unknown", "params": {}, "message": "Unknown command"}'
-    );
-    return await this.executeEmailAction(result);
+      '{"action": "unknown", "params": {}, "message": "Unknown command"}';
+    try {
+      const result = JSON.parse(content);
+      return await this.executeEmailAction(result);
+    } catch (e) {
+      return { result: null, message: "Failed to process command" };
+    }
   }
 
   async executeEmailAction({ action, params, message }) {
@@ -1200,6 +1294,12 @@ class EmailService {
       case "getImportantEmails":
         const emails = (await this.fetchEmails(params)).messages;
         return { result: await this.filterImportantEmails(emails), message };
+      case "moveToFolder":
+        await this.moveEmailToFolder(params.id, params.folderName);
+        return { result: null, message };
+      case "createFolder":
+        await this.createFolder(params.folderName);
+        return { result: null, message };
       default:
         return {
           result: null,

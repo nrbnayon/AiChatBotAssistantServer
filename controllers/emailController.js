@@ -1,4 +1,3 @@
-// controllers/emailController.js
 import { createEmailService } from "../services/emailService.js";
 import MCPServer from "../services/mcpServer.js";
 import { StatusCodes } from "http-status-codes";
@@ -6,8 +5,6 @@ import multer from "multer";
 import { AppError, ApiError, catchAsync } from "../utils/errorHandler.js";
 
 const upload = multer({ storage: multer.memoryStorage() });
-
-// Removed the duplicate ApiError class since we're importing it from errorHandler.js
 
 const fetchEmails = catchAsync(async (req, res, next) => {
   const user = req.user;
@@ -160,67 +157,8 @@ const moveEmailToFolder = catchAsync(async (req, res, next) => {
     );
   }
   const emailService = await createEmailService(req);
-  const mcpServer = new MCPServer(emailService);
-
-  // Implement folder movement logic based on provider
-  let response;
-  switch (req.user.authProvider) {
-    case "google":
-      response = await emailService.gmail.users.messages.modify({
-        userId: "me",
-        id: emailId,
-        requestBody: {
-          addLabelIds: [folderName], // Assuming folderName matches Gmail label
-          removeLabelIds: ["INBOX"],
-        },
-      });
-      break;
-    case "microsoft":
-      response = await fetch(
-        `https://graph.microsoft.com/v1.0/me/messages/${emailId}/move`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${req.user.microsoftAccessToken}`,
-          },
-          body: JSON.stringify({ destinationId: folderName }),
-        }
-      );
-      break;
-    case "yahoo":
-      // Yahoo uses IMAP, so we need to move the message
-      const config = {
-        imap: {
-          user: req.user.email,
-          password: req.user.yahooAccessToken,
-          host: "imap.mail.yahoo.com",
-          port: 993,
-          tls: true,
-          authTimeout: 3000,
-          tlsOptions: { rejectUnauthorized: false },
-        },
-      };
-      const connection = await imap.connect(config);
-      await connection.openBox("INBOX");
-      await connection.moveMessage(emailId, folderName);
-      await connection.end();
-      response = { status: "success" };
-      break;
-    default:
-      throw new ApiError(StatusCodes.BAD_REQUEST, "Unsupported auth provider");
-  }
-
-  if (response.status === "success" || response.ok) {
-    res.json({
-      success: true,
-      message: "Email moved to folder successfully",
-    });
-  } else {
-    throw new ApiError(
-      StatusCodes.INTERNAL_SERVER_ERROR,
-      "Failed to move email"
-    );
-  }
+  await emailService.moveEmailToFolder(emailId, folderName);
+  res.json({ success: true, message: "Email moved to folder successfully" });
 });
 
 const createFolder = catchAsync(async (req, res, next) => {
@@ -229,63 +167,8 @@ const createFolder = catchAsync(async (req, res, next) => {
     throw new ApiError(StatusCodes.BAD_REQUEST, "Folder name is required");
   }
   const emailService = await createEmailService(req);
-  const mcpServer = new MCPServer(emailService);
-
-  let response;
-  switch (req.user.authProvider) {
-    case "google":
-      response = await emailService.gmail.users.labels.create({
-        userId: "me",
-        requestBody: {
-          name: folderName,
-          labelListVisibility: "labelShow",
-          messageListVisibility: "show",
-        },
-      });
-      break;
-    case "microsoft":
-      response = await fetch(
-        `https://graph.microsoft.com/v1.0/me/mailFolders`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${req.user.microsoftAccessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ displayName: folderName }),
-        }
-      );
-      break;
-    case "yahoo":
-      // Yahoo uses IMAP, so we create a mailbox
-      const config = {
-        imap: {
-          user: req.user.email,
-          password: req.user.yahooAccessToken,
-          host: "imap.mail.yahoo.com",
-          port: 993,
-          tls: true,
-          authTimeout: 3000,
-          tlsOptions: { rejectUnauthorized: false },
-        },
-      };
-      const connection = await imap.connect(config);
-      await connection.addBox(folderName);
-      await connection.end();
-      response = { status: "success" };
-      break;
-    default:
-      throw new ApiError(StatusCodes.BAD_REQUEST, "Unsupported auth provider");
-  }
-
-  if (response.status === "success" || response.ok) {
-    res.json({ success: true, message: "Folder created successfully" });
-  } else {
-    throw new ApiError(
-      StatusCodes.INTERNAL_SERVER_ERROR,
-      "Failed to create folder"
-    );
-  }
+  await emailService.createFolder(folderName);
+  res.json({ success: true, message: "Folder created successfully" });
 });
 
 export {
