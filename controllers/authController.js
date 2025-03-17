@@ -236,31 +236,46 @@ const refresh = catchAsync(async (req, res, next) => {
 
 const logout = catchAsync(async (req, res, next) => {
   console.log("get logout user:::", req.user);
-  if (!req.user || !req.user.id) {
-    return next(new AppError("You are not logged in", 401));
+
+  // Invalidate refresh token if user is authenticated
+  if (req.user && req.user.id) {
+    try {
+      const user = await User.findById(req.user.id);
+      if (user) {
+        user.refreshToken = null;
+        await user.save();
+      } else {
+        console.warn(
+          "[DEBUG] User not found in database during logout, id:",
+          req.user.id
+        );
+      }
+    } catch (error) {
+      return next(new AppError("Failed to invalidate refresh token", 500));
+    }
+  } else {
+    console.warn(
+      "[DEBUG] No user found in session, proceeding to clear cookies"
+    );
   }
 
-  const user = await User.findById(req.user.id);
-  if (user) {
-    user.refreshToken = null;
-    await user.save();
+  // Clear cookies
+  try {
+    safeCookie.clear(res, "accessToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+    });
+    safeCookie.clear(res, "refreshToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+    });
+  } catch (error) {
+    return next(new AppError("Failed to clear cookies", 500));
   }
 
-  safeCookie.clear(res, "accessToken", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-  });
-  safeCookie.clear(res, "refreshToken", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-  });
-
-  req.logout((err) => {
-    if (err) return next(new AppError("Logout failed", 500));
-    res.json({ success: true, message: "Logged out successfully" });
-  });
+  res.json({ success: true, message: "Logged out successfully" });
 });
 
 export {
