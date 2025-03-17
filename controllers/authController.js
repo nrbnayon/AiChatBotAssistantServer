@@ -23,9 +23,6 @@ const generateTokens = (user) => {
     hasMicrosoftAuth: !!user.microsoftAccessToken,
     hasYahooAuth: !!user.yahooAccessToken,
   };
-  console.log("[DEBUG] Generating tokens for payload:", payload);
-  console.log("[DEBUG] JWT_SECRET:", process.env.JWT_SECRET);
-
   if (!process.env.JWT_SECRET) {
     throw new AppError(
       "JWT_SECRET is not defined in environment variables",
@@ -50,13 +47,11 @@ const generateTokens = (user) => {
       expiresIn: "30d",
     }
   );
-  console.log("[DEBUG] Generated Tokens:", { accessToken, refreshToken });
   return { accessToken, refreshToken };
 };
 
 const authError = (req, res) => {
   const message = req.query.message || "Authentication failed";
-  console.log("[DEBUG] Auth Error:", message);
   res.redirect(`${getFrontendUrl}/login?error=${encodeURIComponent(message)}`);
 };
 
@@ -65,15 +60,8 @@ const oauthCallback = catchAsync(async (req, res, next) => {
   const state = req.query.state
     ? JSON.parse(Buffer.from(req.query.state, "base64").toString())
     : {};
-
-  console.log("[DEBUG] OAuth Callback - Tokens:", {
-    accessToken,
-    refreshToken,
-  });
-  console.log("[DEBUG] OAuth Callback - State:", state);
-
+  
   if (!accessToken) {
-    console.log("[DEBUG] No access token in OAuth callback");
     return res.redirect(
       `${getFrontendUrl}/login?error=${encodeURIComponent(
         "Authentication failed: No access token"
@@ -97,7 +85,6 @@ const oauthCallback = catchAsync(async (req, res, next) => {
   const redirectUrl = `${getFrontendUrl}/auth-callback?token=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(
     state.redirect || "/"
   )}`;
-  console.log("[DEBUG] Redirecting to:", redirectUrl);
   res.redirect(redirectUrl);
 });
 
@@ -188,8 +175,6 @@ const register = catchAsync(async (req, res, next) => {
 });
 
 const refresh = catchAsync(async (req, res, next) => {
-  console.log("[DEBUG] Refresh - Body:", req.body);
-  console.log("[DEBUG] Refresh - Cookies:", req.cookies);
   const refreshToken = req.body.refreshToken || req.cookies.refreshToken;
 
   if (!refreshToken) {
@@ -203,7 +188,6 @@ const refresh = catchAsync(async (req, res, next) => {
     return next(new AppError("Invalid or expired refresh token", 401));
   }
 
-  console.log("[DEBUG] Refresh - Decoded Refresh Token:", decoded);
   const user = await User.findById(decoded.id);
 
   if (!user) {
@@ -235,9 +219,6 @@ const refresh = catchAsync(async (req, res, next) => {
 });
 
 const logout = catchAsync(async (req, res, next) => {
-  console.log("get logout user:::", req.user);
-  console.log(req.headers);
-
   // Invalidate refresh token if user is authenticated
   if (req.user && req.user.id) {
     try {
@@ -259,6 +240,13 @@ const logout = catchAsync(async (req, res, next) => {
       "[DEBUG] No user found in session, proceeding to clear cookies"
     );
   }
+
+  // Clear session
+  req.session.destroy((err) => {
+    if (err) {
+      return next(new AppError("Failed to clear session", 500));
+    }
+  });
 
   // Clear cookies
   try {

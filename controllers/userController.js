@@ -5,7 +5,7 @@ import { StatusCodes } from "http-status-codes";
 import { ApiError, catchAsync } from "../utils/errorHandler.js";
 
 const getMe = catchAsync(async (req, res, next) => {
-  console.log("[DEBUG] getMe - req.user:", req.user);
+  console.log("[DEBUG] getMe - req.user:", req.user.email);
   if (!req.user || !req.user.id) {
     throw new ApiError(StatusCodes.BAD_REQUEST, "User not authenticated");
   }
@@ -13,7 +13,7 @@ const getMe = catchAsync(async (req, res, next) => {
   const user = await User.findById(req.user.id).select(
     "-googleAccessToken -refreshToken"
   );
-  console.log("[DEBUG] getMe - Retrieved User:", user);
+  console.log("[DEBUG] getMe - Retrieved User:", user?.name);
 
   if (!user) {
     throw new ApiError(StatusCodes.NOT_FOUND, "User not found");

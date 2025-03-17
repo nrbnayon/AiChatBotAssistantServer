@@ -21,18 +21,20 @@ const auth = (...roles) =>
     if (!accessToken) {
       throw new ApiError(StatusCodes.UNAUTHORIZED, "Invalid or missing token");
     }
-
     try {
       const decoded = jwt.verify(accessToken, process.env.JWT_SECRET);
-      console.log("[DEBUG] Decoded access token:", decoded);
       const user = await User.findById(decoded.id);
+      console.log(
+        "[DEBUG] Get User from DB after decoded accessToken:::",
+        user?.email
+      );
+
       if (!user || user.status !== "ACTIVE") {
         throw new ApiError(
           StatusCodes.UNAUTHORIZED,
           "User not found or inactive"
         );
       }
-      console.log("[DEBUG] User in auth middleware:", user);
 
       if (roles.length && !roles.includes(user.role)) {
         throw new ApiError(StatusCodes.FORBIDDEN, "Insufficient permissions");
@@ -45,7 +47,6 @@ const auth = (...roles) =>
         email: user.email,
         authProvider: user.authProvider,
       };
-      console.log("[DEBUG] Set req.user:", req.user);
 
       return next();
     } catch (error) {
@@ -64,13 +65,11 @@ const auth = (...roles) =>
           refreshToken,
           process.env.REFRESH_TOKEN_SECRET
         );
-        console.log("[DEBUG] Decoded refresh token:", decodedRefresh);
         const user = await User.findById(decodedRefresh.id);
 
         if (!user || user.refreshToken !== refreshToken) {
           throw new ApiError(StatusCodes.UNAUTHORIZED, "Invalid refresh token");
         }
-        console.log("[DEBUG] User in refresh flow:", user);
 
         if (roles.length && !roles.includes(user.role)) {
           throw new ApiError(StatusCodes.FORBIDDEN, "Insufficient permissions");
@@ -96,7 +95,6 @@ const auth = (...roles) =>
         };
         req.tokenRefreshed = true;
         req.newAccessToken = newAccessToken;
-        console.log("[DEBUG] Set req.user after refresh:", req.user);
 
         safeCookie.set(
           res,

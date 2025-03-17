@@ -29,7 +29,7 @@ const requestLogger = (req, res, next) => {
   console.log(
     colors.blue(`[${new Date().toISOString()}]`) +
       colors.yellow(` ${req.method}`) +
-      ` ${req.originalUrl} FROM IP: ${ip}`
+      ` ${req.originalUrl} - FROM IP:: ${ip}`
   );
 
   // Override res.end to capture and log response
@@ -54,7 +54,7 @@ const requestLogger = (req, res, next) => {
         ` ${req.originalUrl} ` +
         `${statusColor} ` +
         `${colors.magenta(responseTime + "ms")} ` +
-        `FROM IP: ${ip}`
+        ` - FROM IP:: ${ip}`
     );
 
     // Call the original end method

@@ -15,7 +15,7 @@ const seedAdmin = async () => {
 
     if (adminExists) {
       console.log("Admin user already exists, skipping creation");
-      return;
+      return "Admin user already exists, skipping creation";
     }
 
     // Check if email exists with different role
