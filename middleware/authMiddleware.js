@@ -24,6 +24,7 @@ const auth = (...roles) =>
 
     try {
       const decoded = jwt.verify(accessToken, process.env.JWT_SECRET);
+      console.log("[DEBUG] Decoded access token:", decoded);
       const user = await User.findById(decoded.id);
       if (!user || user.status !== "ACTIVE") {
         throw new ApiError(
@@ -31,10 +32,20 @@ const auth = (...roles) =>
           "User not found or inactive"
         );
       }
+      console.log("[DEBUG] User in auth middleware:", user);
 
       if (roles.length && !roles.includes(user.role)) {
         throw new ApiError(StatusCodes.FORBIDDEN, "Insufficient permissions");
       }
+
+      // Set req.user for valid access token
+      req.user = {
+        id: user._id,
+        role: user.role,
+        email: user.email,
+        authProvider: user.authProvider,
+      };
+      console.log("[DEBUG] Set req.user:", req.user);
 
       return next();
     } catch (error) {
@@ -53,11 +64,13 @@ const auth = (...roles) =>
           refreshToken,
           process.env.REFRESH_TOKEN_SECRET
         );
+        console.log("[DEBUG] Decoded refresh token:", decodedRefresh);
         const user = await User.findById(decodedRefresh.id);
 
         if (!user || user.refreshToken !== refreshToken) {
           throw new ApiError(StatusCodes.UNAUTHORIZED, "Invalid refresh token");
         }
+        console.log("[DEBUG] User in refresh flow:", user);
 
         if (roles.length && !roles.includes(user.role)) {
           throw new ApiError(StatusCodes.FORBIDDEN, "Insufficient permissions");
@@ -74,6 +87,7 @@ const auth = (...roles) =>
           { expiresIn: "1d" }
         );
 
+        // Set req.user for refreshed access token
         req.user = {
           id: user._id,
           role: user.role,
@@ -82,6 +96,7 @@ const auth = (...roles) =>
         };
         req.tokenRefreshed = true;
         req.newAccessToken = newAccessToken;
+        console.log("[DEBUG] Set req.user after refresh:", req.user);
 
         safeCookie.set(
           res,
@@ -91,6 +106,7 @@ const auth = (...roles) =>
         );
         return next();
       }
+      console.error("[ERROR] Authentication error:", error);
       throw new ApiError(StatusCodes.UNAUTHORIZED, "Invalid access token");
     }
   });

@@ -236,6 +236,7 @@ const refresh = catchAsync(async (req, res, next) => {
 
 const logout = catchAsync(async (req, res, next) => {
   console.log("get logout user:::", req.user);
+  console.log(req.headers);
 
   // Invalidate refresh token if user is authenticated
   if (req.user && req.user.id) {
