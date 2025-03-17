@@ -1,4 +1,3 @@
-// services/mcpServer.js
 import Groq from "groq-sdk";
 import { StatusCodes } from "http-status-codes";
 import EmailDraft from "../models/EmailDraft.js";
@@ -86,6 +85,7 @@ const TOOLS = [
         },
         subject: { type: "string", description: "Email subject" },
         message: { type: "string", description: "Email content text" },
+        attachments: { type: "array", description: "List of attachments" },
       },
       required: ["recipient_id", "subject", "message"],
     },
@@ -121,6 +121,7 @@ const TOOLS = [
       properties: {
         email_id: { type: "string", description: "Email ID to reply to" },
         message: { type: "string", description: "Reply content" },
+        attachments: { type: "array", description: "List of attachments" },
       },
       required: ["email_id", "message"],
     },
@@ -154,7 +155,7 @@ const TOOLS = [
   },
 ];
 
-const groqResponse = async (input, model = "llama-3.3-70b-versatile") => {
+const groqResponse = async (input, model = "llama3-70b-8192") => {
   try {
     const chatCompletion = await groq.chat.completions.create({
       messages: [
@@ -250,10 +251,7 @@ class MCPServer {
               text: `Please revise the current email draft:\n${currentDraft}\n\nRequested changes:\n${changes}`,
             },
           },
-          {
-            role: "assistant",
-            content: { type: "text", text: aiEdit },
-          },
+          { role: "assistant", content: { type: "text", text: aiEdit } },
         ],
       };
     }
@@ -267,26 +265,17 @@ class MCPServer {
   async callTool(name, args, userId) {
     switch (name) {
       case "send-email": {
-        const recipientId = args?.recipient_id;
-        const subject = args?.subject;
-        const message = args?.message;
-        if (!recipientId || !subject || !message)
+        const { recipient_id, subject, message, attachments = [] } = args;
+        if (!recipient_id || !subject || !message)
           throw new Error("Missing required parameters");
-        const sendResponse = await this.emailService.sendEmail(
-          recipientId,
+        const sendResponse = await this.emailService.sendEmail({
+          to: recipient_id,
           subject,
-          message,
-          []
-        );
-        return [
-          {
-            type: "text",
-            text:
-              sendResponse.status === "success"
-                ? `Email sent successfully. Message ID: ${sendResponse.messageId}`
-                : "Failed to send email",
-          },
-        ];
+          body: message,
+          attachments,
+          isHtml: false,
+        });
+        return [{ type: "text", text: "Email sent successfully" }];
       }
       case "fetch-emails": {
         const emails = await this.emailService.fetchEmails();
@@ -299,9 +288,9 @@ class MCPServer {
         ];
       }
       case "read-email": {
-        const emailId = args?.email_id;
-        if (!emailId) throw new Error("Missing email ID parameter");
-        const emailContent = await this.emailService.readEmail(emailId);
+        const { email_id } = args;
+        if (!email_id) throw new Error("Missing email ID parameter");
+        const emailContent = await this.emailService.getEmail(email_id);
         return [
           {
             type: "text",
@@ -311,35 +300,26 @@ class MCPServer {
         ];
       }
       case "trash-email": {
-        const emailId = args?.email_id;
-        if (!emailId) throw new Error("Missing email ID parameter");
-        const msg = await this.emailService.trashEmail(emailId);
-        return [{ type: "text", text: msg }];
+        const { email_id } = args;
+        if (!email_id) throw new Error("Missing email ID parameter");
+        await this.emailService.trashEmail(email_id);
+        return [{ type: "text", text: "Email moved to trash" }];
       }
       case "reply-to-email": {
-        const emailId = args?.email_id;
-        const message = args?.message;
-        if (!emailId || !message)
+        const { email_id, message, attachments = [] } = args;
+        if (!email_id || !message)
           throw new Error("Missing required parameters");
-        const replyResponse = await this.emailService.replyToEmail(
-          emailId,
-          message,
-          []
-        );
-        return [
-          {
-            type: "text",
-            text:
-              replyResponse.status === "success"
-                ? `Reply sent successfully. Message ID: ${replyResponse.messageId}`
-                : "Failed to send reply",
-          },
-        ];
+        const replyResponse = await this.emailService.replyToEmail(email_id, {
+          body: message,
+          attachments,
+          isHtml: false,
+        });
+        return [{ type: "text", text: "Reply sent successfully" }];
       }
       case "search-emails": {
-        const query = args?.query;
+        const { query } = args;
         if (!query) throw new Error("Missing query parameter");
-        const searchResults = await this.emailService.searchEmails(query);
+        const searchResults = await this.emailService.fetchEmails({ query });
         return [
           {
             type: "text",
@@ -349,18 +329,17 @@ class MCPServer {
         ];
       }
       case "mark-email-as-read": {
-        const emailId = args?.email_id;
-        if (!emailId) throw new Error("Missing email ID parameter");
-        const msg = await this.emailService.markEmailAsRead(emailId);
-        return [{ type: "text", text: msg }];
+        const { email_id } = args;
+        if (!email_id) throw new Error("Missing email ID parameter");
+        await this.emailService.markAsRead(email_id, true);
+        return [{ type: "text", text: "Email marked as read" }];
       }
       case "summarize-email": {
-        const emailId = args?.email_id;
-        if (!emailId) throw new Error("Missing email ID parameter");
-        const emailContent = await this.emailService.readEmail(emailId);
-        if (typeof emailContent === "string") throw new Error(emailContent);
+        const { email_id } = args;
+        if (!email_id) throw new Error("Missing email ID parameter");
+        const emailContent = await this.emailService.getEmail(email_id);
         const summary = await groqResponse(
-          `Summarize this email content: ${emailContent.content}`
+          `Summarize this email content: ${emailContent.body}`
         );
         return [{ type: "text", text: summary }];
       }
@@ -377,7 +356,7 @@ class MCPServer {
       const match = message.match(/to\s+([^ ]+)\s+about\s+(.+)/i);
       if (match) {
         const [, recipient, content] = match;
-        const recipientEmail = `${recipient}@example.com`; // Placeholder, adjust as needed
+        const recipientEmail = `${recipient}@example.com`; // Adjust as needed
         const draft = await this.getPrompt("draft-email", {
           recipient,
           content,
@@ -430,8 +409,8 @@ class MCPServer {
     if (lowerMessage.includes("summarize") && lowerMessage.includes("email")) {
       const emailsResponse = await this.callTool("fetch-emails", {}, userId);
       const emails = emailsResponse[0].artifact?.data;
-      if (Array.isArray(emails) && emails.length > 0) {
-        const latestEmailId = emails[0].id;
+      if (Array.isArray(emails.messages) && emails.messages.length > 0) {
+        const latestEmailId = emails.messages[0].id;
         const summary = await this.callTool(
           "summarize-email",
           { email_id: latestEmailId },
@@ -445,8 +424,8 @@ class MCPServer {
     if (lowerMessage.includes("read") && lowerMessage.includes("email")) {
       const emailsResponse = await this.callTool("fetch-emails", {}, userId);
       const emails = emailsResponse[0].artifact?.data;
-      if (Array.isArray(emails) && emails.length > 0) {
-        const latestEmailId = emails[0].id;
+      if (Array.isArray(emails.messages) && emails.messages.length > 0) {
+        const latestEmailId = emails.messages[0].id;
         const emailContent = await this.callTool(
           "read-email",
           { email_id: latestEmailId },

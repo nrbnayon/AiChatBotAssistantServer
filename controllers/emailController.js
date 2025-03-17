@@ -2,7 +2,7 @@ import { createEmailService } from "../services/emailService.js";
 import MCPServer from "../services/mcpServer.js";
 import { StatusCodes } from "http-status-codes";
 import multer from "multer";
-import { AppError, ApiError, catchAsync } from "../utils/errorHandler.js";
+import { ApiError, catchAsync } from "../utils/errorHandler.js";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -36,7 +36,16 @@ const sendEmail = catchAsync(async (req, res, next) => {
   const mcpServer = new MCPServer(emailService);
   const sendResponse = await mcpServer.callTool(
     "send-email",
-    { recipient_id: to, subject, message },
+    {
+      recipient_id: to,
+      subject,
+      message,
+      attachments: attachments.map((file) => ({
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        content: file.buffer,
+      })),
+    },
     req.user.id
   );
   res.json({ success: true, message: sendResponse[0].text });
@@ -71,7 +80,15 @@ const replyToEmail = catchAsync(async (req, res, next) => {
   const mcpServer = new MCPServer(emailService);
   const replyResponse = await mcpServer.callTool(
     "reply-to-email",
-    { email_id: emailId, message },
+    {
+      email_id: emailId,
+      message,
+      attachments: attachments.map((file) => ({
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        content: file.buffer,
+      })),
+    },
     req.user.id
   );
   res.json({ success: true, message: replyResponse[0].text });

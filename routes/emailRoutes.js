@@ -23,6 +23,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+// Fetch emails with pagination and filtering
 router.get(
   "/",
   auth(),
@@ -45,6 +46,7 @@ router.get(
   })
 );
 
+// Get a single email by ID
 router.get(
   "/:id",
   auth(),
@@ -56,6 +58,7 @@ router.get(
   })
 );
 
+// Get email thread by ID (Gmail only)
 router.get(
   "/threads/:id",
   auth(),
@@ -67,6 +70,7 @@ router.get(
   })
 );
 
+// Fetch important emails with AI filtering
 router.get(
   "/important",
   auth(),
@@ -93,6 +97,7 @@ router.get(
   })
 );
 
+// Send an email
 router.post(
   "/send",
   auth(),
@@ -121,6 +126,7 @@ router.post(
   })
 );
 
+// Reply to an email
 router.post(
   "/:id/reply",
   auth(),
@@ -145,6 +151,7 @@ router.post(
   })
 );
 
+// Forward an email
 router.post(
   "/:id/forward",
   auth(),
@@ -172,6 +179,7 @@ router.post(
   })
 );
 
+// Get an attachment
 router.get(
   "/:messageId/attachments/:attachmentId",
   auth(),
@@ -197,6 +205,7 @@ router.get(
   })
 );
 
+// Mark email as read/unread
 router.post(
   "/:id/markRead",
   auth(),
@@ -212,6 +221,7 @@ router.post(
   })
 );
 
+// Archive an email
 router.post(
   "/:id/archive",
   auth(),
@@ -223,6 +233,7 @@ router.post(
   })
 );
 
+// Trash an email
 router.post(
   "/:id/trash",
   auth(),
@@ -234,6 +245,7 @@ router.post(
   })
 );
 
+// Untrash an email
 router.post(
   "/:id/untrash",
   auth(),
@@ -245,6 +257,7 @@ router.post(
   })
 );
 
+// Delete an email permanently
 router.delete(
   "/:id",
   auth(),
@@ -256,6 +269,7 @@ router.delete(
   })
 );
 
+// Modify labels (Gmail only)
 router.post(
   "/:id/modify",
   auth(),
@@ -271,6 +285,7 @@ router.post(
   })
 );
 
+// Batch modify emails (Gmail only)
 router.post(
   "/batchModify",
   auth(),
@@ -283,6 +298,7 @@ router.post(
   })
 );
 
+// Get labels (Gmail only)
 router.get(
   "/labels",
   auth(),
@@ -294,6 +310,7 @@ router.get(
   })
 );
 
+// Create a label (Gmail only)
 router.post(
   "/labels",
   auth(),
@@ -310,6 +327,7 @@ router.post(
   })
 );
 
+// Update a label (Gmail only)
 router.put(
   "/labels/:id",
   auth(),
@@ -326,6 +344,7 @@ router.put(
   })
 );
 
+// Delete a label (Gmail only)
 router.delete(
   "/labels/:id",
   auth(),
@@ -337,6 +356,7 @@ router.delete(
   })
 );
 
+// Process AI email command
 router.post(
   "/command",
   auth(),
