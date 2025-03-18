@@ -1,4 +1,3 @@
-// services\mcpServer.js
 import Groq from "groq-sdk";
 import EmailDraft from "../models/EmailDraft.js";
 import { ApiError } from "../utils/errorHandler.js";
@@ -6,69 +5,41 @@ import { StatusCodes } from "http-status-codes";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-const EMAIL_ADMIN_PROMPTS = `You are an email administrator powered by Grok from xAI. 
-You can draft, edit, read, trash, reply to, search, and send emails.
-You've been given access to a specific email account. 
-You have the following tools available:
-- Send an email (send-email)
-- Retrieve emails (fetch-emails)
-- Read email content (read-email)
-- Trash email (trash-email)
-- Reply to email (reply-to-email)
-- Search emails (search-emails)
-Never send an email draft or trash an email unless the user confirms first. 
-Always ask for approval if not already given. Use Grok's AI capabilities to assist with drafting and editing emails when requested.`;
+const SYSTEM_PROMPT = `
+You are an AI email assistant powered by Grok from xAI. Your role is to interpret user commands and perform email actions for Gmail, Outlook, and Yahoo accounts. Available actions:
+- draft-email: Draft an email (params: recipient, content, recipient_email)
+- send-email: Send an email (params: recipient_id, subject, message)
+- read-email: Read an email (params: email_id)
+- trash-email: Trash an email (params: email_id)
+- reply-to-email: Reply to an email (params: email_id, message)
+- search-emails: Search emails (params: query)
+- mark-email-as-read: Mark an email as read (params: email_id)
+- summarize-email: Summarize an email (params: email_id)
+- list-emails: List recent emails (no params required)
 
-const PROMPTS = {
-  "manage-email": {
-    name: "manage-email",
-    description: "Act like an email administrator with AI assistance",
-    arguments: null,
-  },
-  "draft-email": {
-    name: "draft-email",
-    description: "Draft an email with AI assistance from Grok",
-    arguments: [
-      {
-        name: "content",
-        description: "What the email is about",
-        required: true,
-      },
-      {
-        name: "recipient",
-        description: "Who should the email be addressed to",
-        required: true,
-      },
-      {
-        name: "recipient_email",
-        description: "Recipient's email address",
-        required: true,
-      },
-    ],
-  },
-  "edit-draft": {
-    name: "edit-draft",
-    description: "Edit an existing email draft with AI assistance from Grok",
-    arguments: [
-      {
-        name: "changes",
-        description: "What changes should be made to the draft",
-        required: true,
-      },
-      {
-        name: "current_draft",
-        description: "The current draft to edit",
-        required: true,
-      },
-    ],
-  },
-};
+Rules:
+1. For actions requiring confirmation (send-email, trash-email), ask for user confirmation unless explicitly confirmed in the command (e.g., "send it now").
+2. Maintain conversation context using the provided history.
+3. Extract parameters from the user's command naturally (e.g., "email John about the meeting" → recipient: "John", content: "the meeting").
+4. If parameters are missing or unclear, ask for clarification.
+5. Respond with a JSON object:
+   - "action": the action to perform (null if no action or waiting for confirmation)
+   - "params": parameters for the action
+   - "message": user-friendly response
+
+Examples:
+- User: "Draft an email to John about the meeting"
+  Response: {"action": "draft-email", "params": {"recipient": "John", "content": "the meeting", "recipient_email": null}, "message": "I've drafted an email to John about the meeting. Please provide John's email address."}
+- User: "Trash email 123"
+  Response: {"action": null, "params": {}, "message": "Are you sure you want to trash email 123? Please confirm."}
+- User: "Yes"
+  Response: {"action": "trash-email", "params": {"email_id": "123"}, "message": "Email 123 has been moved to trash."}
+`;
 
 const TOOLS = [
   {
     name: "send-email",
-    description:
-      "Sends email to recipient. Do not use if user only asked to draft email.",
+    description: "Sends email to recipient",
     inputSchema: {
       type: "object",
       properties: {
@@ -99,7 +70,7 @@ const TOOLS = [
   },
   {
     name: "trash-email",
-    description: "Moves email to trash. Confirm before moving email to trash.",
+    description: "Moves email to trash",
     inputSchema: {
       type: "object",
       properties: { email_id: { type: "string", description: "Email ID" } },
@@ -108,7 +79,7 @@ const TOOLS = [
   },
   {
     name: "reply-to-email",
-    description: "Replies to an existing email.",
+    description: "Replies to an existing email",
     inputSchema: {
       type: "object",
       properties: {
@@ -146,109 +117,27 @@ const TOOLS = [
       required: ["email_id"],
     },
   },
-];
-
-const groqResponse = async (input, model = "llama3-70b-8192") => {
-  try {
-    const chatCompletion = await groq.chat.completions.create({
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are an AI assistant built by xAI, designed to help with email tasks efficiently.",
+  {
+    name: "draft-email",
+    description: "Drafts an email without sending",
+    inputSchema: {
+      type: "object",
+      properties: {
+        recipient: { type: "string", description: "Recipient name" },
+        content: { type: "string", description: "Email content" },
+        recipient_email: {
+          type: "string",
+          description: "Recipient email address",
         },
-        { role: "user", content: input },
-      ],
-      model,
-      max_tokens: 32768,
-      temperature: 0.7,
-    });
-    return (
-      chatCompletion.choices[0]?.message?.content || "No response generated."
-    );
-  } catch (error) {
-    throw new ApiError(
-      StatusCodes.INTERNAL_SERVER_ERROR,
-      `Groq API error: ${error.message}`
-    );
-  }
-};
+      },
+      required: ["recipient", "content"],
+    },
+  },
+];
 
 class MCPServer {
   constructor(emailService) {
     this.emailService = emailService;
-  }
-
-  async listPrompts() {
-    return Object.values(PROMPTS);
-  }
-
-  async getPrompt(name, args) {
-    if (!PROMPTS[name]) throw new Error(`Prompt not found: ${name}`);
-
-    if (name === "manage-email") {
-      return {
-        messages: [
-          {
-            role: "user",
-            content: { type: "text", text: EMAIL_ADMIN_PROMPTS },
-          },
-          {
-            role: "assistant",
-            content: {
-              type: "text",
-              text: await groqResponse(
-                "Welcome to email management with Grok!"
-              ),
-            },
-          },
-        ],
-      };
-    } else if (name === "draft-email") {
-      const content = args?.content || "";
-      const recipient = args?.recipient || "";
-      const recipientEmail = args?.recipient_email || "";
-      const aiDraft = await groqResponse(
-        `Draft an email about ${content} for ${recipient} (${recipientEmail}). Include a subject line starting with 'Subject:' on the first line. Do not send the email yet, just draft it and ask the user for their thoughts.`
-      );
-      return {
-        messages: [
-          {
-            role: "user",
-            content: {
-              type: "text",
-              text: `Please draft an email about ${content} for ${recipient} (${recipientEmail}).`,
-            },
-          },
-          {
-            role: "assistant",
-            content: {
-              type: "text",
-              text: `${aiDraft}\n\nWhat do you think of this draft?`,
-            },
-          },
-        ],
-      };
-    } else if (name === "edit-draft") {
-      const changes = args?.changes || "";
-      const currentDraft = args?.current_draft || "";
-      const aiEdit = await groqResponse(
-        `Edit this draft: ${currentDraft} with changes: ${changes}`
-      );
-      return {
-        messages: [
-          {
-            role: "user",
-            content: {
-              type: "text",
-              text: `Please revise the current email draft:\n${currentDraft}\n\nRequested changes:\n${changes}`,
-            },
-          },
-          { role: "assistant", content: { type: "text", text: aiEdit } },
-        ],
-      };
-    }
-    throw new Error("Prompt implementation not found");
   }
 
   async listTools() {
@@ -261,12 +150,11 @@ class MCPServer {
         const { recipient_id, subject, message, attachments = [] } = args;
         if (!recipient_id || !subject || !message)
           throw new Error("Missing required parameters");
-        const sendResponse = await this.emailService.sendEmail({
+        await this.emailService.sendEmail({
           to: recipient_id,
           subject,
           body: message,
           attachments,
-          isHtml: false,
         });
         return [{ type: "text", text: "Email sent successfully" }];
       }
@@ -275,7 +163,7 @@ class MCPServer {
         return [
           {
             type: "text",
-            text: JSON.stringify(emails),
+            text: "Emails retrieved",
             artifact: { type: "json", data: emails },
           },
         ];
@@ -287,8 +175,8 @@ class MCPServer {
         return [
           {
             type: "text",
-            text: JSON.stringify(emailContent),
-            artifact: { type: "dictionary", data: emailContent },
+            text: "Email content retrieved",
+            artifact: { type: "json", data: emailContent },
           },
         ];
       }
@@ -302,10 +190,9 @@ class MCPServer {
         const { email_id, message, attachments = [] } = args;
         if (!email_id || !message)
           throw new Error("Missing required parameters");
-        const replyResponse = await this.emailService.replyToEmail(email_id, {
+        await this.emailService.replyToEmail(email_id, {
           body: message,
           attachments,
-          isHtml: false,
         });
         return [{ type: "text", text: "Reply sent successfully" }];
       }
@@ -316,7 +203,7 @@ class MCPServer {
         return [
           {
             type: "text",
-            text: JSON.stringify(searchResults),
+            text: "Search results retrieved",
             artifact: { type: "json", data: searchResults },
           },
         ];
@@ -331,127 +218,94 @@ class MCPServer {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID parameter");
         const emailContent = await this.emailService.getEmail(email_id);
-        const summary = await groqResponse(
-          `Summarize this email content: ${emailContent.body}`
-        );
-        return [{ type: "text", text: summary }];
+        const summary = await groq.chat.completions.create({
+          messages: [
+            {
+              role: "user",
+              content: `Summarize this email: ${emailContent.body}`,
+            },
+          ],
+          model: "llama3-70b-8192",
+          temperature: 0.7,
+        });
+        return [
+          {
+            type: "text",
+            text:
+              summary.choices[0]?.message?.content || "Summary not generated",
+          },
+        ];
+      }
+      case "draft-email": {
+        const { recipient, content, recipient_email } = args;
+        if (!recipient || !content)
+          throw new Error("Missing required parameters");
+        const draftResponse = await groq.chat.completions.create({
+          messages: [
+            {
+              role: "user",
+              content: `Draft an email to ${recipient} about ${content}. Include a subject line starting with 'Subject:'`,
+            },
+          ],
+          model: "llama3-70b-8192",
+          temperature: 0.7,
+        });
+        const draftText =
+          draftResponse.choices[0]?.message?.content || "Draft not generated";
+        const subject = draftText.split("\n")[0].replace("Subject: ", "");
+        const body = draftText.split("\n").slice(1).join("\n");
+        await EmailDraft.create({
+          userId,
+          recipientId: recipient_email || recipient,
+          subject,
+          message: body,
+        });
+        return [
+          {
+            type: "text",
+            text: `Draft created:\n${draftText}\nPlease review and provide the recipient's email if needed.`,
+          },
+        ];
       }
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
   }
 
-  async chatWithBot(req, message) {
+  async chatWithBot(req, message, history = []) {
     const userId = req.user.id;
-    const lowerMessage = message.toLowerCase();
+    const messages = [
+      { role: "system", content: SYSTEM_PROMPT },
+      ...history,
+      { role: "user", content: message },
+    ];
 
-    if (lowerMessage.includes("draft an email")) {
-      const match = message.match(/to\s+([^ ]+)\s+about\s+(.+)/i);
-      if (match) {
-        const [, recipient, content] = match;
-        const recipientEmail = `${recipient}@example.com`; // Adjust as needed
-        const draft = await this.getPrompt("draft-email", {
-          recipient,
-          content,
-          recipient_email: recipientEmail,
-        });
+    const groqResponse = await groq.chat.completions.create({
+      messages,
+      model: "llama3-70b-8192",
+      temperature: 0.7,
+    });
 
-        const draftContent = draft.messages[1].content.text;
-        const subject = draftContent.split("\n")[0].replace("Subject: ", "");
-        const body = draftContent.split("\n\n")[1];
-
-        await EmailDraft.create({
-          userId,
-          recipientId: recipientEmail,
-          subject,
-          message: body,
-        });
-
-        return draft.messages.map((msg) => msg.content);
-      }
-    }
-
-    if (
-      lowerMessage.includes("send the email") ||
-      lowerMessage.includes("yes, send it")
-    ) {
-      const lastDraft = await EmailDraft.findOne({ userId }).sort({
-        createdAt: -1,
-      });
-      if (lastDraft) {
-        const sendResponse = await this.callTool(
-          "send-email",
-          {
-            recipient_id: lastDraft.recipientId,
-            subject: lastDraft.subject,
-            message: lastDraft.message,
-          },
-          userId
-        );
-        await EmailDraft.deleteOne({ _id: lastDraft._id });
-        return sendResponse;
-      }
+    const responseContent = groqResponse.choices[0]?.message?.content || "{}";
+    let actionData;
+    try {
+      actionData = JSON.parse(responseContent);
+    } catch (error) {
       return [
         {
           type: "text",
-          text: "No draft found to send. Please draft an email first.",
+          text: "I'm sorry, I couldn't understand your request. Please try again.",
         },
       ];
     }
 
-    if (lowerMessage.includes("summarize") && lowerMessage.includes("email")) {
-      const emailsResponse = await this.callTool("fetch-emails", {}, userId);
-      const emails = emailsResponse[0].artifact?.data;
-      if (Array.isArray(emails.messages) && emails.messages.length > 0) {
-        const latestEmailId = emails.messages[0].id;
-        const summary = await this.callTool(
-          "summarize-email",
-          { email_id: latestEmailId },
-          userId
-        );
-        return summary;
-      }
-      return [{ type: "text", text: "No emails found to summarize." }];
-    }
+    const { action, params, message: responseMessage } = actionData;
 
-    if (lowerMessage.includes("read") && lowerMessage.includes("email")) {
-      const emailsResponse = await this.callTool("fetch-emails", {}, userId);
-      const emails = emailsResponse[0].artifact?.data;
-      if (Array.isArray(emails.messages) && emails.messages.length > 0) {
-        const latestEmailId = emails.messages[0].id;
-        const emailContent = await this.callTool(
-          "read-email",
-          { email_id: latestEmailId },
-          userId
-        );
-        return emailContent;
-      }
-      return [{ type: "text", text: "No emails found to read." }];
+    if (action) {
+      const toolResponse = await this.callTool(action, params, userId);
+      return [{ type: "text", text: responseMessage }, ...toolResponse];
     }
-
-    if (lowerMessage.includes("trash") && lowerMessage.includes("email")) {
-      const match = message.match(/email\s+(\d+)/i);
-      const emailId = match ? match[1] : null;
-      if (emailId) {
-        const trashResponse = await this.callTool(
-          "trash-email",
-          { email_id: emailId },
-          userId
-        );
-        return trashResponse;
-      }
-      return [
-        {
-          type: "text",
-          text: 'Please specify an email ID to trash (e.g., "trash email 123").',
-        },
-      ];
-    }
-
-    const response = await groqResponse(
-      `User asked: "${message}". Respond helpfully and naturally, using your capabilities as an email assistant powered by Grok from xAI.`
-    );
-    return [{ type: "text", text: response }];
+    return [{ type: "text", text: responseMessage }];
   }
 }
 

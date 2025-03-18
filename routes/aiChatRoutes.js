@@ -1,3 +1,4 @@
+// routes\aiChatRoutes.js
 import express from "express";
 import Groq from "groq-sdk";
 import auth from "../middleware/authMiddleware.js";
