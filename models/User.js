@@ -1,4 +1,20 @@
 import mongoose from "mongoose";
+
+// Define default important keywords as a constant
+const DEFAULT_IMPORTANT_KEYWORDS = [
+  "urgent",
+  "important",
+  "priority",
+  "action required",
+  "meeting",
+  "deadline",
+  "due date",
+  "due",
+  "schedule",
+  "reminder",
+  "task",
+];
+
 const subscriptionSchema = new mongoose.Schema({
   plan: { type: String, default: "free" },
   status: { type: String, default: "ACTIVE" },
@@ -41,8 +57,14 @@ const userSchema = new mongoose.Schema({
   dateOfBirth: { type: Date },
   createdAt: { type: Date, default: Date.now },
   lastSync: { type: Date, default: Date.now },
-  emailSyncStatus: { type: String, default: "COMPLETE" },
+  userImportantMailKeywords: { type: [String], default: [] }, 
 });
+
+// Method to get all important keywords (default + user-specific)
+userSchema.methods.getAllImportantKeywords = function () {
+  return [...DEFAULT_IMPORTANT_KEYWORDS, ...this.userImportantMailKeywords];
+};
 
 const User = mongoose.model("User", userSchema);
 export default User;
+export { DEFAULT_IMPORTANT_KEYWORDS }; // Export for use elsewhere

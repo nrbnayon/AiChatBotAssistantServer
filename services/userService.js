@@ -1,4 +1,3 @@
-// services\userService.js
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 
@@ -13,9 +12,6 @@ const handleLocalLogin = async (email, password) => {
 };
 
 const updateProfile = async (userId, profileData) => {
-  console.log("[DEBUG] updateProfile - userId:", userId);
-  console.log("[DEBUG] updateProfile - profileData:", profileData);
-
   const allowedFields = [
     "name",
     "phone",
@@ -28,8 +24,6 @@ const updateProfile = async (userId, profileData) => {
     .filter((key) => allowedFields.includes(key))
     .reduce((obj, key) => ({ ...obj, [key]: profileData[key] }), {});
 
-  console.log("[DEBUG] updateProfile - Filtered updates:", updates);
-
   if (Object.keys(updates).length === 0) {
     throw new Error("No valid fields to update");
   }
@@ -40,8 +34,6 @@ const updateProfile = async (userId, profileData) => {
     { new: true }
   );
 
-  console.log("[DEBUG] updateProfile - Updated user:", updatedUser);
-
   if (!updatedUser) {
     throw new Error("User not found or update failed");
   }
@@ -50,15 +42,6 @@ const updateProfile = async (userId, profileData) => {
 };
 
 const updateSubscription = async (userId, { plan, autoRenew }) => {
-  console.log(
-    "[DEBUG] updateSubscription - userId:",
-    userId,
-    "plan:",
-    plan,
-    "autoRenew:",
-    autoRenew
-  );
-
   const user = await User.findById(userId);
   if (!user) throw new Error("User not found");
 
@@ -72,11 +55,6 @@ const updateSubscription = async (userId, { plan, autoRenew }) => {
     },
   };
 
-  console.log(
-    "[DEBUG] updateSubscription - Current user subscription:",
-    user.subscription
-  );
-
   if (plan && subscriptionPlans[plan]) {
     user.subscription.plan = plan;
     user.subscription.startDate = new Date();
@@ -85,18 +63,12 @@ const updateSubscription = async (userId, { plan, autoRenew }) => {
     );
     user.subscription.dailyTokens = subscriptionPlans[plan].dailyTokens;
     user.subscription.status = "ACTIVE";
-    console.log(
-      "[DEBUG] updateSubscription - Updated subscription:",
-      user.subscription
-    );
   }
   if (typeof autoRenew === "boolean") {
     user.subscription.autoRenew = autoRenew;
   }
 
   await user.save();
-  console.log("[DEBUG] updateSubscription - Saved user:", user);
-
   return user;
 };
 
@@ -106,7 +78,35 @@ const deleteUser = async (userId) => {
 };
 
 const getAllUsers = async () => {
-  return await User.find().select("-password");
+  return await User.find().select(
+    "-password -refreshToken -googleAccessToken -microsoftAccessToken -yahooAccessToken"
+  );
+};
+
+const createUser = async ({ name, email, password, role }) => {
+  // Check if user already exists
+  const existingUser = await User.findOne({ email });
+  if (existingUser) {
+    throw new Error("User already exists");
+  }
+
+  // Hash password
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  // Create new user
+  const newUser = new User({
+    name,
+    email,
+    password: hashedPassword,
+    role: role || "USER", // Default to USER if no role provided
+    authProvider: "email",
+  });
+
+  await newUser.save();
+
+  // Exclude sensitive fields from response
+  const { password: _, ...userWithoutPassword } = newUser.toObject();
+  return userWithoutPassword;
 };
 
 export default {
@@ -115,4 +115,5 @@ export default {
   updateSubscription,
   deleteUser,
   getAllUsers,
+  createUser,
 };

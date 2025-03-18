@@ -9,14 +9,6 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 const fetchEmails = catchAsync(async (req, res, next) => {
   const user = req.user;
-  if (user.emailSyncStatus !== "COMPLETED") {
-    return next(
-      new ApiError(
-        StatusCodes.BAD_REQUEST,
-        "Email sync is still pending. Please try again later."
-      )
-    );
-  }
   const emailService = await createEmailService(req);
   const mcpServer = new MCPServer(emailService);
   const emailsResponse = await mcpServer.callTool(
