@@ -5,6 +5,8 @@ import { ApiError, catchAsync } from "../utils/errorHandler.js";
 const emailAuth = catchAsync(async (req, res, next) => {
   const { authProvider } = req.user;
 
+  console.log("Get Auth Provider in email middleware::", authProvider);
+
   if (!["google", "microsoft", "yahoo"].includes(authProvider)) {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,

@@ -27,7 +27,7 @@ router.get("/oauth/:provider", authRateLimit(), (req, res, next) => {
         "https://www.googleapis.com/auth/gmail.send",
         "https://www.googleapis.com/auth/gmail.compose",
       ],
-      options: { prompt: "select_account" },
+      options: { accessType: "offline", prompt: "consent" },
     },
     microsoft: {
       strategy: "microsoft",

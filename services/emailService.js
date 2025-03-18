@@ -1,7 +1,10 @@
+// services\emailService.js
 import { google } from "googleapis";
 import fetch from "node-fetch";
 import Groq from "groq-sdk";
 import User from "../models/User.js";
+import { ApiError } from "../utils/errorHandler.js";
+import { StatusCodes } from "http-status-codes";
 
 class EmailService {
   constructor(user) {
@@ -22,6 +25,29 @@ class EmailService {
     }
   }
 
+  // async getGmailClient() {
+  //   const oauth2Client = new google.auth.OAuth2(
+  //     process.env.GOOGLE_CLIENT_ID,
+  //     process.env.GOOGLE_CLIENT_SECRET,
+  //     process.env.GOOGLE_REDIRECT_URI
+  //   );
+  //   oauth2Client.setCredentials({
+  //     access_token: this.user.googleAccessToken,
+  //     refresh_token: this.user.googleRefreshToken,
+  //   });
+
+  //   const tokenExpiry = this.user.googleAccessTokenExpires || 0;
+  //   if (tokenExpiry < Date.now()) {
+  //     const { credentials } = await oauth2Client.refreshAccessToken();
+  //     this.user.googleAccessToken = credentials.access_token;
+  //     this.user.googleRefreshToken =
+  //       credentials.refresh_token || this.user.googleRefreshToken;
+  //     this.user.googleAccessTokenExpires = credentials.expiry_date;
+  //     await this.user.save();
+  //   }
+  //   return google.gmail({ version: "v1", auth: oauth2Client });
+  // }
+
   async getGmailClient() {
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
@@ -32,6 +58,13 @@ class EmailService {
       access_token: this.user.googleAccessToken,
       refresh_token: this.user.googleRefreshToken,
     });
+
+    if (!this.user.googleRefreshToken) {
+      throw new ApiError(
+        StatusCodes.UNAUTHORIZED,
+        "No refresh token available. Please re-authenticate."
+      );
+    }
 
     const tokenExpiry = this.user.googleAccessTokenExpires || 0;
     if (tokenExpiry < Date.now()) {

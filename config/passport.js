@@ -130,6 +130,8 @@ const oauthCallback = async (
       user[refreshTokenField] = refreshToken;
       user.authProvider = provider;
       user.verified = true;
+      user.googleRefreshToken = refreshToken || user.googleRefreshToken;
+      user.microsoftAccessToken = refreshToken || user.microsoftAccessToken;
       user.lastSync = new Date();
 
       if (profilePicture) {
@@ -150,6 +152,8 @@ const oauthCallback = async (
         [refreshTokenField]: refreshToken,
         authProvider: provider,
         verified: true,
+        googleRefreshToken: refreshToken || null,
+        microsoftAccessToken: refreshToken || null,
         profilePicture: profilePicture,
         subscription: { plan: "free", dailyTokens: 100 },
         lastSync: new Date(),
@@ -196,6 +200,8 @@ const strategies = {
         "https://www.googleapis.com/auth/gmail.send",
         "https://www.googleapis.com/auth/gmail.compose",
       ],
+      accessType: "offline",
+      prompt: "consent",
     },
     Strategy: GoogleStrategy,
   },

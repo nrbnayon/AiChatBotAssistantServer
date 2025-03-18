@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 
 const handleLocalLogin = async (email, password) => {
   const user = await User.findOne({ email });
-  if (!user || user.authProvider !== "local" || !user.password) {
+  if (!user || user.authProvider !== "email" || !user.password) {
     throw new Error("Invalid credentials or wrong auth method");
   }
   const isMatch = await bcrypt.compare(password, user.password);
