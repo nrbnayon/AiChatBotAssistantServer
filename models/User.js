@@ -1,6 +1,4 @@
 import mongoose from "mongoose";
-import bcrypt from "bcryptjs";
-const bcrypth = bcrypt;
 const subscriptionSchema = new mongoose.Schema({
   plan: { type: String, default: "free" },
   status: { type: String, default: "ACTIVE" },
@@ -44,14 +42,6 @@ const userSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   lastSync: { type: Date, default: Date.now },
   emailSyncStatus: { type: String, default: "COMPLETE" },
-});
-
-userSchema.pre("save", async function (next) {
-  if (this.isModified("password") || this.isNew) {
-    const salt = await bcrypth.genSalt(10);
-    this.password = await bcrypth.hash(this.password, salt);
-  }
-  next();
 });
 
 const User = mongoose.model("User", userSchema);

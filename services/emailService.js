@@ -175,6 +175,9 @@ class EmailService {
   async fetchGmailEmails(client, { query, maxResults, pageToken, filter }) {
     const params = { userId: "me", maxResults, q: query, pageToken };
     switch (filter) {
+      case "all":
+        // No additional params
+        break;
       case "read":
         params.q += " -unread";
         break;
@@ -184,6 +187,20 @@ class EmailService {
       case "archived":
         params.q += " -in:inbox";
         break;
+      case "starred":
+        params.labelIds = ["STARRED"];
+        break;
+      case "sent":
+        params.labelIds = ["SENT"];
+        break;
+      case "drafts":
+        params.labelIds = ["DRAFT"];
+        break;
+      case "trash":
+        params.labelIds = ["TRASH"];
+        break;
+      default:
+        throw new Error(`Unsupported filter: ${filter}`);
     }
     const response = await client.users.messages.list(params);
     if (!response.data.messages) return { messages: [], nextPageToken: null };
@@ -202,21 +219,40 @@ class EmailService {
   }
 
   async fetchMicrosoftEmails(client, { query, maxResults, pageToken, filter }) {
-    let endpoint = `${client.baseUrl}/messages?$top=${maxResults}&$select=id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,bodyPreview,body,isRead,parentFolderId,hasAttachments`;
-    if (pageToken) endpoint += `&$skiptoken=${pageToken}`;
-    if (query) endpoint += `&$search="${query}"`;
+    let endpoint;
+    const baseParams = `?$top=${maxResults}&$select=id,subject,from,toRecipients,ccRecipients,bccRecipients,receivedDateTime,bodyPreview,body,isRead,parentFolderId,hasAttachments`;
     switch (filter) {
+      case "all":
+        endpoint = `${client.baseUrl}/messages${baseParams}`;
+        break;
       case "read":
-        endpoint += "&$filter=isRead eq true";
+        endpoint = `${client.baseUrl}/messages${baseParams}&$filter=isRead eq true`;
         break;
       case "unread":
-        endpoint += "&$filter=isRead eq false";
+        endpoint = `${client.baseUrl}/messages${baseParams}&$filter=isRead eq false`;
         break;
       case "archived":
         const archiveFolderId = await this.getMicrosoftArchiveFolderId(client);
-        endpoint += `&$filter=parentFolderId eq '${archiveFolderId}'`;
+        endpoint = `${client.baseUrl}/mailFolders/${archiveFolderId}/messages${baseParams}`;
         break;
+      case "starred":
+        endpoint = `${client.baseUrl}/messages${baseParams}&$filter=flag/flagStatus eq 'flagged'`;
+        break;
+      case "sent":
+        endpoint = `${client.baseUrl}/mailFolders/sentitems/messages${baseParams}`;
+        break;
+      case "drafts":
+        endpoint = `${client.baseUrl}/mailFolders/drafts/messages${baseParams}`;
+        break;
+      case "trash":
+        endpoint = `${client.baseUrl}/mailFolders/deleteditems/messages${baseParams}`;
+        break;
+      default:
+        throw new Error(`Unsupported filter: ${filter}`);
     }
+    if (pageToken) endpoint += `&$skiptoken=${pageToken}`;
+    if (query) endpoint += `&$search="${query}"`;
+
     const response = await fetch(endpoint, {
       headers: { Authorization: `Bearer ${client.accessToken}` },
     });
@@ -232,18 +268,50 @@ class EmailService {
 
   async fetchYahooEmails(client, { query, maxResults, pageToken, filter }) {
     let endpoint = `${client.baseUrl}/v1/messages?count=${maxResults}`;
+    let folder;
+    switch (filter) {
+      case "all":
+        folder = "inbox";
+        break;
+      case "read":
+        folder = "inbox"; // Filter manually later
+        break;
+      case "unread":
+        folder = "inbox"; // Filter manually later
+        break;
+      case "archived":
+        folder = "archive";
+        break;
+      case "starred":
+        folder = "starred"; // Assuming Yahoo supports starred folder
+        break;
+      case "sent":
+        folder = "sent";
+        break;
+      case "drafts":
+        folder = "drafts";
+        break;
+      case "trash":
+        folder = "trash";
+        break;
+      default:
+        throw new Error(`Unsupported filter: ${filter}`);
+    }
+    if (folder) endpoint += `&folder=${folder}`;
     if (query) endpoint += `&query=${encodeURIComponent(query)}`;
     if (pageToken) endpoint += `&start=${pageToken}`;
+
     const response = await fetch(endpoint, {
       headers: { Authorization: `Bearer ${client.accessToken}` },
     });
     if (!response.ok) throw new Error("Failed to fetch Yahoo emails");
     const data = await response.json();
     let messages = data.messages?.map(this.formatYahooEmail) || [];
+
+    // Manual filtering for read/unread since Yahoo API may not support directly
     if (filter === "read") messages = messages.filter((m) => m.isRead);
     if (filter === "unread") messages = messages.filter((m) => !m.isRead);
-    if (filter === "archived")
-      messages = messages.filter((m) => m.folder === "Archive");
+
     return { messages, nextPageToken: data.nextPageToken || null };
   }
 
@@ -439,7 +507,7 @@ class EmailService {
       `To: ${to}`,
       cc ? `Cc: ${cc}` : "",
       bcc ? `Bcc: ${bcc}` : "",
-      `Subject: ${subject}`,
+      `Subject: ${subject || "No Subject"}`,
       "MIME-Version: 1.0",
       `Content-Type: multipart/mixed; boundary=${boundary}`,
       "",
@@ -448,7 +516,7 @@ class EmailService {
         ? "Content-Type: text/html; charset=UTF-8"
         : "Content-Type: text/plain; charset=UTF-8",
       "",
-      body,
+      body || "",
     ];
 
     if (attachments) {
@@ -465,10 +533,13 @@ class EmailService {
     }
     messageParts.push(`--${boundary}--`);
 
-    const raw = Buffer.from(messageParts.join("\r\n"))
+    const rawMessage = messageParts.join("\r\n");
+    const raw = Buffer.from(rawMessage)
       .toString("base64")
       .replace(/\+/g, "-")
-      .replace(/\//g, "_");
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+
     const response = await client.users.messages.send({
       userId: "me",
       requestBody: { raw },

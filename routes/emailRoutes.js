@@ -1,3 +1,4 @@
+// routes\emailRoutes.js
 import express from "express";
 import multer from "multer";
 import path from "path";
@@ -83,19 +84,108 @@ router.get(
       maxResults: parseInt(maxResults?.toString() || "100"),
       pageToken: pageToken?.toString(),
     });
-    const customKeywords = keywords ? keywords.split(",") : undefined;
-    const importantEmails = await emailService.filterImportantEmails(
-      result.messages,
-      customKeywords,
-      timeRange?.toString() || "weekly"
-    );
+    try {
+      const customKeywords = keywords ? keywords.split(",") : undefined;
+      const importantEmails = await emailService.filterImportantEmails(
+        result.messages,
+        customKeywords,
+        timeRange?.toString() || "weekly"
+      );
+      res.json({
+        success: true,
+        messages: importantEmails,
+        nextPageToken: result.nextPageToken,
+      });
+    } catch (error) {
+      throw new ApiError(
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        "Failed to filter important emails: " + error.message
+      );
+    }
+  })
+);
+
+
+
+router.get(
+  "/starred",
+  auth(),
+  emailAuth,
+  catchAsync(async (req, res) => {
+    const emailService = await createEmailService(req);
+    const result = await emailService.fetchEmails({
+      filter: "starred",
+      maxResults: parseInt(req.query.maxResults || "100"),
+      pageToken: req.query.pageToken?.toString(),
+    });
     res.json({
       success: true,
-      messages: importantEmails,
+      messages: result.messages,
       nextPageToken: result.nextPageToken,
     });
   })
 );
+
+
+
+router.get(
+  "/sent",
+  auth(),
+  emailAuth,
+  catchAsync(async (req, res) => {
+    const emailService = await createEmailService(req);
+    const result = await emailService.fetchEmails({
+      filter: "sent",
+      maxResults: parseInt(req.query.maxResults || "100"),
+      pageToken: req.query.pageToken?.toString(),
+    });
+    res.json({
+      success: true,
+      messages: result.messages,
+      nextPageToken: result.nextPageToken,
+    });
+  })
+);
+
+
+router.get(
+  "/drafts",
+  auth(),
+  emailAuth,
+  catchAsync(async (req, res) => {
+    const emailService = await createEmailService(req);
+    const result = await emailService.fetchEmails({
+      filter: "drafts",
+      maxResults: parseInt(req.query.maxResults || "100"),
+      pageToken: req.query.pageToken?.toString(),
+    });
+    res.json({
+      success: true,
+      messages: result.messages,
+      nextPageToken: result.nextPageToken,
+    });
+  })
+);
+
+router.get(
+  "/trash",
+  auth(),
+  emailAuth,
+  catchAsync(async (req, res) => {
+    const emailService = await createEmailService(req);
+    const result = await emailService.fetchEmails({
+      filter: "trash",
+      maxResults: parseInt(req.query.maxResults || "100"),
+      pageToken: req.query.pageToken?.toString(),
+    });
+    res.json({
+      success: true,
+      messages: result.messages,
+      nextPageToken: result.nextPageToken,
+    });
+  })
+);
+
 
 // Send an email
 router.post(
