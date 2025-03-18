@@ -1,18 +1,10 @@
 // services\mcpServer.js
 import Groq from "groq-sdk";
-import { StatusCodes } from "http-status-codes";
 import EmailDraft from "../models/EmailDraft.js";
+import { ApiError } from "../utils/errorHandler.js";
+import { StatusCodes } from "http-status-codes";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-
-class ApiError extends Error {
-  constructor(statusCode, message) {
-    super(message);
-    this.statusCode = statusCode;
-    this.name = this.constructor.name;
-    Error.captureStackTrace(this, this.constructor);
-  }
-}
 
 const EMAIL_ADMIN_PROMPTS = `You are an email administrator powered by Grok from xAI. 
 You can draft, edit, read, trash, reply to, search, and send emails.

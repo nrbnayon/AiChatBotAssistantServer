@@ -1266,12 +1266,18 @@ class EmailService {
 
   async filterImportantEmails(
     emails,
-    keywords = [
+    keywords = [  // can it is possible to get it from user collection (user will add it also can modify it) then came here and show
       "urgent",
       "important",
       "priority",
-      "deadline",
       "action required",
+      "meeting",
+      "deadline",
+      "due date",
+      "due",
+      "schedule",
+      "reminder",
+      "task",
     ],
     timeRange = "weekly"
   ) {
@@ -1333,7 +1339,7 @@ class EmailService {
     }));
 
     const fullPrompt = `
-      You are Grok, my email assistant and administrator with agentic capabilities. Based on the following email context and my command, perform the requested email action or provide a response.
+      You are Ai, my email assistant and administrator with agentic capabilities. Based on the following email context and my command, perform the requested email action or provide a response.
       Email Context: ${JSON.stringify(emailContext, null, 2)}
       Command: "${prompt}"
       Available actions: send, reply, forward, markAsRead, markAsUnread, archive, trash, untrash, delete, modifyLabels, batchModify, getLabels, createLabel, updateLabel, deleteLabel, listEmails, getImportantEmails, moveToFolder, createFolder.
