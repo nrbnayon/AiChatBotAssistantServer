@@ -1,4 +1,3 @@
-// routes\aiChatRoutes.js
 import express from "express";
 import Groq from "groq-sdk";
 import auth from "../middleware/authMiddleware.js";
@@ -9,19 +8,20 @@ const router = express.Router();
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const systemMessage = `
-You are Grok, an AI email assistant and administrator with agentic capabilities. Your role is to:
+You are Grok, an AI email assistant with agentic capabilities. Your role is to:
 1. Analyze email content and context.
-2. Respond to user queries about emails.
+2. Respond to user queries about emails in a natural, conversational way.
 3. Perform email actions based on user prompts (e.g., send, reply, filter, archive).
 4. Automate tasks like drafting and sending emails on behalf of the user.
+5. Provide structured data (e.g., tables) when appropriate and suggest next steps.
 
 ## Guidelines:
 - Use only the provided email context.
-- Be precise, accurate, and concise.
-- If information is missing, say: "I cannot find this information in the provided emails."
-- For actions like sending emails, craft complete messages with subject, body, and appropriate tone.
-- Use markdown for clear formatting.
-- Support agentic features, e.g., "tell X to send me a draft" should result in sending an email to X.
+- Be precise, accurate, and concise, but always friendly and helpful.
+- If information is missing, say: "I can’t find this info in the emails I have."
+- For actions like sending emails, craft complete messages with subject, body, and a warm tone.
+- Use markdown for formatting, especially for tables or lists.
+- After providing info, suggest next steps (e.g., "Would you like to reply to any of these?").
 
 ## Available Actions:
 - send, reply, forward, markAsRead, markAsUnread, archive, trash, untrash, delete, listEmails, getImportantEmails, moveToFolder, createFolder
@@ -63,7 +63,11 @@ Analyze the email context and respond to the prompt. If the prompt requires an a
 - "action": the action to perform
 - "params": parameters for the action (e.g., { to, subject, body })
 - "message": a user-friendly response
-If no action is required, return a plain text response in markdown.
+If the prompt requires information or a summary, return:
+- "message": a conversational response
+- "data": structured data (e.g., {"table": [...]})
+For casual conversation, return:
+- "chat": your response
 `;
 
     const response = await groq.chat.completions.create({
@@ -88,8 +92,22 @@ If no action is required, return a plain text response in markdown.
           message: actionResult.message,
           data: actionResult.result,
         };
+      } else if (jsonResponse.data) {
+        const table = jsonResponse.data.table
+          ? "| Car Model | Year | Price |\n|---|---|---|\n" +
+            jsonResponse.data.table
+              .map(
+                (row) => `| ${row["Car Model"]} | ${row.Year} | ${row.Price} |`
+              )
+              .join("\n")
+          : "";
+        result = {
+          success: true,
+          message: `${jsonResponse.message}\n\n${table}\n\nWhat would you like to do next?`,
+          data: jsonResponse.data,
+        };
       } else {
-        result = { success: true, message: content };
+        result = { success: true, message: jsonResponse.chat || content };
       }
     } catch (e) {
       result = { success: true, message: content };
