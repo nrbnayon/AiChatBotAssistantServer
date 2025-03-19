@@ -3,36 +3,65 @@ import Groq from "groq-sdk";
 import auth from "../middleware/authMiddleware.js";
 import { createEmailService } from "../services/emailService.js";
 import { catchAsync } from "../utils/errorHandler.js";
+import MCPServer from "../services/mcpServer.js";
 
 const router = express.Router();
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
+// Enhanced system message with more natural language guidelines
 const systemMessage = `
-You are Grok, an AI email assistant with agentic capabilities. Your role is to:
-1. Analyze email content and context.
-2. Respond to user queries about emails in a natural, conversational way.
-3. Perform email actions based on user prompts (e.g., send, reply, filter, archive).
-4. Automate tasks like drafting and sending emails on behalf of the user.
-5. Provide structured data (e.g., tables) when appropriate and suggest next steps.
+You are Grok, an AI email assistant with a warm, friendly personality. Your goal is to help users with their email in a way that feels natural and conversational, as if you're a helpful colleague sitting next to them.
 
-## Guidelines:
-- Use only the provided email context.
-- Be precise, accurate, and concise, but always friendly and helpful.
-- If information is missing, say: "I can’t find this info in the emails I have."
-- For actions like sending emails, craft complete messages with subject, body, and a warm tone.
-- Use markdown for formatting, especially for tables or lists.
-- After providing info, suggest next steps (e.g., "Would you like to reply to any of these?").
+### Conversational Style:
+- Be warm and friendly, using casual language and contractions (I'll, you're, etc.)
+- Vary your responses to sound more natural and less repetitive
+- Match the user's tone and enthusiasm level
+- Use natural transitions and follow-ups in your responses
+- Acknowledge the user's feelings or context when appropriate
 
-## Available Actions:
+### Guidelines:
+- Use context from provided emails to give personalized responses
+- When unsure, be honest about what you don't know rather than making things up
+- Present information in a readable format, using markdown for structure
+- After sharing information, suggest helpful next steps or ask relevant follow-up questions
+
+### Available Actions:
 - send, reply, forward, markAsRead, markAsUnread, archive, trash, untrash, delete, listEmails, getImportantEmails, moveToFolder, createFolder
+
+Remember to always be helpful, accurate, and natural in your communication.
 `;
+
+// Store conversation history
+const userConversations = new Map();
+
+// Function to get or create conversation history
+function getConversationHistory(userId) {
+  if (!userConversations.has(userId)) {
+    userConversations.set(userId, []);
+  }
+  return userConversations.get(userId);
+}
+
+// Function to update conversation history
+function updateConversationHistory(userId, message, response) {
+  const history = getConversationHistory(userId);
+  history.push({ role: "user", content: message });
+  history.push({ role: "assistant", content: response });
+
+  // Keep history at a reasonable size
+  if (history.length > 20) {
+    history.splice(0, 2);
+  }
+}
 
 router.post(
   "/",
   auth(),
   catchAsync(async (req, res) => {
     const emailService = await createEmailService(req);
+    const mcpServer = new MCPServer(emailService);
     const { prompt, maxResults = 50 } = req.body;
+    const userId = req.user.id;
 
     if (!prompt) {
       return res
@@ -40,80 +69,97 @@ router.post(
         .json({ success: false, message: "Prompt is required" });
     }
 
-    const emails = (await emailService.fetchEmails({ maxResults })).messages;
-    const emailContext = emails.map((e) => ({
-      id: e.id,
-      subject: e.subject,
-      from: e.from,
-      to: e.to,
-      snippet: e.snippet,
-      body: e.body,
-    }));
+    // Get conversation history
+    const history = getConversationHistory(userId);
 
-    const fullPrompt = `
-${systemMessage}
-
-## Email Context:
-${JSON.stringify(emailContext, null, 2)}
-
-## User Prompt:
-${prompt}
-
-Analyze the email context and respond to the prompt. If the prompt requires an action (e.g., sending an email), return a JSON object with:
-- "action": the action to perform
-- "params": parameters for the action (e.g., { to, subject, body })
-- "message": a user-friendly response
-If the prompt requires information or a summary, return:
-- "message": a conversational response
-- "data": structured data (e.g., {"table": [...]})
-For casual conversation, return:
-- "chat": your response
-`;
-
-    const response = await groq.chat.completions.create({
-      messages: [{ role: "user", content: fullPrompt }],
-      model: "llama3-70b-8192",
-      temperature: 0.7,
-      max_tokens: 2048,
-    });
-
-    const content =
-      response.choices[0]?.message?.content || "No response generated";
-    let result;
-
+    // Process the request
     try {
-      const jsonResponse = JSON.parse(content);
-      if (jsonResponse.action) {
-        const actionResult = await emailService.executeEmailAction(
-          jsonResponse
-        );
-        result = {
-          success: true,
-          message: actionResult.message,
-          data: actionResult.result,
-        };
-      } else if (jsonResponse.data) {
-        const table = jsonResponse.data.table
-          ? "| Car Model | Year | Price |\n|---|---|---|\n" +
-            jsonResponse.data.table
-              .map(
-                (row) => `| ${row["Car Model"]} | ${row.Year} | ${row.Price} |`
-              )
-              .join("\n")
-          : "";
-        result = {
-          success: true,
-          message: `${jsonResponse.message}\n\n${table}\n\nWhat would you like to do next?`,
-          data: jsonResponse.data,
-        };
-      } else {
-        result = { success: true, message: jsonResponse.chat || content };
-      }
-    } catch (e) {
-      result = { success: true, message: content };
-    }
+      const emails = (await emailService.fetchEmails({ maxResults })).messages;
+      const emailContext = emails.map((e) => ({
+        id: e.id,
+        subject: e.subject,
+        from: e.from,
+        to: e.to,
+        date: e.date,
+        snippet: e.snippet,
+        body:
+          e.body && e.body.length > 500
+            ? e.body.substring(0, 500) + "..."
+            : e.body,
+      }));
 
-    res.json(result);
+      // Get time of day for more natural responses
+      const hour = new Date().getHours();
+      let timeContext = "";
+      if (hour >= 5 && hour < 12) {
+        timeContext = "morning";
+      } else if (hour >= 12 && hour < 18) {
+        timeContext = "afternoon";
+      } else {
+        timeContext = "evening";
+      }
+
+      // Process the prompt considering context and history
+      const response = await mcpServer.chatWithBot(req, prompt, [
+        ...history,
+        {
+          role: "system",
+          content: `It's currently ${timeContext}. The user has ${
+            emails.length
+          } emails in their inbox. ${
+            emails.filter((e) => e.unread).length
+          } of them are unread.`,
+        },
+      ]);
+
+      // Update conversation history
+      updateConversationHistory(userId, prompt, response[0].text);
+
+      // Return the response
+      res.json({
+        success: true,
+        message: response[0].text,
+        data: response[0].artifact?.data || null,
+      });
+    } catch (error) {
+      console.error("Error processing request:", error);
+      res.status(500).json({
+        success: false,
+        message:
+          "I'm having trouble processing your request right now. Could you try again in a moment?",
+      });
+    }
+  })
+);
+
+// Add an endpoint for conversation context
+router.get(
+  "/context",
+  auth(),
+  catchAsync(async (req, res) => {
+    const userId = req.user.id;
+    const history = getConversationHistory(userId);
+
+    res.json({
+      success: true,
+      conversationLength: history.length / 2, // Pairs of messages
+      lastInteraction: history.length > 0 ? new Date().toISOString() : null,
+    });
+  })
+);
+
+// Add an endpoint to clear conversation history
+router.delete(
+  "/context",
+  auth(),
+  catchAsync(async (req, res) => {
+    const userId = req.user.id;
+    userConversations.set(userId, []);
+
+    res.json({
+      success: true,
+      message: "Conversation history cleared successfully.",
+    });
   })
 );
 
