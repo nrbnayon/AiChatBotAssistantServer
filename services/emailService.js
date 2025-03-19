@@ -5,6 +5,7 @@ import { ApiError } from "../utils/errorHandler.js";
 import { StatusCodes } from "http-status-codes";
 import Groq from "groq-sdk";
 import User from "../models/User.js";
+import { convert } from "html-to-text";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -30,7 +31,8 @@ class EmailService {
         if (!this.user.googleRefreshToken) {
           throw new ApiError(
             StatusCodes.UNAUTHORIZED,
-            "No Google refresh token available. Please re-authenticate."
+            "No Google refresh token available. Please re-authenticate.",
+            "REFRESH_TOKEN_INVALID"
           );
         }
         const googleTokenExpiry = this.user.googleAccessTokenExpires || 0;
@@ -39,13 +41,22 @@ class EmailService {
             access_token: this.user.googleAccessToken,
             refresh_token: this.user.googleRefreshToken,
           });
-          const { credentials } = await auth.refreshAccessToken();
-          this.user.googleAccessToken = credentials.access_token;
-          this.user.googleRefreshToken =
-            credentials.refresh_token || this.user.googleRefreshToken;
-          this.user.googleAccessTokenExpires = credentials.expiry_date;
-          await this.user.save();
-          console.log("[DEBUG] Google token refreshed");
+          try {
+            const { credentials } = await auth.refreshAccessToken();
+            this.user.googleAccessToken = credentials.access_token;
+            this.user.googleRefreshToken =
+              credentials.refresh_token || this.user.googleRefreshToken;
+            this.user.googleAccessTokenExpires = credentials.expiry_date;
+            await this.user.save();
+            console.log("[DEBUG] Google token refreshed");
+          } catch (error) {
+            console.error("[ERROR] Google token refresh failed:", error);
+            throw new ApiError(
+              StatusCodes.UNAUTHORIZED,
+              `Failed to refresh Google token: ${error.message}`,
+              "TOKEN_REFRESH_FAILED"
+            );
+          }
         }
         auth.setCredentials({
           access_token: this.user.googleAccessToken,
@@ -66,14 +77,29 @@ class EmailService {
                 client_secret: process.env.MICROSOFT_CLIENT_SECRET,
                 refresh_token: this.user.microsoftRefreshToken,
                 grant_type: "refresh_token",
+                scope:
+                  "offline_access User.Read Mail.Read Mail.ReadWrite Mail.Send",
               }),
             }
           );
-          if (!response.ok)
+          if (!response.ok) {
+            const errorData = await response.json();
+            console.error("[ERROR] Microsoft token refresh failed:", errorData);
+            if (errorData.error === "invalid_grant") {
+              throw new ApiError(
+                StatusCodes.UNAUTHORIZED,
+                "Refresh token is invalid. Please re-authenticate with Microsoft.",
+                "REFRESH_TOKEN_INVALID"
+              );
+            }
             throw new ApiError(
               StatusCodes.UNAUTHORIZED,
-              "Failed to refresh Microsoft token"
+              `Failed to refresh Microsoft token: ${
+                errorData.error_description || errorData.error
+              }`,
+              "TOKEN_REFRESH_FAILED"
             );
+          }
           const { access_token, refresh_token, expires_in } =
             await response.json();
           this.user.microsoftAccessToken = access_token;
@@ -105,11 +131,24 @@ class EmailService {
               }),
             }
           );
-          if (!response.ok)
+          if (!response.ok) {
+            const errorData = await response.json();
+            console.error("[ERROR] Yahoo token refresh failed:", errorData);
+            if (errorData.error === "invalid_grant") {
+              throw new ApiError(
+                StatusCodes.UNAUTHORIZED,
+                "Refresh token is invalid. Please re-authenticate with Yahoo.",
+                "REFRESH_TOKEN_INVALID"
+              );
+            }
             throw new ApiError(
               StatusCodes.UNAUTHORIZED,
-              "Failed to refresh Yahoo token"
+              `Failed to refresh Yahoo token: ${
+                errorData.error?.description || "Unknown error"
+              }`,
+              "TOKEN_REFRESH_FAILED"
             );
+          }
           const { access_token, refresh_token, expires_in } =
             await response.json();
           this.user.yahooAccessToken = access_token;
@@ -175,10 +214,12 @@ class EmailService {
       }
     } catch (error) {
       console.error("[ERROR] Fetch emails failed:", error.message);
-      throw new ApiError(
-        StatusCodes.INTERNAL_SERVER_ERROR,
-        `Failed to fetch emails: ${error.message}`
-      );
+      throw error instanceof ApiError
+        ? error
+        : new ApiError(
+            StatusCodes.INTERNAL_SERVER_ERROR,
+            `Failed to fetch emails: ${error.message}`
+          );
     }
   }
 
@@ -258,7 +299,7 @@ class EmailService {
             `[ERROR] Failed to fetch Gmail email ${msg.id}:`,
             error.response?.data || error
           );
-          return null; // Skip invalid emails
+          return null;
         }
       })
     ).then((results) => results.filter((email) => email !== null));
@@ -315,19 +356,37 @@ class EmailService {
       });
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(`Microsoft API error: ${errorData.error.message}`);
+        if (response.status === 401) {
+          throw new ApiError(
+            StatusCodes.UNAUTHORIZED,
+            "Invalid or expired token",
+            "TOKEN_INVALID"
+          );
+        } else if (response.status >= 500) {
+          throw new ApiError(
+            StatusCodes.INTERNAL_SERVER_ERROR,
+            "Microsoft API error"
+          );
+        } else {
+          throw new ApiError(
+            StatusCodes.BAD_REQUEST,
+            `Microsoft API error: ${errorData.error.message}`
+          );
+        }
       }
     } catch (error) {
       console.error("[ERROR] Microsoft fetch failed:", error.message);
-      throw new ApiError(
-        StatusCodes.BAD_REQUEST,
-        `Microsoft search failed: ${error.message}`
-      );
+      throw error instanceof ApiError
+        ? error
+        : new ApiError(
+            StatusCodes.BAD_REQUEST,
+            `Microsoft search failed: ${error.message}`
+          );
     }
 
     const data = await response.json();
     return {
-      messages: data.value.map(this.formatMicrosoftEmail),
+      messages: data.value.map(this.formatMicrosoftEmail.bind(this)),
       nextPageToken: data["@odata.nextLink"]
         ? data["@odata.nextLink"].split("skiptoken=")[1]
         : null,
@@ -381,20 +440,29 @@ class EmailService {
       });
       if (!response.ok) {
         const errorData = await response.json();
+        if (response.status === 401) {
+          throw new ApiError(
+            StatusCodes.UNAUTHORIZED,
+            "Invalid or expired token",
+            "TOKEN_INVALID"
+          );
+        }
         throw new Error(
           `Yahoo API error: ${errorData.error?.description || "Unknown error"}`
         );
       }
     } catch (error) {
       console.error("[ERROR] Yahoo fetch failed:", error.message);
-      throw new ApiError(
-        StatusCodes.BAD_REQUEST,
-        `Yahoo search failed: ${error.message}`
-      );
+      throw error instanceof ApiError
+        ? error
+        : new ApiError(
+            StatusCodes.BAD_REQUEST,
+            `Yahoo search failed: ${error.message}`
+          );
     }
 
     const data = await response.json();
-    let messages = data.messages?.map(this.formatYahooEmail) || [];
+    let messages = data.messages?.map(this.formatYahooEmail.bind(this)) || [];
     if (filter === "read") messages = messages.filter((m) => m.isRead);
     if (filter === "unread") messages = messages.filter((m) => !m.isRead);
 
@@ -406,7 +474,6 @@ class EmailService {
     customKeywords = [],
     timeRange = "weekly"
   ) {
-    // Correctly fetch user keywords from userImportantMailKeywords
     const userKeywords = this.user.userImportantMailKeywords || [];
     const keywords = [...new Set([...userKeywords, ...customKeywords])];
     const timeFrames = {
@@ -416,29 +483,25 @@ class EmailService {
     };
     const timeLimit = timeFrames[timeRange] || timeFrames.weekly;
 
-    // Filter emails by time range
     const recentEmails = emails.filter((email) => {
       const emailDate = new Date(email.date);
       const cutoffDate = new Date(Date.now() - timeLimit);
       return emailDate >= cutoffDate;
     });
 
-    // Pre-filter emails and use cache
     const emailsToAnalyze = [];
     const processedEmails = [];
 
     for (const email of recentEmails) {
-      const emailKey = `${email.id}-${timeRange}`; // Unique key per email and time range
+      const emailKey = `${email.id}-${timeRange}`;
       const content =
         `${email.subject} ${email.snippet} ${email.body}`.toLowerCase();
 
-      // Check cache first
       if (this.analysisCache.has(emailKey)) {
         processedEmails.push(this.analysisCache.get(emailKey));
         continue;
       }
 
-      // Pre-filter based on keywords
       const hasKeyword = keywords.some((keyword) =>
         content.includes(keyword.toLowerCase())
       );
@@ -456,7 +519,6 @@ class EmailService {
       }
     }
 
-    // Analyze only emails with keywords
     const analysisPromises = emailsToAnalyze.map(async (email) => {
       const emailKey = `${email.id}-${timeRange}`;
       const content =
@@ -501,7 +563,7 @@ class EmailService {
           importanceScore: result.score,
           isImportant: result.isImportant,
         };
-        this.analysisCache.set(emailKey, analyzedEmail); // Cache the result
+        this.analysisCache.set(emailKey, analyzedEmail);
         return analyzedEmail;
       } catch (error) {
         console.error("Error analyzing email:", error);
@@ -518,7 +580,6 @@ class EmailService {
     const analyzedEmails = await Promise.all(analysisPromises);
     const allEmails = [...analyzedEmails, ...processedEmails];
 
-    // Return filtered and sorted important emails
     return allEmails
       .filter((email) => email.isImportant)
       .sort((a, b) => b.importanceScore - a.importanceScore);
@@ -547,7 +608,9 @@ class EmailService {
           body = Buffer.from(part.body.data, "base64").toString("utf-8");
           break;
         } else if (part.mimeType === "text/html" && part.body.data) {
-          body = Buffer.from(part.body.data, "base64").toString("utf-8");
+          body = convert(
+            Buffer.from(part.body.data, "base64").toString("utf-8")
+          );
         }
       }
     } else if (payload.body?.data) {
@@ -557,6 +620,9 @@ class EmailService {
   }
 
   formatMicrosoftEmail(email) {
+    const bodyContent = email.body?.content || "";
+    const bodyText =
+      email.body?.contentType === "html" ? convert(bodyContent) : bodyContent;
     return {
       id: email.id,
       subject: email.subject || "",
@@ -565,7 +631,7 @@ class EmailService {
         email.toRecipients?.map((r) => r.emailAddress.address).join(", ") || "",
       date: email.receivedDateTime || "",
       snippet: email.bodyPreview || "",
-      body: email.body?.content || "",
+      body: bodyText,
       isRead: email.isRead || false,
     };
   }
@@ -660,7 +726,7 @@ class EmailService {
         contentType: file.mimetype,
       }));
     }
-    await fetch(`${client.baseUrl}/messages`, {
+    const response = await fetch(`${client.baseUrl}/messages`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${client.accessToken}`,
@@ -668,6 +734,13 @@ class EmailService {
       },
       body: JSON.stringify(message),
     });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new ApiError(
+        StatusCodes.BAD_REQUEST,
+        `Failed to send Microsoft email: ${errorData.error.message}`
+      );
+    }
   }
 
   async sendYahooEmail(client, { to, subject, body, attachments }) {
@@ -682,11 +755,20 @@ class EmailService {
         file.filename
       );
     });
-    await fetch(`${client.baseUrl}/v1/message`, {
+    const response = await fetch(`${client.baseUrl}/v1/message`, {
       method: "POST",
       headers: { Authorization: `Bearer ${client.accessToken}` },
       body: formData,
     });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new ApiError(
+        StatusCodes.BAD_REQUEST,
+        `Failed to send Yahoo email: ${
+          errorData.error?.description || "Unknown error"
+        }`
+      );
+    }
   }
 
   async getEmail(emailId) {
@@ -798,20 +880,42 @@ class EmailService {
         await client.users.messages.trash({ userId: "me", id: emailId });
         break;
       case "microsoft":
-        await fetch(`${client.baseUrl}/messages/${emailId}/move`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${client.accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ destinationId: "deleteditems" }),
-        });
+        const response = await fetch(
+          `${client.baseUrl}/messages/${emailId}/move`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${client.accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ destinationId: "deleteditems" }),
+          }
+        );
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new ApiError(
+            StatusCodes.BAD_REQUEST,
+            `Failed to trash Microsoft email: ${errorData.error.message}`
+          );
+        }
         break;
       case "yahoo":
-        await fetch(`${client.baseUrl}/v1/message/${emailId}`, {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${client.accessToken}` },
-        });
+        const yahooResponse = await fetch(
+          `${client.baseUrl}/v1/message/${emailId}`,
+          {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${client.accessToken}` },
+          }
+        );
+        if (!yahooResponse.ok) {
+          const errorData = await yahooResponse.json();
+          throw new ApiError(
+            StatusCodes.BAD_REQUEST,
+            `Failed to trash Yahoo email: ${
+              errorData.error?.description || "Unknown error"
+            }`
+          );
+        }
         break;
     }
   }
@@ -830,7 +934,7 @@ class EmailService {
         });
         break;
       case "microsoft":
-        await fetch(`${client.baseUrl}/messages/${emailId}`, {
+        const response = await fetch(`${client.baseUrl}/messages/${emailId}`, {
           method: "PATCH",
           headers: {
             Authorization: `Bearer ${client.accessToken}`,
@@ -838,21 +942,57 @@ class EmailService {
           },
           body: JSON.stringify({ isRead: read }),
         });
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new ApiError(
+            StatusCodes.BAD_REQUEST,
+            `Failed to mark Microsoft email as read: ${errorData.error.message}`
+          );
+        }
         break;
       case "yahoo":
-        await fetch(`${client.baseUrl}/v1/message/${emailId}`, {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${client.accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ isRead: read }),
-        });
+        const yahooResponse = await fetch(
+          `${client.baseUrl}/v1/message/${emailId}`,
+          {
+            method: "PATCH",
+            headers: {
+              Authorization: `Bearer ${client.accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ isRead: read }),
+          }
+        );
+        if (!yahooResponse.ok) {
+          const errorData = await yahooResponse.json();
+          throw new ApiError(
+            StatusCodes.BAD_REQUEST,
+            `Failed to mark Yahoo email as read: ${
+              errorData.error?.description || "Unknown error"
+            }`
+          );
+        }
         break;
     }
   }
+
   clearCache() {
     this.analysisCache.clear();
+  }
+
+  async executeEmailAction(jsonResponse) {
+    switch (jsonResponse.action) {
+      case "send":
+        await this.sendEmail(jsonResponse.params);
+        return { message: "Email sent successfully", result: null };
+      case "listEmails":
+        const emails = await this.fetchEmails(jsonResponse.params);
+        return { message: "Emails fetched successfully", result: emails };
+      default:
+        throw new ApiError(
+          StatusCodes.BAD_REQUEST,
+          `Unsupported email action: ${jsonResponse.action}`
+        );
+    }
   }
 }
 

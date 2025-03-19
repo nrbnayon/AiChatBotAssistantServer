@@ -1,3 +1,4 @@
+// controllers\emailController.js
 import { createEmailService } from "../services/emailService.js";
 import MCPServer from "../services/mcpServer.js";
 import { StatusCodes } from "http-status-codes";

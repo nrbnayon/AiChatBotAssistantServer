@@ -1,3 +1,4 @@
+// services\mcpServer.js
 import Groq from "groq-sdk";
 import EmailDraft from "../models/EmailDraft.js";
 import { getDefaultModel, getModelById } from "../routes/aiModelRoutes.js";
@@ -177,36 +178,33 @@ class MCPServer {
         const emails = await this.emailService.fetchEmails(args);
         const totalEmails = emails.messages ? emails.messages.length : 0;
 
+        let text = "";
         if (totalEmails === 0) {
-          return [
-            {
-              type: "text",
-              text: `You have no ${filter || "emails"}.`,
-            },
-          ];
+          text = `You have no ${filter || "emails"}.`;
+        } else {
+          const emailSummaries = emails.messages
+            .slice(0, 3)
+            .map(
+              (email, index) =>
+                `${index + 1}. From: ${email.from}, Subject: ${
+                  email.subject || "No subject"
+                }, Date: ${email.date}`
+            )
+            .join("\n");
+          text = `You have ${totalEmails} ${filter || "email"}${
+            totalEmails === 1 ? "" : "s"
+          }. Here are the details of your ${
+            emails.messages.length > 10 ? "10 most recent" : "recent"
+          } emails:\n${emailSummaries}${
+            totalEmails > 10 ? "\nLet me know if you'd like to see more!" : ""
+          }`;
         }
-
-        // Summarize the emails in a conversational format
-        const emailSummaries = emails.messages
-          .slice(0, 3)
-          .map(
-            (email, index) =>
-              `${index + 1}. From: ${email.from}, Subject: ${
-                email.subject || "No subject"
-              }, Date: ${email.date}`
-          )
-          .join("\n");
 
         return [
           {
             type: "text",
-            text: `You have ${totalEmails} ${filter || "email"}${
-              totalEmails === 1 ? "" : "s"
-            }. Here are the details of your ${
-              emails.messages.length > 3 ? "3 most recent" : "recent"
-            } emails:\n${emailSummaries}${
-              totalEmails > 3 ? "\nLet me know if you'd like to see more!" : ""
-            }`,
+            text,
+            artifact: { type: "json", data: emails },
           },
         ];
       }
@@ -220,10 +218,9 @@ class MCPServer {
         // Count the total number of emails
         const totalEmails = emails.messages ? emails.messages.length : 0;
 
-        // Analyze the emails: Get the subjects of the most recent 3 emails (if any)
         let analysis = "";
         if (totalEmails > 0) {
-          const recentEmails = emails.messages.slice(0, 3); // Get up to 3 most recent emails
+          const recentEmails = emails.messages.slice(0, 10);
           const subjects = recentEmails
             .map((email) => email.subject || "No subject")
             .join(", ");

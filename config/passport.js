@@ -1,4 +1,3 @@
-// config/passport.js
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { Strategy as MicrosoftStrategy } from "passport-microsoft";
@@ -9,7 +8,6 @@ import { generateTokens } from "../controllers/authController.js";
 
 dotenv.config();
 
-// Session serialization and deserialization
 passport.serializeUser((user, done) => done(null, user.id));
 passport.deserializeUser(async (id, done) => {
   try {
@@ -21,12 +19,6 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
-/**
- * Get profile picture from provider-specific profile object
- * @param {Object} profile - The OAuth provider profile
- * @param {String} provider - The OAuth provider name
- * @returns {String|null} Profile picture URL or null
- */
 const getProfilePicture = (profile, provider) => {
   try {
     switch (provider) {
@@ -50,12 +42,6 @@ const getProfilePicture = (profile, provider) => {
   }
 };
 
-/**
- * Get email from provider-specific profile object
- * @param {Object} profile - The OAuth provider profile
- * @param {String} provider - The OAuth provider name
- * @returns {String|null} Email address or null
- */
 const getEmail = (profile, provider) => {
   try {
     if (provider === "microsoft") {
@@ -70,9 +56,6 @@ const getEmail = (profile, provider) => {
   }
 };
 
-/**
- * Common OAuth callback handler for all providers
- */
 const oauthCallback = async (
   accessToken,
   refreshToken,
@@ -81,7 +64,6 @@ const oauthCallback = async (
   provider
 ) => {
   try {
-    // Extract and validate email
     const email = getEmail(profile, provider);
     if (!email) {
       return done(
@@ -92,55 +74,50 @@ const oauthCallback = async (
 
     console.log(`[INFO] ${provider} OAuth login attempt for: ${email}`);
 
-    // Define provider-specific field mappings
     const providerFields = {
       google: {
         idField: "googleId",
         accessTokenField: "googleAccessToken",
         refreshTokenField: "googleRefreshToken",
+        expiryField: "googleAccessTokenExpires",
       },
       microsoft: {
         idField: "microsoftId",
         accessTokenField: "microsoftAccessToken",
         refreshTokenField: "microsoftRefreshToken",
+        expiryField: "microsoftAccessTokenExpires",
       },
       yahoo: {
         idField: "yahooId",
         accessTokenField: "yahooAccessToken",
         refreshTokenField: "yahooRefreshToken",
+        expiryField: "yahooAccessTokenExpires",
       },
     };
 
-    // Ensure provider is valid
     if (!providerFields[provider]) {
       return done(new Error(`Unsupported provider: ${provider}`), null);
     }
 
-    const { idField, accessTokenField, refreshTokenField } =
+    const { idField, accessTokenField, refreshTokenField, expiryField } =
       providerFields[provider];
     const profilePicture = getProfilePicture(profile, provider);
 
-    // Find or create user
     let user = await User.findOne({ email });
 
-    // Import DEFAULT_IMPORTANT_KEYWORDS from the User model
-
     if (user) {
-      // Update existing user with new auth info
       user[idField] = profile.id;
       user[accessTokenField] = accessToken;
-      user[refreshTokenField] = refreshToken;
+      user[refreshTokenField] = refreshToken || user[refreshTokenField];
+      user[expiryField] = Date.now() + 24 * 3600 * 1000; // Default 1-day expiry
       user.authProvider = provider;
       user.verified = true;
-      user.googleRefreshToken = refreshToken || user.googleRefreshToken;
-      user.microsoftAccessToken = refreshToken || user.microsoftAccessToken;
       user.lastSync = new Date();
 
       if (profilePicture) {
         user.profilePicture = profilePicture;
       }
 
-      // Only set default keywords if user's keywords are empty
       if (
         !user.userImportantMailKeywords ||
         user.userImportantMailKeywords.length === 0
@@ -153,36 +130,31 @@ const oauthCallback = async (
         `[INFO] Updated existing user for ${email} with ${provider} credentials`
       );
     } else {
-      // Create new user
       user = await User.create({
         email,
         name: profile.displayName || email.split("@")[0],
         [idField]: profile.id,
         [accessTokenField]: accessToken,
         [refreshTokenField]: refreshToken,
+        [expiryField]: Date.now() + 3600 * 1000,
         authProvider: provider,
         verified: true,
-        googleRefreshToken: refreshToken || null,
-        microsoftAccessToken: refreshToken || null,
         profilePicture: profilePicture,
         subscription: { plan: "free", dailyTokens: 100 },
         lastSync: new Date(),
-        userImportantMailKeywords: [...DEFAULT_IMPORTANT_KEYWORDS], // Set default keywords for new users
+        userImportantMailKeywords: [...DEFAULT_IMPORTANT_KEYWORDS],
       });
       console.log(
         `[INFO] Created new user for ${email} with ${provider} credentials`
       );
     }
 
-    // Generate JWT tokens for our application
     const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } =
       generateTokens(user);
 
-    // Store refresh token
     user.refreshToken = jwtRefreshToken;
     await user.save();
 
-    // Complete authentication
     return done(null, user, {
       accessToken: jwtAccessToken,
       refreshToken: jwtRefreshToken,
@@ -193,7 +165,6 @@ const oauthCallback = async (
   }
 };
 
-// Define OAuth strategies
 const strategies = {
   google: {
     options: {
@@ -224,7 +195,13 @@ const strategies = {
         process.env.NODE_ENV === "production"
           ? process.env.MICROSOFT_LIVE_REDIRECT_URI
           : process.env.MICROSOFT_REDIRECT_URI,
-      scope: ["User.Read", "Mail.Read", "Mail.ReadWrite", "Mail.Send"],
+      scope: [
+        "offline_access",
+        "User.Read",
+        "Mail.Read",
+        "Mail.ReadWrite",
+        "Mail.Send",
+      ],
       tenant: "common",
     },
     Strategy: MicrosoftStrategy,
@@ -243,7 +220,6 @@ const strategies = {
   },
 };
 
-// Register all strategies
 Object.entries(strategies).forEach(([provider, { options, Strategy }]) => {
   passport.use(
     new Strategy(options, (accessToken, refreshToken, profile, done) =>
