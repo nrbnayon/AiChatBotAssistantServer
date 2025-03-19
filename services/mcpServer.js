@@ -1,12 +1,12 @@
 import Groq from "groq-sdk";
 import EmailDraft from "../models/EmailDraft.js";
-import { ApiError } from "../utils/errorHandler.js";
-import { StatusCodes } from "http-status-codes";
-
+import { getDefaultModel, getModelById } from "../routes/aiModelRoutes.js";
+import { ApiError, logErrorWithStyle } from "../utils/errorHandler.js";
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
+// Updated SYSTEM_PROMPT to ensure JSON output with action or message
 const SYSTEM_PROMPT = `
-You are an AI email assistant powered by Grok from xAI. Your role is to interpret user commands and perform email actions for Gmail, Outlook, and Yahoo accounts. Available actions:
+You are an AI email assistant powered by Grok from xAI. Your role is to interpret user commands and perform email actions such as sending, drafting, reading, or managing emails. Available actions:
 - draft-email: Draft an email (params: recipient, content, recipient_email)
 - send-email: Send an email (params: recipient_id, subject, message)
 - read-email: Read an email (params: email_id)
@@ -15,133 +15,112 @@ You are an AI email assistant powered by Grok from xAI. Your role is to interpre
 - search-emails: Search emails (params: query)
 - mark-email-as-read: Mark an email as read (params: email_id)
 - summarize-email: Summarize an email (params: email_id)
-- list-emails: List recent emails (no params required)
+- fetch-emails: Fetch emails with optional filter (params: filter)
 
-Rules:
-1. For actions requiring confirmation (send-email, trash-email), ask for user confirmation unless explicitly confirmed in the command (e.g., "send it now").
-2. Maintain conversation context using the provided history.
-3. Extract parameters from the user's command naturally (e.g., "email John about the meeting" → recipient: "John", content: "the meeting").
-4. If parameters are missing or unclear, ask for clarification.
-5. Respond with a JSON object:
-   - "action": the action to perform (null if no action or waiting for confirmation)
-   - "params": parameters for the action
-   - "message": user-friendly response
+For every user command, you MUST respond with a valid JSON object. If the command matches an available action, return:
+{
+    "action": "<action_name>",
+    "params": { <required_parameters> }
+}
+
+If the command does not match any action or you cannot understand it, return:
+{
+    "message": "I'm sorry, I couldn't understand your request. Please try again."
+}
 
 Examples:
-- User: "Draft an email to John about the meeting"
-  Response: {"action": "draft-email", "params": {"recipient": "John", "content": "the meeting", "recipient_email": null}, "message": "I've drafted an email to John about the meeting. Please provide John's email address."}
-- User: "Trash email 123"
-  Response: {"action": null, "params": {}, "message": "Are you sure you want to trash email 123? Please confirm."}
-- User: "Yes"
-  Response: {"action": "trash-email", "params": {"email_id": "123"}, "message": "Email 123 has been moved to trash."}
+- User: "Send an email to john@example.com with subject 'Meeting' and body 'Let's meet tomorrow.'"
+  Response: {"action": "send-email", "params": {"recipient_id": "john@example.com", "subject": "Meeting", "message": "Let's meet tomorrow."}}
+- User: "I need to send an email."
+  Response: {"message": "Please provide the recipient, subject, and body of the email."}
+- User: "What are my unread emails?"
+  Response: {"action": "fetch-emails", "params": {"filter": "unread"}}
+
+Always ensure your response is a valid JSON object. Do not include both "action" and "message" in the same response.
 `;
 
-const TOOLS = [
-  {
-    name: "send-email",
-    description: "Sends email to recipient",
-    inputSchema: {
-      type: "object",
-      properties: {
-        recipient_id: {
-          type: "string",
-          description: "Recipient email address",
-        },
-        subject: { type: "string", description: "Email subject" },
-        message: { type: "string", description: "Email content text" },
-        attachments: { type: "array", description: "List of attachments" },
-      },
-      required: ["recipient_id", "subject", "message"],
-    },
-  },
-  {
-    name: "fetch-emails",
-    description: "Retrieve emails",
-    inputSchema: { type: "object", properties: {}, required: null },
-  },
-  {
-    name: "read-email",
-    description: "Retrieves given email content",
-    inputSchema: {
-      type: "object",
-      properties: { email_id: { type: "string", description: "Email ID" } },
-      required: ["email_id"],
-    },
-  },
-  {
-    name: "trash-email",
-    description: "Moves email to trash",
-    inputSchema: {
-      type: "object",
-      properties: { email_id: { type: "string", description: "Email ID" } },
-      required: ["email_id"],
-    },
-  },
-  {
-    name: "reply-to-email",
-    description: "Replies to an existing email",
-    inputSchema: {
-      type: "object",
-      properties: {
-        email_id: { type: "string", description: "Email ID to reply to" },
-        message: { type: "string", description: "Reply content" },
-        attachments: { type: "array", description: "List of attachments" },
-      },
-      required: ["email_id", "message"],
-    },
-  },
-  {
-    name: "search-emails",
-    description: "Searches emails based on a query",
-    inputSchema: {
-      type: "object",
-      properties: { query: { type: "string", description: "Search query" } },
-      required: ["query"],
-    },
-  },
-  {
-    name: "mark-email-as-read",
-    description: "Marks given email as read",
-    inputSchema: {
-      type: "object",
-      properties: { email_id: { type: "string", description: "Email ID" } },
-      required: ["email_id"],
-    },
-  },
-  {
-    name: "summarize-email",
-    description: "Summarizes given email content",
-    inputSchema: {
-      type: "object",
-      properties: { email_id: { type: "string", description: "Email ID" } },
-      required: ["email_id"],
-    },
-  },
-  {
-    name: "draft-email",
-    description: "Drafts an email without sending",
-    inputSchema: {
-      type: "object",
-      properties: {
-        recipient: { type: "string", description: "Recipient name" },
-        content: { type: "string", description: "Email content" },
-        recipient_email: {
-          type: "string",
-          description: "Recipient email address",
-        },
-      },
-      required: ["recipient", "content"],
-    },
-  },
-];
+// ModelProvider class for dynamic model selection with fallback
+class ModelProvider {
+  constructor() {
+    this.groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    this.retryCount = 3;
+    this.retryDelay = 1000;
+  }
+
+  async callWithFallbackChain(primaryModelId, options, fallbackChain = []) {
+    const completeChain = [primaryModelId, ...fallbackChain];
+    let lastError = null;
+
+    for (const currentModelId of completeChain) {
+      try {
+        const model = getModelById(currentModelId);
+        if (!model) {
+          console.warn(`Model ${currentModelId} not found, skipping`);
+          continue;
+        }
+        console.log(`Attempting to use model: ${model.name}`);
+        const result = await this.callModelWithRetry(currentModelId, options);
+        console.log(`Successfully used model: ${model.name}`);
+        return {
+          result,
+          modelUsed: model,
+          fallbackUsed: currentModelId !== primaryModelId,
+        };
+      } catch (error) {
+        lastError = error;
+        logErrorWithStyle(error);
+        console.warn(
+          `Model ${currentModelId} failed, trying next in fallback chain`
+        );
+      }
+    }
+    throw new ApiError(
+      503,
+      `All models in the fallback chain failed: ${
+        lastError?.message || "Unknown error"
+      }`
+    );
+  }
+
+  async callModelWithRetry(modelId, options) {
+    let attemptCount = 0;
+    let lastError = null;
+    let currentRetryDelay = this.retryDelay;
+
+    while (attemptCount < this.retryCount) {
+      try {
+        const result = await this.groq.chat.completions.create({
+          ...options,
+          model: modelId,
+        });
+        return result;
+      } catch (error) {
+        lastError = error;
+        attemptCount++;
+        if (attemptCount < this.retryCount) {
+          console.warn(
+            `Attempt ${attemptCount} failed for model ${modelId}, retrying after ${currentRetryDelay}ms`
+          );
+          await new Promise((resolve) =>
+            setTimeout(resolve, currentRetryDelay)
+          );
+          currentRetryDelay *= 2;
+        }
+      }
+    }
+    throw new ApiError(
+      503,
+      `Model ${modelId} failed after ${this.retryCount} attempts: ${
+        lastError?.message || "Unknown error"
+      }`
+    );
+  }
+}
 
 class MCPServer {
   constructor(emailService) {
     this.emailService = emailService;
-  }
-
-  async listTools() {
-    return TOOLS;
+    this.modelProvider = new ModelProvider();
   }
 
   async callTool(name, args, userId) {
@@ -159,11 +138,11 @@ class MCPServer {
         return [{ type: "text", text: "Email sent successfully" }];
       }
       case "fetch-emails": {
-        const emails = await this.emailService.fetchEmails();
+        const emails = await this.emailService.fetchEmails(args);
         return [
           {
             type: "text",
-            text: "Emails retrieved",
+            text: "Emails retrieved successfully",
             artifact: { type: "json", data: emails },
           },
         ];
@@ -175,7 +154,7 @@ class MCPServer {
         return [
           {
             type: "text",
-            text: "Email content retrieved",
+            text: "Email retrieved successfully",
             artifact: { type: "json", data: emailContent },
           },
         ];
@@ -184,7 +163,7 @@ class MCPServer {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID parameter");
         await this.emailService.trashEmail(email_id);
-        return [{ type: "text", text: "Email moved to trash" }];
+        return [{ type: "text", text: "Email trashed successfully" }];
       }
       case "reply-to-email": {
         const { email_id, message, attachments = [] } = args;
@@ -203,7 +182,7 @@ class MCPServer {
         return [
           {
             type: "text",
-            text: "Search results retrieved",
+            text: "Search results retrieved successfully",
             artifact: { type: "json", data: searchResults },
           },
         ];
@@ -212,27 +191,31 @@ class MCPServer {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID parameter");
         await this.emailService.markAsRead(email_id, true);
-        return [{ type: "text", text: "Email marked as read" }];
+        return [{ type: "text", text: "Email marked as read successfully" }];
       }
       case "summarize-email": {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID parameter");
         const emailContent = await this.emailService.getEmail(email_id);
-        const summary = await groq.chat.completions.create({
-          messages: [
-            {
-              role: "user",
-              content: `Summarize this email: ${emailContent.body}`,
-            },
-          ],
-          model: "llama3-70b-8192",
-          temperature: 0.7,
-        });
+        const summaryResponse = await this.modelProvider.callWithFallbackChain(
+          getDefaultModel().id,
+          {
+            messages: [
+              {
+                role: "user",
+                content: `Summarize this email: ${emailContent.body}`,
+              },
+            ],
+            temperature: 0.7,
+          },
+          ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "llama-3-70b"]
+        );
         return [
           {
             type: "text",
             text:
-              summary.choices[0]?.message?.content || "Summary not generated",
+              summaryResponse.result.choices[0]?.message?.content ||
+              "Summary not generated",
           },
         ];
       }
@@ -240,18 +223,22 @@ class MCPServer {
         const { recipient, content, recipient_email } = args;
         if (!recipient || !content)
           throw new Error("Missing required parameters");
-        const draftResponse = await groq.chat.completions.create({
-          messages: [
-            {
-              role: "user",
-              content: `Draft an email to ${recipient} about ${content}. Include a subject line starting with 'Subject:'`,
-            },
-          ],
-          model: "llama3-70b-8192",
-          temperature: 0.7,
-        });
+        const draftResponse = await this.modelProvider.callWithFallbackChain(
+          getDefaultModel().id,
+          {
+            messages: [
+              {
+                role: "user",
+                content: `Draft an email to ${recipient} about ${content}. Include a subject line starting with 'Subject:'`,
+              },
+            ],
+            temperature: 0.7,
+          },
+          ["mixtral-8x7b-32768", "llama-3-70b"]
+        );
         const draftText =
-          draftResponse.choices[0]?.message?.content || "Draft not generated";
+          draftResponse.result.choices[0]?.message?.content ||
+          "Draft not generated";
         const subject = draftText.split("\n")[0].replace("Subject: ", "");
         const body = draftText.split("\n").slice(1).join("\n");
         await EmailDraft.create({
@@ -263,7 +250,7 @@ class MCPServer {
         return [
           {
             type: "text",
-            text: `Draft created:\n${draftText}\nPlease review and provide the recipient's email if needed.`,
+            text: `Draft created successfully:\n${draftText}\nPlease review and provide the recipient's email if needed.`,
           },
         ];
       }
@@ -279,18 +266,41 @@ class MCPServer {
       ...history,
       { role: "user", content: message },
     ];
-
-    const groqResponse = await groq.chat.completions.create({
+    const primaryModelId = getDefaultModel().id;
+    const fallbackChain = ["mixtral-8x7b-32768", "llama-3-70b"];
+    const options = {
       messages,
-      model: "llama3-70b-8192",
       temperature: 0.7,
-    });
-
-    const responseContent = groqResponse.choices[0]?.message?.content || "{}";
+    };
+    const { result } = await this.modelProvider.callWithFallbackChain(
+      primaryModelId,
+      options,
+      fallbackChain
+    );
+    const responseContent = result.choices[0]?.message?.content || "{}";
+    console.log("[DEBUG] Raw model response:", responseContent); // Log the raw response for debugging
     let actionData;
     try {
       actionData = JSON.parse(responseContent);
+      if (!actionData.action && !actionData.message) {
+        console.log(
+          "[DEBUG] Model response lacks action or message:",
+          actionData
+        );
+        return [
+          {
+            type: "text",
+            text: "I'm sorry, I couldn't understand your request. Please try again.",
+          },
+        ];
+      }
     } catch (error) {
+      console.error(
+        "[ERROR] Failed to parse model response as JSON:",
+        error.message,
+        "Response:",
+        responseContent
+      );
       return [
         {
           type: "text",
@@ -298,14 +308,29 @@ class MCPServer {
         },
       ];
     }
-
-    const { action, params, message: responseMessage } = actionData;
-
-    if (action) {
-      const toolResponse = await this.callTool(action, params, userId);
-      return [{ type: "text", text: responseMessage }, ...toolResponse];
+    if (actionData.action) {
+      console.log(
+        "[DEBUG] Action recognized:",
+        actionData.action,
+        "Params:",
+        actionData.params
+      );
+      const toolResponse = await this.callTool(
+        actionData.action,
+        actionData.params,
+        userId
+      );
+      return toolResponse;
+    } else if (actionData.message) {
+      return [{ type: "text", text: actionData.message }];
+    } else {
+      return [
+        {
+          type: "text",
+          text: "I'm sorry, I couldn't understand your request. Please try again.",
+        },
+      ];
     }
-    return [{ type: "text", text: responseMessage }];
   }
 }
 

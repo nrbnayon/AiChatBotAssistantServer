@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-// Define default important keywords as a constant
+// Define default important keywords
 const DEFAULT_IMPORTANT_KEYWORDS = [
   "urgent",
   "important",
@@ -15,6 +15,7 @@ const DEFAULT_IMPORTANT_KEYWORDS = [
   "task",
 ];
 
+// Subscription schema
 const subscriptionSchema = new mongoose.Schema({
   plan: { type: String, default: "free" },
   status: { type: String, default: "ACTIVE" },
@@ -24,6 +25,7 @@ const subscriptionSchema = new mongoose.Schema({
   lastRequestDate: { type: Date },
 });
 
+// User schema
 const userSchema = new mongoose.Schema({
   role: { type: String, default: "USER" },
   name: { type: String },
@@ -57,14 +59,38 @@ const userSchema = new mongoose.Schema({
   dateOfBirth: { type: Date },
   createdAt: { type: Date, default: Date.now },
   lastSync: { type: Date, default: Date.now },
-  userImportantMailKeywords: { type: [String], default: [] }, 
+  userImportantMailKeywords: { type: [String], default: [] }, // Custom user keywords
 });
 
-// Method to get all important keywords (default + user-specific)
+// Method to get all keywords: default + user-defined
 userSchema.methods.getAllImportantKeywords = function () {
-  return [...DEFAULT_IMPORTANT_KEYWORDS, ...this.userImportantMailKeywords];
+  const combined = [
+    ...DEFAULT_IMPORTANT_KEYWORDS,
+    ...this.userImportantMailKeywords,
+  ];
+  const uniqueCombined = Array.from(
+    new Set(combined.map((k) => k.toLowerCase()))
+  );
+  return uniqueCombined;
+};
+
+// Optional method: Add a new user keyword (avoids duplicates)
+userSchema.methods.addImportantKeyword = async function (keyword) {
+  const lowerKeyword = keyword.toLowerCase();
+  if (
+    !this.userImportantMailKeywords
+      .map((k) => k.toLowerCase())
+      .includes(lowerKeyword) &&
+    !DEFAULT_IMPORTANT_KEYWORDS.map((k) => k.toLowerCase()).includes(
+      lowerKeyword
+    )
+  ) {
+    this.userImportantMailKeywords.push(keyword);
+    await this.save();
+  }
 };
 
 const User = mongoose.model("User", userSchema);
+
 export default User;
-export { DEFAULT_IMPORTANT_KEYWORDS }; // Export for use elsewhere
+export { DEFAULT_IMPORTANT_KEYWORDS };

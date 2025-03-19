@@ -4,7 +4,7 @@ import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { Strategy as MicrosoftStrategy } from "passport-microsoft";
 import { Strategy as YahooStrategy } from "passport-yahoo-oauth";
 import dotenv from "dotenv";
-import User from "../models/User.js";
+import User, { DEFAULT_IMPORTANT_KEYWORDS } from "../models/User.js";
 import { generateTokens } from "../controllers/authController.js";
 
 dotenv.config();
@@ -123,6 +123,8 @@ const oauthCallback = async (
     // Find or create user
     let user = await User.findOne({ email });
 
+    // Import DEFAULT_IMPORTANT_KEYWORDS from the User model
+
     if (user) {
       // Update existing user with new auth info
       user[idField] = profile.id;
@@ -136,6 +138,14 @@ const oauthCallback = async (
 
       if (profilePicture) {
         user.profilePicture = profilePicture;
+      }
+
+      // Only set default keywords if user's keywords are empty
+      if (
+        !user.userImportantMailKeywords ||
+        user.userImportantMailKeywords.length === 0
+      ) {
+        user.userImportantMailKeywords = [...DEFAULT_IMPORTANT_KEYWORDS];
       }
 
       await user.save();
@@ -157,6 +167,7 @@ const oauthCallback = async (
         profilePicture: profilePicture,
         subscription: { plan: "free", dailyTokens: 100 },
         lastSync: new Date(),
+        userImportantMailKeywords: [...DEFAULT_IMPORTANT_KEYWORDS], // Set default keywords for new users
       });
       console.log(
         `[INFO] Created new user for ${email} with ${provider} credentials`

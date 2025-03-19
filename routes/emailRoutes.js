@@ -2,9 +2,11 @@ import express from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import auth from "../middleware/authMiddleware.js";
+import auth, { setRefreshedTokenCookie } from "../middleware/authMiddleware.js";
 import emailAuth from "../middleware/emailMiddleware.js";
 import { rateLimitMiddleware } from "../middleware/rateLimit.js";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
 import {
   fetchEmails,
   sendEmail,
@@ -15,13 +17,13 @@ import {
   markEmailAsRead,
   summarizeEmail,
   chatWithBot,
-  upload,
+  fetchImportantEmails,
 } from "../controllers/emailController.js";
-import { createEmailService } from "../services/emailService.js";
-import { catchAsync } from "../utils/errorHandler.js";
-import User from "../models/User.js";
 
 const router = express.Router();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -36,13 +38,25 @@ const storage = multer.diskStorage({
 
 const uploadMiddleware = multer({ storage });
 
-// Fetch emails
-router.get("/", auth(), emailAuth, rateLimitMiddleware(), fetchEmails);
+// Route for fetching emails with optional filter
+router.get("/", auth(), emailAuth, rateLimitMiddleware(), (req, res) => {
+  const filter = req.query.filter || "all";
+  fetchEmails(req, res, filter);
+});
 
-// Get a single email by ID
-router.get("/:id", auth(), emailAuth, readEmail);
+// Route for fetching important emails using AI filtering
+router.get(
+  "/important",
+  auth(),
+  emailAuth,
+  setRefreshedTokenCookie,
+  fetchImportantEmails
+);
 
-// Send an email
+// Route for getting a single email by ID
+router.get("/:emailId", auth(), setRefreshedTokenCookie, emailAuth, readEmail);
+
+// Route for sending an email
 router.post(
   "/send",
   auth(),
@@ -51,56 +65,29 @@ router.post(
   sendEmail
 );
 
-// Reply to an email
+// Route for replying to an email
 router.post(
   "/reply/:emailId",
   auth(),
   emailAuth,
+  setRefreshedTokenCookie,
   uploadMiddleware.array("attachments"),
   replyToEmail
 );
 
-// Trash an email
+// Route for trashing an email
 router.delete("/trash/:emailId", auth(), emailAuth, trashEmail);
 
-// Search emails
-router.get("/search", auth(), emailAuth, searchEmails);
+// Route for searching emails
+router.get("/all/search", auth(), emailAuth, searchEmails);
 
-// Mark email as read
+// Route for marking email as read
 router.patch("/mark-as-read/:emailId", auth(), emailAuth, markEmailAsRead);
 
-// Summarize an email
+// Route for summarizing an email
 router.get("/summarize/:emailId", auth(), emailAuth, summarizeEmail);
 
-// Chat with AI bot
+// Route for chatting with AI bot
 router.post("/chat", auth(), emailAuth, chatWithBot);
-
-// Fetch important emails with AI filtering
-router.get(
-  "/important",
-  auth(),
-  emailAuth,
-  catchAsync(async (req, res) => {
-    const emailService = await createEmailService(req);
-    const user = await User.findById(req.user.id);
-    const { query, maxResults, pageToken, keywords, timeRange } = req.query;
-    const result = await emailService.fetchEmails({
-      query: query?.toString(),
-      maxResults: parseInt(maxResults?.toString() || "100"),
-      pageToken: pageToken?.toString(),
-    });
-    const customKeywords = keywords ? keywords.split(",") : [];
-    const importantEmails = await emailService.filterImportantEmails(
-      result.messages,
-      customKeywords,
-      timeRange?.toString() || "weekly"
-    );
-    res.json({
-      success: true,
-      messages: importantEmails,
-      nextPageToken: result.nextPageToken,
-    });
-  })
-);
 
 export default router;

@@ -1,6 +1,6 @@
 // routes/aiModelRoutes.js
 import express from "express";
-import { ApiError, catchAsync, logErrorWithStyle } from "../utils/errorHandler";
+import { ApiError, catchAsync, logErrorWithStyle } from "../utils/errorHandler.js";
 
 // Models configuration
 const availableModels = [

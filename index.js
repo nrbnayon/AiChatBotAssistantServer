@@ -1,4 +1,3 @@
-// index.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -10,9 +9,9 @@ import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import stripeRoutes from "./routes/stripeRoutes.js";
 import emailRoutes from "./routes/emailRoutes.js";
+import aiChatRoutes from "./routes/aiChatRoutes.js";
 import { globalErrorHandler } from "./utils/errorHandler.js";
 import requestLogger from "./utils/requestLogger.js";
-import aiChatRoutes from "./routes/aiChatRoutes.js";
 import "./config/passport.js";
 
 dotenv.config();
@@ -68,8 +67,6 @@ process.on("unhandledRejection", (reason, promise) => {
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-
-// Request logger middleware - REPLACE your existing logger with this
 app.use(requestLogger);
 
 app.get("/", (req, res) => {
@@ -82,20 +79,14 @@ app.use("/api/v1/stripe", stripeRoutes);
 app.use("/api/v1/emails", emailRoutes);
 app.use("/api/v1/ai-assistant", aiChatRoutes);
 
-// 404 handler
 app.use((req, res) => {
   res.status(404).json({
     success: false,
     message: "Route not found",
     path: req.path,
-    hint:
-      process.env.NODE_ENV === "development"
-        ? "🧭 Lost in the API wilderness? Check your route spelling!"
-        : undefined,
   });
 });
 
-// Global error handler with fun messages
 app.use(globalErrorHandler);
 
 connectDB().then(() => {
