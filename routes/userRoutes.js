@@ -6,8 +6,8 @@ import {
   deleteMe,
   getAllUsers,
   updateKeywords,
-  createUser, // New route handler for creating a user
-  deleteUser, // New route handler for deleting a user
+  createUser, 
+  deleteUser, 
 } from "../controllers/userController.js";
 import auth, { setRefreshedTokenCookie } from "../middleware/authMiddleware.js";
 import { rateLimitMiddleware } from "../middleware/rateLimit.js";
