@@ -635,28 +635,49 @@ class MCPServer {
   async chatWithBot(req, message, history = []) {
     const userId = req.user.id;
 
-    // Handle confirmation pattern more naturally
-    if (
-      message.toLowerCase().includes("confirm") &&
-      message.toLowerCase().includes("send")
+  if (
+        message.toLowerCase().includes("confirm") &&
+        message.toLowerCase().includes("send")
     ) {
-      const pendingEmail = this.pendingEmails.get(userId);
-      if (pendingEmail) {
-        const toolResponse = await this.callTool(
-          "send-email",
-          pendingEmail,
-          userId
+      // Find the last assistant message in history
+      const lastAssistantMessage = history
+        .slice()
+        .reverse()
+        .find((msg) => msg.role === "assistant")?.content;
+
+      if (
+        lastAssistantMessage &&
+        lastAssistantMessage.includes("I've put together an email")
+      ) {
+        // Extract email details from the message
+        const toMatch = lastAssistantMessage.match(/\*\*To:\*\* (.+?)\n/);
+        const subjectMatch = lastAssistantMessage.match(
+          /\*\*Subject:\*\* (.+?)\n/
         );
-        this.pendingEmails.delete(userId);
-        return toolResponse;
-      } else {
-        return [
-          {
-            type: "text",
-            text: "Hmm, I don't see any draft emails ready to send. Would you like to start a new email instead?",
-          },
-        ];
+        const messageMatch = lastAssistantMessage.match(
+          /\n\n(.+?)\n\nDoes this look good/
+        );
+
+        if (toMatch && subjectMatch && messageMatch) {
+          const to = toMatch[1].trim();
+          const subject = subjectMatch[1].trim();
+          const emailMessage = messageMatch[1].trim();
+
+          // Send the email using the extracted details
+          const toolResponse = await this.callTool(
+            "send-email",
+            { recipient_id: to, subject, message: emailMessage },
+            userId
+          );
+          return toolResponse;
+        }
       }
+      return [
+        {
+          type: "text",
+          text: "Hmm, I don't see any draft emails ready to send. Would you like to start a new email instead?",
+        },
+      ];
     }
 
     // Context-aware message preparation

@@ -713,12 +713,24 @@ class EmailService {
   }
 
   async sendMicrosoftEmail(client, { to, subject, body, attachments }) {
+    // Construct the message object
     const message = {
-      subject,
-      body: { contentType: "Text", content: body },
-      toRecipients: [{ emailAddress: { address: to } }],
+      subject: subject,
+      body: {
+        contentType: "Text",
+        content: body,
+      },
+      toRecipients: [
+        {
+          emailAddress: {
+            address: to,
+          },
+        },
+      ],
     };
-    if (attachments.length) {
+
+    // Add attachments if any exist
+    if (attachments && attachments.length > 0) {
       message.attachments = attachments.map((file) => ({
         "@odata.type": "#microsoft.graph.fileAttachment",
         name: file.filename,
@@ -726,18 +738,27 @@ class EmailService {
         contentType: file.mimetype,
       }));
     }
-    const response = await fetch(`${client.baseUrl}/messages`, {
+
+    // Prepare the request body for /sendMail
+    const sendMailBody = {
+      message: message,
+      saveToSentItems: "true", // Optional: saves a copy to Sent Items
+    };
+
+    // Send the email using the /sendMail endpoint
+    const response = await fetch(`${client.baseUrl}/sendMail`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${client.accessToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(message),
+      body: JSON.stringify(sendMailBody),
     });
+
+    // Handle any errors
     if (!response.ok) {
       const errorData = await response.json();
-      throw new ApiError(
-        StatusCodes.BAD_REQUEST,
+      throw new Error(
         `Failed to send Microsoft email: ${errorData.error.message}`
       );
     }
