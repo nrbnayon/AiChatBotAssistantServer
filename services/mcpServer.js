@@ -174,12 +174,12 @@ class MCPServer {
         ];
       }
       case "fetch-emails": {
-        const { filter, query } = args;
+        const { query } = args;
+        const filter = ["all", "sent", "archived"];
         const emails = await this.emailService.fetchEmails({ filter, query });
         const analyzedData = this.analyzeEmails(emails, query || filter || "");
 
         let text = "";
-
         if (analyzedData.table) {
           const introTexts = [
             "Here's what I found in your emails:",
@@ -187,33 +187,27 @@ class MCPServer {
             "Based on your emails, here's what I discovered:",
             "Here's the information you requested:",
           ];
-
           const followUpTexts = [
             "Would you like to take any action with these results?",
             "Anything specific you'd like to know more about?",
             "Do you want me to help you respond to any of these?",
             "Is there anything else you'd like me to find?",
           ];
-
           const intro =
             introTexts[Math.floor(Math.random() * introTexts.length)];
           const followUp =
             followUpTexts[Math.floor(Math.random() * followUpTexts.length)];
-
           text = `${intro}\n\n${this.formatTable(
             analyzedData.table
           )}\n\n${followUp}`;
         } else {
-          // For general email results
           const count = emails.messages.length;
           const previewCount = Math.min(count, 3);
-
           if (count === 0) {
             text =
               "I couldn't find any emails matching your criteria. Would you like to try a different search?";
           } else {
             text = `I found ${count} emails matching your request. Here are the most recent ${previewCount}:\n\n`;
-
             text += emails.messages
               .slice(0, previewCount)
               .map((e, i) => {
@@ -223,28 +217,19 @@ class MCPServer {
                 }\nDate: ${date}\n${e.snippet || "No preview available"}\n`;
               })
               .join("\n");
-
             text += `\n\nWould you like me to open any of these emails, or search for something more specific?`;
           }
         }
-
         return [
-          {
-            type: "text",
-            text,
-            artifact: { type: "json", data: analyzedData },
-          },
+          { type: "text", text, artifact: { type: "json", data: emails } },
         ];
       }
-
       case "count-emails": {
         const { filter } = args;
         if (!filter) throw new Error("Missing filter parameter");
-
         const emails = await this.emailService.fetchEmails({ filter });
         const totalEmails = emails.messages ? emails.messages.length : 0;
 
-        // More natural response about email count
         let text = "";
         if (totalEmails === 0) {
           text = `Looks like you don't have any ${filter} emails at the moment. Your inbox is all caught up!`;
@@ -257,7 +242,6 @@ class MCPServer {
         } else {
           text = `Wow! You have ${totalEmails} ${filter} emails. Would you like me to help you manage them?`;
         }
-
         if (totalEmails > 0) {
           const recentEmails = emails.messages.slice(0, 3);
           const senders = [
@@ -265,7 +249,6 @@ class MCPServer {
               recentEmails.map((email) => email.from.split("<")[0].trim())
             ),
           ];
-
           if (senders.length === 1) {
             text += ` The most recent one is from ${senders[0]}.`;
           } else if (senders.length > 1) {
@@ -273,18 +256,10 @@ class MCPServer {
               .slice(0, -1)
               .join(", ")} and ${senders[senders.length - 1]}.`;
           }
-
           text += ` Would you like me to summarize any of them for you?`;
         }
-
-        return [
-          {
-            type: "text",
-            text,
-          },
-        ];
+        return [{ type: "text", text }];
       }
-
       case "read-email": {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID parameter");
@@ -302,10 +277,7 @@ class MCPServer {
         if (!email_id) throw new Error("Missing email ID parameter");
         await this.emailService.trashEmail(email_id);
         return [
-          {
-            type: "text",
-            text: "I’ve moved that email to the trash for you.",
-          },
+          { type: "text", text: "I’ve moved that email to the trash for you." },
         ];
       }
       case "reply-to-email": {
@@ -316,12 +288,7 @@ class MCPServer {
           body: message,
           attachments,
         });
-        return [
-          {
-            type: "text",
-            text: "Your reply is on its way!",
-          },
-        ];
+        return [{ type: "text", text: "Your reply is on its way!" }];
       }
       case "search-emails": {
         const { query } = args;
@@ -340,10 +307,7 @@ class MCPServer {
         if (!email_id) throw new Error("Missing email ID parameter");
         await this.emailService.markAsRead(email_id, true);
         return [
-          {
-            type: "text",
-            text: "I’ve marked that email as read for you.",
-          },
+          { type: "text", text: "I’ve marked that email as read for you." },
         ];
       }
       case "summarize-email": {
@@ -414,10 +378,8 @@ class MCPServer {
   }
 
   analyzeEmails(emails, query) {
-    // More flexible query matching
     const queryLower = query.toLowerCase();
 
-    // Car offers analysis
     if (
       queryLower.includes("car") &&
       (queryLower.includes("offer") || queryLower.includes("deal"))
@@ -434,7 +396,6 @@ class MCPServer {
           );
         })
         .map((email) => {
-          // More advanced pattern matching
           const modelMatch = email.body.match(
             /(?:car|model|vehicle):?\s*(\w+\s*\w*)/i
           ) ||
@@ -442,12 +403,10 @@ class MCPServer {
               "",
               "N/A",
             ];
-
           const yearMatch = email.body.match(
             /(?:year|model year):?\s*(\d{4})/i
           ) ||
             email.body.match(/(\d{4})\s*(?:car|model|vehicle)/i) || ["", "N/A"];
-
           const priceMatch = email.body.match(
             /(?:price|cost|value):?\s*\$?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i
           ) ||
@@ -455,7 +414,6 @@ class MCPServer {
               "",
               "N/A",
             ];
-
           return {
             "Car Model": modelMatch[1],
             Year: yearMatch[1],
@@ -471,12 +429,8 @@ class MCPServer {
             offer["Year"] !== "N/A" ||
             offer["Price"] !== "N/A"
         );
-
       return { table: offers };
-    }
-
-    // Package delivery analysis
-    else if (
+    } else if (
       queryLower.includes("package") ||
       queryLower.includes("delivery") ||
       queryLower.includes("shipping")
@@ -496,15 +450,12 @@ class MCPServer {
             /(?:tracking|track):?\s*#?\s*([A-Z0-9]{8,})/i
           ) ||
             email.body.match(/([A-Z0-9]{8,})/i) || ["", "N/A"];
-
           const statusMatch = email.body.match(
             /(?:status|delivery status):?\s*(\w+\s*\w*)/i
           ) || ["", "N/A"];
-
           const dateMatch = email.body.match(
             /(?:delivery|arrival|expected):?\s*(?:date|by)?:?\s*(\w+\s*\d{1,2},?\s*\d{4})/i
           ) || ["", "N/A"];
-
           return {
             Sender: email.from,
             Subject: email.subject,
@@ -520,12 +471,8 @@ class MCPServer {
             pkg["Status"] !== "N/A" ||
             pkg["Delivery Date"] !== "N/A"
         );
-
       return { table: packages };
-    }
-
-    // Calendar events analysis
-    else if (
+    } else if (
       queryLower.includes("event") ||
       queryLower.includes("meeting") ||
       queryLower.includes("calendar")
@@ -542,19 +489,15 @@ class MCPServer {
         })
         .map((email) => {
           const titleMatch = email.subject.match(/(.+)/) || ["", "N/A"];
-
           const dateMatch = email.body.match(
             /(?:date|scheduled|when):?\s*(\w+\s*\d{1,2},?\s*\d{4})/i
           ) || ["", "N/A"];
-
           const timeMatch = email.body.match(
             /(?:time|at):?\s*(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i
           ) || ["", "N/A"];
-
           const locationMatch = email.body.match(
             /(?:location|place|venue):?\s*(.+?)(?:\.|,|\n|$)/i
           ) || ["", "N/A"];
-
           return {
             Event: titleMatch[1],
             Date: dateMatch[1],
@@ -565,11 +508,8 @@ class MCPServer {
           };
         })
         .filter((event) => event["Date"] !== "N/A" || event["Time"] !== "N/A");
-
       return { table: events };
     }
-
-    // General email analysis
     return {
       emails: emails.messages.map((email) => ({
         id: email.id,
@@ -593,7 +533,6 @@ class MCPServer {
       const sender = email.from;
       senderCounts[sender] = (senderCounts[sender] || 0) + 1;
     });
-
     return Object.entries(senderCounts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
@@ -604,13 +543,10 @@ class MCPServer {
     const today = new Date();
     const oneDayAgo = new Date(today);
     oneDayAgo.setDate(today.getDate() - 1);
-
     const oneWeekAgo = new Date(today);
     oneWeekAgo.setDate(today.getDate() - 7);
-
     const oneMonthAgo = new Date(today);
     oneMonthAgo.setMonth(today.getMonth() - 1);
-
     return {
       today: emails.filter((e) => new Date(e.date) >= oneDayAgo).length,
       thisWeek: emails.filter((e) => new Date(e.date) >= oneWeekAgo).length,
@@ -625,31 +561,26 @@ class MCPServer {
     const rows = data.map((row) =>
       headers.map((header) => row[header] || "N/A").join(" | ")
     );
-    return (
-      `| ${headers.join(" | ")} |\n` +
-      `| ${headers.map(() => "---").join(" | ")} |\n` +
-      rows.map((row) => `| ${row} |`).join("\n")
-    );
+    return `| ${headers.join(" | ")} |\n| ${headers
+      .map(() => "---")
+      .join(" | ")} |\n${rows.map((row) => `| ${row} |`).join("\n")}`;
   }
 
   async chatWithBot(req, message, history = []) {
     const userId = req.user.id;
 
-  if (
-        message.toLowerCase().includes("confirm") &&
-        message.toLowerCase().includes("send")
+    if (
+      message.toLowerCase().includes("confirm") &&
+      message.toLowerCase().includes("send")
     ) {
-      // Find the last assistant message in history
       const lastAssistantMessage = history
         .slice()
         .reverse()
         .find((msg) => msg.role === "assistant")?.content;
-
       if (
         lastAssistantMessage &&
         lastAssistantMessage.includes("I've put together an email")
       ) {
-        // Extract email details from the message
         const toMatch = lastAssistantMessage.match(/\*\*To:\*\* (.+?)\n/);
         const subjectMatch = lastAssistantMessage.match(
           /\*\*Subject:\*\* (.+?)\n/
@@ -657,13 +588,10 @@ class MCPServer {
         const messageMatch = lastAssistantMessage.match(
           /\n\n(.+?)\n\nDoes this look good/
         );
-
         if (toMatch && subjectMatch && messageMatch) {
           const to = toMatch[1].trim();
           const subject = subjectMatch[1].trim();
           const emailMessage = messageMatch[1].trim();
-
-          // Send the email using the extracted details
           const toolResponse = await this.callTool(
             "send-email",
             { recipient_id: to, subject, message: emailMessage },
@@ -680,24 +608,17 @@ class MCPServer {
       ];
     }
 
-    // Context-aware message preparation
     const messages = [
       { role: "system", content: SYSTEM_PROMPT },
       ...history,
       { role: "user", content: message },
     ];
 
-    // Add time-of-day context for more natural responses
     const hour = new Date().getHours();
     let timeContext = "";
-    if (hour >= 5 && hour < 12) {
-      timeContext = "It's morning, ";
-    } else if (hour >= 12 && hour < 18) {
-      timeContext = "It's afternoon, ";
-    } else {
-      timeContext = "It's evening, ";
-    }
-
+    if (hour >= 5 && hour < 12) timeContext = "It's morning, ";
+    else if (hour >= 12 && hour < 18) timeContext = "It's afternoon, ";
+    else timeContext = "It's evening, ";
     messages.push({
       role: "system",
       content: `${timeContext}the user might appreciate a response that acknowledges their busy schedule.`,
@@ -705,17 +626,13 @@ class MCPServer {
 
     const primaryModelId = getDefaultModel().id;
     const fallbackChain = ["mixtral-8x7b-32768", "llama-3-70b"];
-    const options = {
-      messages,
-      temperature: 0.7,
-    };
+    const options = { messages, temperature: 0.7 };
 
     const { result } = await this.modelProvider.callWithFallbackChain(
       primaryModelId,
       options,
       fallbackChain
     );
-
     const responseContent = result.choices[0]?.message?.content || "{}";
     console.log("[DEBUG] Raw model response:", responseContent);
 
@@ -749,7 +666,6 @@ class MCPServer {
       ];
     }
 
-    // Handle different response types more naturally
     if (actionData.action) {
       console.log(
         "[DEBUG] Action recognized:",
@@ -757,7 +673,6 @@ class MCPServer {
         "Params:",
         actionData.params
       );
-
       if (actionData.action === "send-email") {
         this.pendingEmails.set(userId, actionData.params);
         const recipientName = actionData.params.recipient_id.split("@")[0];
@@ -768,7 +683,6 @@ class MCPServer {
           },
         ];
       }
-
       const toolResponse = await this.callTool(
         actionData.action,
         actionData.params,
@@ -776,22 +690,17 @@ class MCPServer {
       );
       return toolResponse;
     } else if (actionData.message && actionData.data) {
-      // Format structured data in a more conversational way
       const formattedTable = actionData.data.table
         ? this.formatTable(actionData.data.table)
         : "";
-
-      // Add a variety of follow-up prompts
       const followUps = [
         "What would you like to do with this information?",
         "Anything specific you'd like to know more about?",
         "Does this help with what you were looking for?",
         "Is there anything else you'd like me to explain?",
       ];
-
       const randomFollowUp =
         followUps[Math.floor(Math.random() * followUps.length)];
-
       let text = `${actionData.message}\n\n${formattedTable}\n\n${randomFollowUp}`;
       return [{ type: "text", text }];
     } else if (actionData.chat) {

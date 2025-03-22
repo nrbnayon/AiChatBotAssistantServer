@@ -1,12 +1,8 @@
-// controllers\emailController.js
 import { createEmailService } from "../services/emailService.js";
 import MCPServer from "../services/mcpServer.js";
 import { StatusCodes } from "http-status-codes";
 import { ApiError, catchAsync } from "../utils/errorHandler.js";
 
-/**
- * Fetch emails with optional filtering
- */
 const fetchEmails = catchAsync(async (req, res, filter = "all") => {
   console.log(
     "Fetching emails with filter:",
@@ -15,8 +11,6 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
     req.user.email
   );
   const { query, maxResults = 5000, pageToken } = req.query;
-
-  console.log("Search query:", query);
 
   const emailService = await createEmailService(req);
   const mcpServer = new MCPServer(emailService);
@@ -39,9 +33,7 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
     );
   }
 
-  // Extract the messages and count them
   const messages = emailsData.messages || [];
-
   res.json({
     success: true,
     totalEmails: messages.length,
@@ -50,9 +42,6 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
   });
 });
 
-/**
- * Fetch important emails using AI filtering
- */
 const fetchImportantEmails = catchAsync(async (req, res) => {
   const emailService = await createEmailService(req);
   const {
@@ -81,9 +70,6 @@ const fetchImportantEmails = catchAsync(async (req, res) => {
   });
 });
 
-/**
- * Send a new email
- */
 const sendEmail = catchAsync(async (req, res) => {
   const { to, subject, message } = req.body;
   const attachments = req.files || [];
@@ -103,9 +89,6 @@ const sendEmail = catchAsync(async (req, res) => {
   res.json({ success: true, message: sendResponse[0].text });
 });
 
-/**
- * Read a specific email by ID
- */
 const readEmail = catchAsync(async (req, res) => {
   const { emailId } = req.params;
   if (!emailId)
@@ -122,9 +105,6 @@ const readEmail = catchAsync(async (req, res) => {
   res.json({ success: true, email: emailContent[0].artifact?.data });
 });
 
-/**
- * Reply to an existing email
- */
 const replyToEmail = catchAsync(async (req, res) => {
   const { emailId } = req.params;
   const { message } = req.body;
@@ -148,9 +128,6 @@ const replyToEmail = catchAsync(async (req, res) => {
   res.json({ success: true, message: replyResponse[0].text });
 });
 
-/**
- * Move an email to trash
- */
 const trashEmail = catchAsync(async (req, res) => {
   const { emailId } = req.params;
   if (!emailId)
@@ -167,12 +144,8 @@ const trashEmail = catchAsync(async (req, res) => {
   res.json({ success: true, message: trashResponse[0].text });
 });
 
-/**
- * Search emails by query
- */
 const searchEmails = catchAsync(async (req, res) => {
   const { query } = req.query;
-  console.log("Get search emails by query::::", { query });
   if (!query)
     throw new ApiError(StatusCodes.BAD_REQUEST, "Search query is required");
   const emailService = await createEmailService(req);
@@ -191,9 +164,7 @@ const searchEmails = catchAsync(async (req, res) => {
     );
   }
 
-  // Extract the messages and count them
   const messages = searchData.messages || [];
-
   res.json({
     success: true,
     totalEmails: messages.length,
@@ -202,9 +173,6 @@ const searchEmails = catchAsync(async (req, res) => {
   });
 });
 
-/**
- * Mark an email as read
- */
 const markEmailAsRead = catchAsync(async (req, res) => {
   const { emailId } = req.params;
   if (!emailId)
@@ -221,9 +189,6 @@ const markEmailAsRead = catchAsync(async (req, res) => {
   res.json({ success: true, message: readResponse[0].text });
 });
 
-/**
- * Summarize an email using AI
- */
 const summarizeEmail = catchAsync(async (req, res) => {
   const { emailId } = req.params;
   if (!emailId)
@@ -240,9 +205,6 @@ const summarizeEmail = catchAsync(async (req, res) => {
   res.json({ success: true, summary: summaryResponse[0].text });
 });
 
-/**
- * Chat with AI bot
- */
 const chatWithBot = catchAsync(async (req, res) => {
   const { message, history = [] } = req.body;
   if (!message)
@@ -253,6 +215,28 @@ const chatWithBot = catchAsync(async (req, res) => {
   const response = await mcpServer.chatWithBot(req, message, history);
 
   res.json({ success: true, response });
+});
+
+const createDraft = catchAsync(async (req, res) => {
+  const { to, subject, message } = req.body;
+  const attachments = req.files || [];
+
+  if (!to || !subject || !message) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, "Missing required fields");
+  }
+
+  const emailService = await createEmailService(req);
+  const draftId = await emailService.draftEmail({
+    to,
+    subject,
+    body: message,
+    attachments,
+  });
+  res.json({
+    success: true,
+    draftId,
+    message: "Your mail draft box successfully",
+  });
 });
 
 export {
@@ -266,4 +250,5 @@ export {
   markEmailAsRead,
   summarizeEmail,
   chatWithBot,
+  createDraft,
 };

@@ -18,6 +18,7 @@ import {
   summarizeEmail,
   chatWithBot,
   fetchImportantEmails,
+  createDraft,
 } from "../controllers/emailController.js";
 
 const router = express.Router();
@@ -38,13 +39,11 @@ const storage = multer.diskStorage({
 
 const uploadMiddleware = multer({ storage });
 
-// Route for fetching emails with optional filter
 router.get("/", auth(), emailAuth, rateLimitMiddleware(), (req, res) => {
   const filter = req.query.filter || "all";
   fetchEmails(req, res, filter);
 });
 
-// Route for fetching important emails using AI filtering
 router.get(
   "/important",
   auth(),
@@ -53,10 +52,8 @@ router.get(
   fetchImportantEmails
 );
 
-// Route for getting a single email by ID
 router.get("/:emailId", auth(), setRefreshedTokenCookie, emailAuth, readEmail);
 
-// Route for sending an email
 router.post(
   "/send",
   auth(),
@@ -65,7 +62,6 @@ router.post(
   sendEmail
 );
 
-// Route for replying to an email
 router.post(
   "/reply/:emailId",
   auth(),
@@ -75,19 +71,22 @@ router.post(
   replyToEmail
 );
 
-// Route for trashing an email
 router.delete("/trash/:emailId", auth(), emailAuth, trashEmail);
 
-// Route for searching emails
 router.get("/all/search", auth(), emailAuth, searchEmails);
 
-// Route for marking email as read
 router.patch("/mark-as-read/:emailId", auth(), emailAuth, markEmailAsRead);
 
-// Route for summarizing an email
 router.get("/summarize/:emailId", auth(), emailAuth, summarizeEmail);
 
-// Route for chatting with AI bot
 router.post("/chat", auth(), emailAuth, chatWithBot);
+
+router.post(
+  "/draft",
+  auth(),
+  emailAuth,
+  uploadMiddleware.array("attachments"),
+  createDraft
+);
 
 export default router;
