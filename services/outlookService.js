@@ -110,6 +110,7 @@ class OutlookService extends EmailService {
     };
   }
 
+  
   async fetchEmails({
     query,
     maxResults = 5000,
