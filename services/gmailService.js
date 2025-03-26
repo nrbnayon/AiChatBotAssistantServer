@@ -4,6 +4,7 @@ import { ApiError } from "../utils/errorHandler.js";
 import { StatusCodes } from "http-status-codes";
 import EmailService from "./emailService.js";
 import { convert } from "html-to-text";
+import { decrypt } from "../utils/encryptionUtils.js"; 
 
 class GmailService extends EmailService {
   async getClient() {
@@ -12,23 +13,31 @@ class GmailService extends EmailService {
       process.env.GOOGLE_CLIENT_SECRET,
       process.env.GOOGLE_REDIRECT_URI
     );
-    if (!this.user.googleRefreshToken) {
+
+    // Check if refresh token exists
+    const encryptedRefreshToken = this.user.googleRefreshToken;
+    if (!encryptedRefreshToken) {
       throw new ApiError(
         StatusCodes.UNAUTHORIZED,
         "No Google refresh token available. Please re-authenticate."
       );
     }
+
+    // Decrypt the refresh token
+    const refreshToken = decrypt(encryptedRefreshToken);
+
     const googleTokenExpiry = this.user.googleAccessTokenExpires || 0;
     if (googleTokenExpiry < Date.now()) {
       auth.setCredentials({
         access_token: this.user.googleAccessToken,
-        refresh_token: this.user.googleRefreshToken,
+        refresh_token: refreshToken, // Use decrypted refresh token
       });
       try {
         const { credentials } = await auth.refreshAccessToken();
         this.user.googleAccessToken = credentials.access_token;
-        this.user.googleRefreshToken =
-          credentials.refresh_token || this.user.googleRefreshToken;
+        this.user.googleRefreshToken = credentials.refresh_token
+          ? encrypt(credentials.refresh_token) // Re-encrypt if a new refresh token is provided
+          : this.user.googleRefreshToken;
         this.user.googleAccessTokenExpires = credentials.expiry_date;
         await this.user.save();
         console.log("[DEBUG] Google token refreshed");
@@ -42,7 +51,7 @@ class GmailService extends EmailService {
     }
     auth.setCredentials({
       access_token: this.user.googleAccessToken,
-      refresh_token: this.user.googleRefreshToken,
+      refresh_token: refreshToken, // Use decrypted refresh token
     });
     return google.gmail({ version: "v1", auth });
   }
@@ -51,10 +60,16 @@ class GmailService extends EmailService {
     query = "",
     maxResults = 5000,
     pageToken,
-    filter = ["all", "sent", "archived", "important"],
+    filter = "all",
   }) {
     const client = await this.getClient();
-    const params = { userId: "me", maxResults, q: query, pageToken };
+    let adjustedQuery = query;
+    if (query.toLowerCase() === "unread" && filter.toLowerCase() === "all") {
+      adjustedQuery = "is:unread";
+    } else {
+      adjustedQuery = query;
+    }
+    const params = { userId: "me", maxResults, q: adjustedQuery, pageToken };
     switch (filter.toLowerCase()) {
       case "all":
         break;
@@ -72,6 +87,9 @@ class GmailService extends EmailService {
         break;
       case "sent":
         params.labelIds = ["SENT"];
+        break;
+      case "unread":
+        params.labelIds = ["UNREAD"];
         break;
       case "drafts":
         params.labelIds = ["DRAFT"];

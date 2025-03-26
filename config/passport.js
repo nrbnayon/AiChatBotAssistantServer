@@ -1,14 +1,17 @@
+// config\passport.js
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { Strategy as MicrosoftStrategy } from "passport-microsoft";
-import { Strategy as YahooStrategy } from "passport-yahoo-oauth";
 import dotenv from "dotenv";
 import User, { DEFAULT_IMPORTANT_KEYWORDS } from "../models/User.js";
 import { generateTokens } from "../controllers/authController.js";
+import WaitingList from "../models/WaitingList.js";
+import { encrypt } from "../utils/encryptionUtils.js"; // Import encryption utility
 
 dotenv.config();
 
 passport.serializeUser((user, done) => done(null, user.id));
+
 passport.deserializeUser(async (id, done) => {
   try {
     const user = await User.findById(id);
@@ -28,8 +31,6 @@ const getProfilePicture = (profile, provider) => {
           : null;
       case "microsoft":
         return profile._json.photo || profile._json.picture || null;
-      case "yahoo":
-        return profile._json.profile_image || null;
       default:
         return null;
     }
@@ -71,6 +72,17 @@ const oauthCallback = async (
         null
       );
     }
+    // const waitingListEntry = await WaitingList.findOne({
+    //   email,
+    //   status: "approved",
+    // });
+
+    // console.log(`[INFO] Waiting list entry for ${email}:`, waitingListEntry);
+    // if (!waitingListEntry) {
+    //   return done(null, false, {
+    //     message: "Email not approved in waiting list",
+    //   });
+    // }
 
     console.log(`[INFO] ${provider} OAuth login attempt for: ${email}`);
 
@@ -87,12 +99,6 @@ const oauthCallback = async (
         refreshTokenField: "microsoftRefreshToken",
         expiryField: "microsoftAccessTokenExpires",
       },
-      yahoo: {
-        idField: "yahooId",
-        accessTokenField: "yahooAccessToken",
-        refreshTokenField: "yahooRefreshToken",
-        expiryField: "yahooAccessTokenExpires",
-      },
     };
 
     if (!providerFields[provider]) {
@@ -103,20 +109,30 @@ const oauthCallback = async (
       providerFields[provider];
     const profilePicture = getProfilePicture(profile, provider);
 
+    // Encrypt sensitive tokens
+    const encryptedAccessToken = encrypt(accessToken);
+    const encryptedRefreshToken = refreshToken ? encrypt(refreshToken) : null;
+
     let user = await User.findOne({ email });
 
     if (user) {
       user[idField] = profile.id;
-      user[accessTokenField] = accessToken;
-      user[refreshTokenField] = refreshToken || user[refreshTokenField];
-      user[expiryField] = Date.now() + 24 * 3600 * 1000; 
+      user[accessTokenField] = encryptedAccessToken;
+      user[refreshTokenField] =
+        encryptedRefreshToken || user[refreshTokenField];
+      user[expiryField] = Date.now() + 24 * 3600 * 1000; // 24 hours
       user.authProvider = provider;
       user.verified = true;
       user.lastSync = new Date();
 
-      if (profilePicture) {
-        user.profilePicture = profilePicture;
-      }
+      // if (
+      //   !user.inboxList.includes(waitingListEntry.inbox) &&
+      //   !user.inboxList.includes(email)
+      // ) {
+      //   user.inboxList.push(waitingListEntry.inbox || email);
+      // }
+
+      if (profilePicture) user.profilePicture = profilePicture;
 
       if (
         !user.userImportantMailKeywords ||
@@ -134,14 +150,15 @@ const oauthCallback = async (
         email,
         name: profile.displayName || email.split("@")[0],
         [idField]: profile.id,
-        [accessTokenField]: accessToken,
-        [refreshTokenField]: refreshToken,
-        [expiryField]: Date.now() + 3600 * 1000,
+        [accessTokenField]: encryptedAccessToken,
+        [refreshTokenField]: encryptedRefreshToken,
+        [expiryField]: Date.now() + 24 * 3600 * 1000,
         authProvider: provider,
         verified: true,
-        profilePicture: profilePicture,
-        subscription: { plan: "free", dailyTokens: 100 },
+        profilePicture,
+        subscription: { plan: "basic", dailyQueries: 15 },
         lastSync: new Date(),
+        inboxList: [email || waitingListEntry.inbox],
         userImportantMailKeywords: [...DEFAULT_IMPORTANT_KEYWORDS],
       });
       console.log(
@@ -151,7 +168,6 @@ const oauthCallback = async (
 
     const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } =
       generateTokens(user);
-
     user.refreshToken = jwtRefreshToken;
     await user.save();
 
@@ -205,18 +221,6 @@ const strategies = {
       tenant: "common",
     },
     Strategy: MicrosoftStrategy,
-  },
-  yahoo: {
-    options: {
-      consumerKey: process.env.YAHOO_CLIENT_ID,
-      consumerSecret: process.env.YAHOO_CLIENT_SECRET,
-      callbackURL:
-        process.env.NODE_ENV === "production"
-          ? process.env.YAHOO_REDIRECT_URI
-          : process.env.YAHOO_DEV_REDIRECT_URI,
-      scope: ["profile", "email", "mail-r", "mail-w"],
-    },
-    Strategy: YahooStrategy,
   },
 };
 

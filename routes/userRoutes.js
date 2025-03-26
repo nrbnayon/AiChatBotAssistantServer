@@ -6,15 +6,31 @@ import {
   deleteMe,
   getAllUsers,
   updateKeywords,
-  createUser, 
-  deleteUser, 
+  createUser,
+  deleteUser,
+  addInbox,
+  getIncome,
+  getUserStats,
+  approveWaitingList,
+  rejectWaitingList,
 } from "../controllers/userController.js";
 import auth, { setRefreshedTokenCookie } from "../middleware/authMiddleware.js";
 import { rateLimitMiddleware } from "../middleware/rateLimit.js";
+import WaitingList from "../models/WaitingList.js";
 
 const router = express.Router();
 
-// Existing routes (accessible to authenticated users)
+router.post("/add-to-waiting-list", async (req, res) => {
+  const { email, name, inbox, description } = req.body;
+  try {
+    const entry = new WaitingList({ email, name, inbox, description });
+    await entry.save();
+    res.status(201).json({ message: "Added to waiting list" });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
 router.get(
   "/me",
   auth(),
@@ -31,7 +47,7 @@ router.put(
 );
 router.put(
   "/subscription",
-  auth(),
+  auth("user"),
   setRefreshedTokenCookie,
   rateLimitMiddleware(),
   updateSubscription
@@ -43,35 +59,44 @@ router.delete(
   rateLimitMiddleware(),
   deleteMe
 );
-
-// Admin-only routes (accessible only to users with ADMIN role)
 router.get(
   "/admin/users",
-  auth("ADMIN"),
+  auth("admin"),
   setRefreshedTokenCookie,
   rateLimitMiddleware({ max: 1000 }),
   getAllUsers
 );
 router.put(
   "/keywords",
-  auth(),
+  auth("user"),
   setRefreshedTokenCookie,
   rateLimitMiddleware(),
   updateKeywords
 );
 router.post(
   "/admin/users",
-  auth("ADMIN"), // Restricts to ADMIN role
+  auth("admin"),
   setRefreshedTokenCookie,
   rateLimitMiddleware(),
   createUser
 );
 router.delete(
   "/admin/users/:id",
-  auth("ADMIN"), // Restricts to ADMIN role
+  auth("admin"),
   setRefreshedTokenCookie,
   rateLimitMiddleware(),
   deleteUser
 );
+router.post(
+  "/add-inbox",
+  auth(),
+  setRefreshedTokenCookie,
+  rateLimitMiddleware(),
+  addInbox
+);
+router.get("/income", auth("admin"), getIncome);
+router.get("/stats", auth("admin"), getUserStats);
+router.post("/waiting-list/approve", auth("admin"), approveWaitingList);
+router.post("/waiting-list/reject", auth("admin"), rejectWaitingList);
 
 export default router;

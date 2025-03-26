@@ -1,4 +1,3 @@
-// middleware/authMiddleware.js
 import jwt from "jsonwebtoken";
 import { StatusCodes } from "http-status-codes";
 import User from "../models/User.js";
@@ -18,20 +17,14 @@ const auth = (...roles) =>
         ? req.headers.authorization.substring(7)
         : undefined);
 
-    console.log("[DEBUG] Get accessToken From Frontend:::", accessToken);
-
     if (!accessToken) {
       throw new ApiError(StatusCodes.UNAUTHORIZED, "Invalid or missing token");
     }
     try {
       const decoded = jwt.verify(accessToken, process.env.JWT_SECRET);
       const user = await User.findById(decoded.id);
-      console.log(
-        "[DEBUG] Get User from DB after decoded accessToken:::",
-        user?.email
-      );
 
-      if (!user || user.status !== "ACTIVE") {
+      if (!user || user.status !== "active") {
         throw new ApiError(
           StatusCodes.UNAUTHORIZED,
           "User not found or inactive"
@@ -42,7 +35,6 @@ const auth = (...roles) =>
         throw new ApiError(StatusCodes.FORBIDDEN, "Insufficient permissions");
       }
 
-      // Set req.user for valid access token
       req.user = {
         id: user._id,
         role: user.role,
@@ -53,8 +45,6 @@ const auth = (...roles) =>
       return next();
     } catch (error) {
       if (error instanceof jwt.TokenExpiredError) {
-        console.log("[DEBUG] Access token expired, attempting refresh");
-
         const refreshToken = req.cookies?.refreshToken;
         if (!refreshToken) {
           throw new ApiError(
@@ -88,7 +78,6 @@ const auth = (...roles) =>
           { expiresIn: "1d" }
         );
 
-        // Set req.user for refreshed access token
         req.user = {
           id: user._id,
           role: user.role,
@@ -106,7 +95,6 @@ const auth = (...roles) =>
         );
         return next();
       }
-      console.error("[ERROR] Authentication error:", error);
       throw new ApiError(StatusCodes.UNAUTHORIZED, "Invalid access token");
     }
   });

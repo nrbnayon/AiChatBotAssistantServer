@@ -1,62 +1,56 @@
-// controllers/paymentController.js
 import Stripe from "stripe";
 import dotenv from "dotenv";
 import User from "../models/User.js";
-import userService from "../services/userService.js";
 import { ApiError, catchAsync } from "../utils/errorHandler.js";
 import { StatusCodes } from "http-status-codes";
 
 dotenv.config();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-const createCheckoutSession = catchAsync(async (req, res, next) => {
+const priceIdToPlan = {
+  [process.env.STRIPE_PRICE_BASIC]: "basic",
+  [process.env.STRIPE_PRICE_PREMIUM]: "premium",
+  [process.env.STRIPE_PRICE_ENTERPRISE]: "enterprise",
+};
+
+export const createCheckoutSession = catchAsync(async (req, res, next) => {
   const { plan } = req.body;
   const user = await User.findById(req.user.id);
 
-  if (!user) {
-    throw new ApiError(StatusCodes.NOT_FOUND, "User not found");
+  if (!["basic", "premium", "enterprise"].includes(plan)) {
+    return next(new AppError("Invalid plan", 400));
   }
 
-  const subscriptionPlans = {
-    basic: { price: 999, dailyTokens: 1000000, duration: 90 },
-    premium: { price: 1999, dailyTokens: Infinity, duration: 30 },
-    enterprise: { price: 9999, dailyTokens: Infinity, duration: 730 },
-  };
-
-  if (!subscriptionPlans[plan]) {
-    throw new ApiError(StatusCodes.BAD_REQUEST, "Invalid plan");
+  if (user.subscription.status === "active") {
+    return next(new AppError("Subscription already active", 400));
   }
 
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ["card"],
     line_items: [
       {
-        price_data: {
-          currency: "usd",
-          product_data: {
-            name: `${
-              plan.charAt(0).toUpperCase() + plan.slice(1)
-            } Subscription`,
-            description: `Access to ${plan} plan with ${subscriptionPlans[plan].dailyTokens} daily tokens`,
-          },
-          unit_amount: subscriptionPlans[plan].price,
-        },
+        price: getStripePriceId(plan),
         quantity: 1,
       },
     ],
-    mode: "payment",
-    success_url: `${process.env.FRONTEND_URL}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${process.env.FRONTEND_URL}/subscription/cancel`,
-    metadata: {
-      userId: user._id.toString(),
-      plan,
-    },
+    mode: "subscription",
+    success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${process.env.FRONTEND_URL}/cancel`,
+    client_reference_id: user._id.toString(),
   });
 
-  res.json({ success: true, sessionId: session.id });
+  res.json({ sessionId: session.id });
 });
 
-const handleWebhook = catchAsync(async (req, res, next) => {
+const getStripePriceId = (plan) => {
+  return {
+    basic: process.env.STRIPE_PRICE_BASIC || 5,
+    premium: process.env.STRIPE_PRICE_PREMIUM || 15,
+    enterprise: process.env.STRIPE_PRICE_ENTERPRISE || 50,
+  }[plan];
+};
+
+export const handleWebhook = catchAsync(async (req, res, next) => {
   const sig = req.headers["stripe-signature"];
   let event;
 
@@ -66,42 +60,51 @@ const handleWebhook = catchAsync(async (req, res, next) => {
       sig,
       process.env.STRIPE_WEBHOOK_SECRET
     );
-    console.log(
-      "[DEBUG] Webhook received - Event:",
-      event.type,
-      event.data.object
-    );
-  } catch (error) {
-    console.error("Webhook signature verification failed:", error.message);
-    throw new ApiError(
-      StatusCodes.BAD_REQUEST,
-      "Webhook signature verification failed"
-    );
+  } catch (err) {
+    return next(new ApiError(`Webhook Error: ${err.message}`, 400));
   }
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
-    const { userId, plan } = session.metadata;
-
-    console.log(
-      "[DEBUG] Webhook - Processing session:",
-      session.id,
-      "userId:",
-      userId,
-      "plan:",
-      plan
+    const userId = session.client_reference_id;
+    const subscription = await stripe.subscriptions.retrieve(
+      session.subscription
     );
+    const priceId = subscription.items.data[0].price.id;
+    const plan = getPlanFromPriceId(priceId);
 
-    try {
-      await userService.updateSubscription(userId, { plan });
-      console.log(`[DEBUG] Subscription updated for user ${userId} to ${plan}`);
-    } catch (error) {
-      console.error("[ERROR] Error updating subscription:", error.message);
-      console.error(error);
+    const user = await User.findById(userId);
+    if (user) {
+      user.subscription.plan = plan;
+      user.subscription.status = "active";
+      user.subscription.dailyQueries = getDailyQueries(plan);
+      user.subscription.startDate = new Date();
+
+      const maxInboxes = getMaxInboxes(plan);
+      if (user.inboxList.length > maxInboxes) {
+        user.inboxList = user.inboxList.slice(0, maxInboxes);
+      }
+      await user.save();
     }
   }
 
   res.json({ received: true });
 });
 
-export { createCheckoutSession, handleWebhook };
+const getPlanFromPriceId = (priceId) => {
+  return priceIdToPlan[priceId] || "basic"; // Fallback to "basic" if price ID is unrecognized
+};
+
+const getDailyQueries = (plan) =>
+  ({
+    basic: 15,
+    premium: 100,
+    enterprise: Infinity,
+  }[plan]);
+
+const getMaxInboxes = (plan) =>
+  ({
+    basic: 1,
+    premium: 3,
+    enterprise: 10,
+  }[plan]);

@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
 
-// Define default important keywords
 const DEFAULT_IMPORTANT_KEYWORDS = [
   "urgent",
   "important",
@@ -15,40 +15,52 @@ const DEFAULT_IMPORTANT_KEYWORDS = [
   "task",
 ];
 
-// Subscription schema
 const subscriptionSchema = new mongoose.Schema({
-  plan: { type: String, default: "free" },
-  status: { type: String, default: "ACTIVE" },
-  dailyTokens: { type: Number, default: 100 },
+  plan: {
+    type: String,
+    enum: ["basic", "premium", "enterprise"],
+    default: "basic",
+  },
+  status: {
+    type: String,
+    enum: ["active", "pending", "canceled"],
+    default: "pending",
+  },
+  dailyQueries: { type: Number, default: 15 },
   autoRenew: { type: Boolean, default: true },
   startDate: { type: Date, default: Date.now },
   lastRequestDate: { type: Date },
 });
 
-// User schema
 const userSchema = new mongoose.Schema({
-  role: { type: String, default: "USER" },
+  role: { type: String, default: "user", enum: ["admin", "user"] },
   name: { type: String },
   email: { type: String, required: true, unique: true },
   password: { type: String },
-  authProvider: {
-    type: String,
-    enum: ["google", "microsoft", "yahoo", "email"],
-  },
+  authProvider: { type: String, enum: ["google", "microsoft", "local"] },
+  inboxList: [
+    {
+      type: String,
+      unique: true,
+      required: true,
+      lowercase: true,
+      trim: true,
+    },
+  ],
   googleId: { type: String },
-  googleAccessToken: { type: String },
-  googleRefreshToken: { type: String },
+  googleAccessToken: { type: Object },
+  googleRefreshToken: { type: Object },
   googleAccessTokenExpires: { type: Number },
   microsoftId: { type: String },
-  microsoftAccessToken: { type: String },
-  microsoftRefreshToken: { type: String },
+  microsoftAccessToken: { type: Object },
+  microsoftRefreshToken: { type: Object },
   microsoftAccessTokenExpires: { type: Number },
-  yahooId: { type: String },
-  yahooAccessToken: { type: String },
-  yahooRefreshToken: { type: String },
-  yahooAccessTokenExpires: { type: Number },
   profilePicture: { type: String },
-  status: { type: String, default: "ACTIVE" },
+  status: {
+    type: String,
+    default: "active",
+    enum: ["active", "canceled", "pending"],
+  },
   verified: { type: Boolean, default: false },
   subscription: { type: subscriptionSchema, default: () => ({}) },
   refreshToken: { type: String },
@@ -59,22 +71,34 @@ const userSchema = new mongoose.Schema({
   dateOfBirth: { type: Date },
   createdAt: { type: Date, default: Date.now },
   lastSync: { type: Date, default: Date.now },
-  userImportantMailKeywords: { type: [String], default: [] }, // Custom user keywords
+  userImportantMailKeywords: {
+    type: [String],
+    default: DEFAULT_IMPORTANT_KEYWORDS,
+  },
 });
 
-// Method to get all keywords: default + user-defined
+userSchema.pre("save", async function (next) {
+  if (this.email) {
+    this.email = this.email.toLowerCase().trim();
+  }
+  if (this.isModified("password") && this.password) {
+    this.password = await bcrypt.hash(this.password, 10);
+  }
+  next();
+});
+
+userSchema.methods.comparePassword = async function (candidatePassword) {
+  return bcrypt.compare(candidatePassword, this.password);
+};
+
 userSchema.methods.getAllImportantKeywords = function () {
   const combined = [
     ...DEFAULT_IMPORTANT_KEYWORDS,
     ...this.userImportantMailKeywords,
   ];
-  const uniqueCombined = Array.from(
-    new Set(combined.map((k) => k.toLowerCase()))
-  );
-  return uniqueCombined;
+  return Array.from(new Set(combined.map((k) => k.toLowerCase())));
 };
 
-// Optional method: Add a new user keyword (avoids duplicates)
 userSchema.methods.addImportantKeyword = async function (keyword) {
   const lowerKeyword = keyword.toLowerCase();
   if (
@@ -91,6 +115,5 @@ userSchema.methods.addImportantKeyword = async function (keyword) {
 };
 
 const User = mongoose.model("User", userSchema);
-
 export default User;
 export { DEFAULT_IMPORTANT_KEYWORDS };

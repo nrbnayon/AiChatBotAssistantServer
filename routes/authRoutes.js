@@ -1,4 +1,3 @@
-// routes/authRoutes.js
 import express from "express";
 import passport from "../config/passport.js";
 import {
@@ -31,12 +30,14 @@ router.get("/oauth/:provider", authRateLimit(), (req, res, next) => {
     },
     microsoft: {
       strategy: "microsoft",
-      scope: ["User.Read", "Mail.Read", "Mail.ReadWrite", "Mail.Send"],
+      scope: [
+        "offline_access",
+        "User.Read",
+        "Mail.Read",
+        "Mail.ReadWrite",
+        "Mail.Send",
+      ],
       options: { prompt: "select_account" },
-    },
-    yahoo: {
-      strategy: "yahoo",
-      scope: ["profile", "email", "mail-r"],
     },
   };
 
@@ -55,11 +56,11 @@ router.get(
   "/:provider/callback",
   authRateLimit(),
   (req, res, next) => {
-    console.log("Callback hit for provider:", req.params.provider);
     const { provider } = req.params;
     passport.authenticate(provider, {
       failureRedirect: "/api/v1/auth/error",
       session: true,
+      failureMessage: true,
     })(req, res, next);
   },
   oauthCallback

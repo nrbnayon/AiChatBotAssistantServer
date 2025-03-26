@@ -1,3 +1,4 @@
+// services\emailService.js
 import Groq from "groq-sdk";
 import { ApiError } from "../utils/errorHandler.js";
 import { StatusCodes } from "http-status-codes";
@@ -113,7 +114,7 @@ class EmailService {
       try {
         const response = await this.grok.chat.completions.create({
           messages: [{ role: "user", content: prompt }],
-          model: "llama3-70b-8192",
+          model: "llama-3.3-70b-versatile",
           temperature: 0.5,
         });
 

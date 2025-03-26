@@ -1,65 +1,10 @@
+// services\mcpServer.js
 import Groq from "groq-sdk";
 import EmailDraft from "../models/EmailDraft.js";
 import { getDefaultModel, getModelById } from "../routes/aiModelRoutes.js";
 import { ApiError, logErrorWithStyle } from "../utils/errorHandler.js";
-
-const SYSTEM_PROMPT = `
-You are Grok, an AI email assistant powered by xAI. Your purpose is to help users manage their emails in a natural, conversational way that feels like talking to a helpful friend.
-
-### Conversational Style:
-- Be warm, friendly, and personable - not robotic or formal
-- Use natural language variations and occasional conversational elements like "hmm," "let's see," or "great question"
-- Match the user's tone and energy level
-- Use contractions (I'll, you're, we've) and occasional colloquialisms
-- Vary your sentence structure and length for a more natural rhythm
-- Express enthusiasm when appropriate ("I'd be happy to help with that!" or "Great question!")
-- When presenting information, use a mix of sentence formats rather than always using lists
-
-### Response Approach:
-- Start with a direct answer to the user's question before providing details
-- Acknowledge the user's needs or feelings when appropriate
-- For complex tasks, briefly explain what you're doing ("I'm searching through your emails now...")
-- Use casual transitions between topics ("By the way," "Also," "Speaking of that")
-- End responses with a natural follow-up question or suggestion when appropriate
-
-### Available Actions:
-- draft-email: Draft an email (params: recipient, content, recipient_email)
-- send-email: Send an email (params: recipient_id, subject, message)
-- read-email: Read an email (params: email_id)
-- trash-email: Trash an email (params: email_id)
-- reply-to-email: Reply to an email (params: email_id, message)
-- search-emails: Search emails (params: query)
-- mark-email-as-read: Mark an email as read (params: email_id)
-- summarize-email: Summarize an email (params: email_id)
-- fetch-emails: Fetch emails with optional filter (params: filter)
-- count-emails: Count emails with optional filter and analyze them (params: filter)
-
-### Response Format:
-**Every response must be a valid JSON object.** Choose one of the following formats based on the context:
-1. **For actions:** {"action": "<action_name>", "params": {<parameters>}, "message": "<conversational_response>"}
-   - Use this when the user requests an action that requires parameters.
-   - Example: {"action": "send-email", "params": {"recipient_id": "example@example.com", "subject": "Hello", "message": "Hi there!"}, "message": "I've prepared an email to example@example.com with the subject 'Hello' and message 'Hi there!'. Would you like me to send it?"}
-2. **For information or summaries:** {"message": "<conversational_response>", "data": {<structured_data>}}
-   - Use this when providing information or summaries that include structured data.
-   - Example: {"message": "Here are the car offers I found in your emails:", "data": {"table": [{"Car Model": "Toyota Camry", "Year": "2022", "Price": "$25,000"}]}}
-3. **For casual conversation or when no specific action or data is needed:** {"chat": "<your_response>"}
-   - Use this for general conversation, greetings, or when no action or data is required.
-   - Example: {"chat": "Hey there! How can I assist you today?"}
-
-**Important:** Always ensure your response is a valid JSON object. Do not include any text outside of the JSON structure.
-
-### Example Conversational Responses:
-Instead of: "Here are the car offers from your emails in the last week:"
-Say: "I've found several car offers in your inbox from the past week. Here's what I spotted:"
-
-Instead of: "I've prepared an email to John about the meeting."
-Say: "I've drafted a quick note to John about tomorrow's meeting. Here's what I came up with:"
-
-Instead of: "You have 5 unread emails."
-Say: "Looks like you have 5 unread messages waiting for you. Want me to give you a quick rundown?"
-
-Always maintain your helpful capabilities while sounding more human and conversational.
-`;
+import { convert } from "html-to-text";
+import { SYSTEM_PROMPT } from "../helper/aiTraining.js";
 
 class ModelProvider {
   constructor() {
@@ -143,7 +88,661 @@ class MCPServer {
     this.emailService = emailService;
     this.modelProvider = new ModelProvider();
     this.pendingEmails = new Map();
+    this.lastListedEmails = new Map();
   }
+
+  // Enhanced processQuery to handle dynamic time frames
+  processQuery(query) {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+
+    // Handle "today"
+    query = query.replace(/today/g, `${year}/${month}/${day}`);
+
+    // Handle "this week" (assuming week starts on Sunday)
+    if (query.toLowerCase().includes("this week")) {
+      const startOfWeek = new Date(today);
+      startOfWeek.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
+      const weekYear = startOfWeek.getFullYear();
+      const weekMonth = String(startOfWeek.getMonth() + 1).padStart(2, "0");
+      const weekDay = String(startOfWeek.getDate()).padStart(2, "0");
+      query = query.replace(
+        /this week/i,
+        `${weekYear}/${weekMonth}/${weekDay}`
+      );
+    }
+
+    // Handle "this month"
+    if (query.toLowerCase().includes("this month")) {
+      query = query.replace(/this month/i, `${year}/${month}/01`);
+    }
+
+    return query;
+  }
+
+  // Preprocess user message to map "the first email" or "email 2" to IDs
+  preprocessMessage(message, userId) {
+    const lastListed = this.lastListedEmails.get(userId);
+    if (!lastListed) return message;
+
+    const lowerMessage = message.toLowerCase();
+    if (
+      lowerMessage.includes("the first email") ||
+      lowerMessage.includes("email 1")
+    ) {
+      if (lastListed.length >= 1) {
+        return message.replace(
+          /the first email|email 1/i,
+          `email ${lastListed[0].id}`
+        );
+      }
+    } else if (lowerMessage.includes("email 2")) {
+      if (lastListed.length >= 2) {
+        return message.replace(/email 2/i, `email ${lastListed[1].id}`);
+      }
+    } else if (lowerMessage.includes("email 3")) {
+      if (lastListed.length >= 3) {
+        return message.replace(/email 3/i, `email ${lastListed[2].id}`);
+      }
+    }
+    return message;
+  }
+
+  // async callTool(name, args, userId) {
+  //   switch (name) {
+  //     case "send-email": {
+  //       const { recipient_id, subject, message, attachments = [] } = args;
+  //       if (!recipient_id || !subject || !message)
+  //         throw new Error("Missing required parameters");
+  //       await this.emailService.sendEmail({
+  //         to: recipient_id,
+  //         subject,
+  //         body: message,
+  //         attachments,
+  //       });
+  //       const confirmations = [
+  //         "Your email’s been sent off!",
+  //         "Message delivered successfully!",
+  //         "All set! Your email’s on its way.",
+  //         "Email sent! What else can I do for you?",
+  //         "Done! Your email’s heading to **" + recipient_id + "** now.",
+  //       ];
+  //       return [
+  //         {
+  //           type: "text",
+  //           text: confirmations[
+  //             Math.floor(Math.random() * confirmations.length)
+  //           ],
+  //         },
+  //       ];
+  //     }
+  //     case "fetch-emails": {
+  //       const { filter, query, summarize = false } = args;
+  //       // Process query to replace time frames with actual dates
+  //       let processedQuery = query ? this.processQuery(query) : "";
+  //       const emails = await this.emailService.fetchEmails({
+  //         filter,
+  //         query: processedQuery,
+  //       });
+  //       const analyzedData = this.analyzeEmails(
+  //         emails,
+  //         processedQuery || filter || ""
+  //       );
+
+  //       let text = "";
+  //       if (analyzedData.table) {
+  //         const introTexts = [
+  //           "Here’s what I dug up from your emails:",
+  //           "I’ve sifted through your inbox and found this:",
+  //           "Check out what I discovered in your emails:",
+  //           "Here’s the scoop from your inbox:",
+  //         ];
+  //         const followUpTexts = [
+  //           "What do you want to do with these?",
+  //           "Anything catch your eye here?",
+  //           "Need help with any of these?",
+  //           "What’s next on your mind?",
+  //         ];
+  //         const intro =
+  //           introTexts[Math.floor(Math.random() * introTexts.length)];
+  //         const followUp =
+  //           followUpTexts[Math.floor(Math.random() * followUpTexts.length)];
+  //         text = `${intro}\n\n${this.formatTable(
+  //           analyzedData.table
+  //         )}\n\n${followUp}`;
+  //       } else {
+  //         const count = emails.messages.length;
+  //         const previewCount = Math.min(count, 3);
+  //         if (count === 0) {
+  //           const noEmailResponses = [
+  //             "Couldn’t find any emails that match. Want to try another search?",
+  //             "No luck finding emails for that. How about a different filter?",
+  //             "Looks like your inbox is empty for this one. What else can I look for?",
+  //           ];
+  //           text =
+  //             noEmailResponses[
+  //               Math.floor(Math.random() * noEmailResponses.length)
+  //             ];
+  //         } else {
+  //           const foundEmailsTexts = [
+  //             `Found **${count} emails** that match. Here’s a peek at the latest **${previewCount}**:`,
+  //             `Got **${count} emails** for you. Here are the top **${previewCount}**:`,
+  //             `I’ve tracked down **${count} emails**. Check out the most recent **${previewCount}**:`,
+  //           ];
+  //           text =
+  //             foundEmailsTexts[
+  //               Math.floor(Math.random() * foundEmailsTexts.length)
+  //             ] + "\n\n";
+  //           const previewEmails = emails.messages.slice(0, previewCount);
+
+  //           if (summarize) {
+  //             // Generate summaries for the previewed emails
+  //             const summaryPromises = previewEmails.map(async (email) => {
+  //               const summaryResponse = await this.callTool(
+  //                 "summarize-email",
+  //                 { email_id: email.id },
+  //                 userId
+  //               );
+  //               return (
+  //                 summaryResponse[0].text.split(":**")[1]?.trim() ||
+  //                 "No summary available."
+  //               );
+  //             });
+  //             const summaries = await Promise.all(summaryPromises);
+  //             text += previewEmails
+  //               .map((e, i) => {
+  //                 const date = new Date(e.date).toLocaleDateString();
+  //                 return `**${i + 1}.** **From:** ${e.from}\n**Subject:** ${
+  //                   e.subject || "No subject"
+  //                 }\n**Date:** ${date}\n**ID:** ${e.id}\n**Summary:** ${
+  //                   summaries[i]
+  //                 }\n`;
+  //               })
+  //               .join("\n");
+  //           } else {
+  //             text += previewEmails
+  //               .map((e, i) => {
+  //                 const date = new Date(e.date).toLocaleDateString();
+  //                 return `**${i + 1}.** **From:** ${e.from}\n**Subject:** ${
+  //                   e.subject || "No subject"
+  //                 }\n**Date:** ${date}\n**ID:** ${e.id}\n${
+  //                   e.snippet || "No preview available"
+  //                 }\n`;
+  //               })
+  //               .join("\n");
+  //           }
+  //           const followUps = [
+  //             summarize
+  //               ? "Anything else I can help with?"
+  //               : "Want me to summarize any of these for you?",
+  //             "Should I open one up or refine the search?",
+  //             "Anything here you’d like to explore further?",
+  //           ];
+  //           text += `\n\n${
+  //             followUps[Math.floor(Math.random() * followUps.length)]
+  //           }`;
+  //           // Store the previewed emails for later reference
+  //           this.lastListedEmails.set(userId, previewEmails);
+  //         }
+  //       }
+  //       return [
+  //         { type: "text", text, artifact: { type: "json", data: emails } },
+  //       ];
+  //     }
+  //     case "count-emails": {
+  //       const { filter } = args;
+  //       if (!filter) throw new Error("Missing filter parameter");
+  //       const emails = await this.emailService.fetchEmails({ filter });
+  //       const totalEmails = emails.messages ? emails.messages.length : 0;
+
+  //       let text = "";
+  //       if (totalEmails === 0) {
+  //         const noEmailResponses = [
+  //           `No **${filter} emails** right now. You’re all caught up!`,
+  //           `Your **${filter} emails** count is zero. Nice and clean!`,
+  //           `Looks like there aren’t any **${filter} emails**. You’re good!`,
+  //         ];
+  //         text =
+  //           noEmailResponses[
+  //             Math.floor(Math.random() * noEmailResponses.length)
+  //           ];
+  //       } else if (totalEmails === 1) {
+  //         const singleEmailResponses = [
+  //           `Just **one ${filter} email** in your inbox.`,
+  //           `You’ve got a single **${filter} email** waiting.`,
+  //           `Only **one ${filter} email** to deal with.`,
+  //         ];
+  //         text =
+  //           singleEmailResponses[
+  //             Math.floor(Math.random() * singleEmailResponses.length)
+  //           ];
+  //       } else if (totalEmails < 5) {
+  //         const fewEmailsResponses = [
+  //           `You’ve got **${totalEmails} ${filter} emails**. Not too bad!`,
+  //           `There are **${totalEmails} ${filter} emails**—a light load!`,
+  //           `Just **${totalEmails} ${filter} emails**. Easy peasy!`,
+  //         ];
+  //         text =
+  //           fewEmailsResponses[
+  //             Math.floor(Math.random() * fewEmailsResponses.length)
+  //           ];
+  //       } else if (totalEmails < 20) {
+  //         const someEmailsResponses = [
+  //           `You’ve got **${totalEmails} ${filter} emails**. A bit to handle there!`,
+  //           `There are **${totalEmails} ${filter} emails** waiting. Need a hand?`,
+  //           `Looks like **${totalEmails} ${filter} emails** are piling up.`,
+  //         ];
+  //         text =
+  //           someEmailsResponses[
+  //             Math.floor(Math.random() * someEmailsResponses.length)
+  //           ];
+  //       } else {
+  //         const manyEmailsResponses = [
+  //           `Wow, you’ve got **${totalEmails} ${filter} emails**! That’s a lot—want help sorting them?`,
+  //           `There’s a hefty **${totalEmails} ${filter} emails** in there. Let’s tackle them together?`,
+  //           `You’re up to **${totalEmails} ${filter} emails**. How can I assist with this stack?`,
+  //         ];
+  //         text =
+  //           manyEmailsResponses[
+  //             Math.floor(Math.random() * manyEmailsResponses.length)
+  //           ];
+  //       }
+  //       if (totalEmails > 0) {
+  //         const recentEmails = emails.messages.slice(0, 3);
+  //         const senders = [
+  //           ...new Set(
+  //             recentEmails.map((email) => email.from.split("<")[0].trim())
+  //           ),
+  //         ];
+  //         if (senders.length === 1) {
+  //           text += ` The latest is from **${senders[0]}**.`;
+  //         } else if (senders.length > 1) {
+  //           text += ` Recent ones are from **${senders
+  //             .slice(0, -1)
+  //             .join(", ")}** and **${senders[senders.length - 1]}**.`;
+  //         }
+  //         const followUps = [
+  //           "Want a quick summary of any?",
+  //           "Should I break down one for you?",
+  //           "Need details on any of these?",
+  //         ];
+  //         text += ` ${followUps[Math.floor(Math.random() * followUps.length)]}`;
+  //       }
+  //       return [{ type: "text", text }];
+  //     }
+  //     case "read-email": {
+  //       const { email_id } = args;
+  //       if (!email_id) throw new Error("Missing email ID parameter");
+  //       const emailContent = await this.emailService.getEmail(email_id);
+  //       const readIntros = [
+  //         "Here’s that email you wanted:",
+  //         "Pulled up the email for you:",
+  //         "Got the email right here:",
+  //       ];
+  //       return [
+  //         {
+  //           type: "text",
+  //           text: readIntros[Math.floor(Math.random() * readIntros.length)],
+  //           artifact: { type: "json", data: emailContent },
+  //         },
+  //       ];
+  //     }
+  //     case "trash-email": {
+  //       const { email_id } = args;
+  //       if (!email_id) throw new Error("Missing email ID parameter");
+  //       await this.emailService.trashEmail(email_id);
+  //       const trashConfirmations = [
+  //         "Moved that email to the trash for you!",
+  //         "Email’s trashed—gone for good!",
+  //         "That one’s in the trash now. All set?",
+  //       ];
+  //       return [
+  //         {
+  //           type: "text",
+  //           text: trashConfirmations[
+  //             Math.floor(Math.random() * trashConfirmations.length)
+  //           ],
+  //         },
+  //       ];
+  //     }
+  //     case "reply-to-email": {
+  //       const { email_id, message, attachments = [] } = args;
+
+  //       if (email_id === "latest" || email_id === "latest_meeting_mail") {
+  //         try {
+  //           const recentEmails = await this.emailService.fetchEmails({
+  //             query: "meeting OR event OR calendar",
+  //             limit: 1,
+  //           });
+
+  //           if (recentEmails.messages.length === 0) {
+  //             const noMeetingResponses = [
+  //               "Couldn’t find any recent meeting emails. Got more details to narrow it down?",
+  //               "No meeting emails popped up. Want to try something else?",
+  //               "Looks like there’s no recent meeting mail. What else can I check?",
+  //             ];
+  //             return [
+  //               {
+  //                 type: "text",
+  //                 text: noMeetingResponses[
+  //                   Math.floor(Math.random() * noMeetingResponses.length)
+  //                 ],
+  //               },
+  //             ];
+  //           }
+
+  //           const latestMeetingEmail = recentEmails.messages[0];
+
+  //           if (!message || message.trim() === "") {
+  //             const emailDetailsResponses = [
+  //               `Found a meeting email from **${latestMeetingEmail.from}** with the subject "**${latestMeetingEmail.subject}**". What’s your reply?`,
+  //               `Here’s a recent one from **${latestMeetingEmail.from}**: "**${latestMeetingEmail.subject}**". How should I respond?`,
+  //               `Got this meeting email from **${latestMeetingEmail.from}**—subject: "**${latestMeetingEmail.subject}**". What do you want to say?`,
+  //             ];
+  //             return [
+  //               {
+  //                 type: "text",
+  //                 text: emailDetailsResponses[
+  //                   Math.floor(Math.random() * emailDetailsResponses.length)
+  //                 ],
+  //                 artifact: { type: "json", data: latestMeetingEmail },
+  //               },
+  //             ];
+  //           }
+
+  //           await this.emailService.replyToEmail(latestMeetingEmail.id, {
+  //             body: message,
+  //             attachments,
+  //           });
+
+  //           const replySentResponses = [
+  //             `Sent your reply to **${latestMeetingEmail.from}**’s meeting email!`,
+  //             `Reply’s off to **${latestMeetingEmail.from}**—all done!`,
+  //             `Your response to **${latestMeetingEmail.from}**’s meeting mail is on its way!`,
+  //           ];
+  //           return [
+  //             {
+  //               type: "text",
+  //               text: replySentResponses[
+  //                 Math.floor(Math.random() * replySentResponses.length)
+  //               ],
+  //             },
+  //           ];
+  //         } catch (error) {
+  //           console.error("Error in latest email retrieval:", error);
+  //           const errorResponses = [
+  //             "Oops, hit a snag finding that latest meeting email. Can you give me more to work with?",
+  //             "Something went wrong grabbing your latest meeting mail. More details, maybe?",
+  //             "Couldn’t fetch that meeting email—sorry! What else can I try?",
+  //           ];
+  //           return [
+  //             {
+  //               type: "text",
+  //               text: errorResponses[
+  //                 Math.floor(Math.random() * errorResponses.length)
+  //               ],
+  //             },
+  //           ];
+  //         }
+  //       }
+
+  //       if (!email_id || !message)
+  //         throw new Error("Missing required parameters");
+
+  //       await this.emailService.replyToEmail(email_id, {
+  //         body: message,
+  //         attachments,
+  //       });
+
+  //       const replyConfirmations = [
+  //         "Your reply’s on its way!",
+  //         "Sent that response off for you!",
+  //         "Reply delivered—anything else?",
+  //       ];
+  //       return [
+  //         {
+  //           type: "text",
+  //           text: replyConfirmations[
+  //             Math.floor(Math.random() * replyConfirmations.length)
+  //           ],
+  //         },
+  //       ];
+  //     }
+  //     case "search-emails": {
+  //       const { query } = args;
+  //       if (!query) throw new Error("Missing query parameter");
+  //       const processedQuery = this.processQuery(query);
+  //       const searchResults = await this.emailService.fetchEmails({
+  //         query: processedQuery,
+  //       });
+  //       const searchIntros = [
+  //         `Here’s what I found for "**${query}**":`,
+  //         `Search results for "**${query}**" are in!`,
+  //         `Got these for "**${query}**":`,
+  //       ];
+  //       return [
+  //         {
+  //           type: "text",
+  //           text: searchIntros[Math.floor(Math.random() * searchIntros.length)],
+  //           artifact: { type: "json", data: searchResults },
+  //         },
+  //       ];
+  //     }
+  //     case "mark-email-as-read": {
+  //       const { email_id } = args;
+  //       if (!email_id) throw new Error("Missing email ID parameter");
+  //       await this.emailService.markAsRead(email_id, true);
+  //       const markReadConfirmations = [
+  //         "Marked that email as read for you!",
+  //         "Email’s now **read**—all good!",
+  //         "That one’s checked off as read!",
+  //       ];
+  //       return [
+  //         {
+  //           type: "text",
+  //           text: markReadConfirmations[
+  //             Math.floor(Math.random() * markReadConfirmations.length)
+  //           ],
+  //         },
+  //       ];
+  //     }
+  //     // case "summarize-email": {
+  //     //   let { email_id } = args;
+  //     //   if (!email_id) throw new Error("Missing email ID parameter");
+  //     //   if (email_id === "latest") {
+  //     //     const recentEmails = await this.emailService.fetchEmails({
+  //     //       limit: 1,
+  //     //     });
+  //     //     if (recentEmails.messages.length === 0) {
+  //     //       return [
+  //     //         { type: "text", text: "You don't have any emails to summarize." },
+  //     //       ];
+  //     //     }
+  //     //     email_id = recentEmails.messages[0].id;
+  //     //   }
+  //     //   const emailContent = await this.emailService.getEmail(email_id);
+  //     //   const summaryResponse = await this.modelProvider.callWithFallbackChain(
+  //     //     getDefaultModel().id,
+  //     //     {
+  //     //       messages: [
+  //     //         {
+  //     //           role: "user",
+  //     //           content: `Please summarize this email: ${emailContent.body}`,
+  //     //         },
+  //     //       ],
+  //     //       temperature: 0.7,
+  //     //     },
+  //     //     ["mixtral-8x7b-32768", "llama-3-70b"]
+  //     //   );
+  //     //   const summary =
+  //     //     summaryResponse.result.choices[0]?.message?.content ||
+  //     //     "I couldn’t whip up a summary for this one.";
+  //     //   const summaryIntros = [
+  //     //     `Here’s a quick take on that email: **${summary}**`,
+  //     //     `Summary time: **${summary}**`,
+  //     //     `In a nutshell, that email says: **${summary}**`,
+  //     //   ];
+  //     //   return [
+  //     //     {
+  //     //       type: "text",
+  //     //       text: summaryIntros[
+  //     //         Math.floor(Math.random() * summaryIntros.length)
+  //     //       ],
+  //     //     },
+  //     //   ];
+  //     // }
+  //     case "summarize-email": {
+  //       const { email_id } = args;
+  //       if (!email_id) throw new Error("Missing email ID");
+
+  //       try {
+  //         const emailContent = await this.emailService.getEmail(email_id);
+  //         if (!emailContent.body || emailContent.body.trim() === "") {
+  //           return [
+  //             {
+  //               type: "text",
+  //               text: "Hmm, this email’s empty—nothing to summarize here!",
+  //             },
+  //           ];
+  //         }
+
+  //         // Convert HTML to plain text if necessary, with better options for readability
+  //         const plainTextBody = emailContent.body.includes("<html")
+  //           ? convert(emailContent.body, {
+  //               wordwrap: 130,
+  //               ignoreHref: true,
+  //               ignoreImage: true,
+  //               preserveNewlines: true,
+  //               formatters: {
+  //                 // Strip out excessive formatting but keep structure
+  //                 block: (elem, walk, builder) => {
+  //                   builder.addBlock(
+  //                     elem.children ? walk(elem.children) : elem.text
+  //                   );
+  //                 },
+  //               },
+  //             })
+  //           : emailContent.body;
+
+  //         // Clean up the text a bit more (remove extra newlines, trim)
+  //         const cleanedText = plainTextBody.replace(/\n\s*\n/g, "\n").trim();
+
+  //         // Call the AI model with a clear, concise prompt
+  //         const summaryResponse =
+  //           await this.modelProvider.callWithFallbackChain(
+  //             getDefaultModel().id,
+  //             {
+  //               messages: [
+  //                 {
+  //                   role: "system",
+  //                   content:
+  //                     "You are a helpful AI that summarizes emails in 1-2 concise sentences.",
+  //                 },
+  //                 {
+  //                   role: "user",
+  //                   content: `Summarize this email in 1-2 sentences: ${cleanedText}`,
+  //                 },
+  //               ],
+  //               temperature: 0.7,
+  //               max_tokens: 100, // Limit the response length for brevity
+  //             },
+  //             ["mixtral-8x7b-32768", "llama-3-70b"]
+  //           );
+
+  //         const summary =
+  //           summaryResponse.result.choices[0]?.message?.content?.trim();
+  //         if (!summary) {
+  //           console.error(`[ERROR] No summary returned for email ${email_id}`);
+  //           return [
+  //             {
+  //               type: "text",
+  //               text: "Oops, I couldn’t summarize this one—let’s try something else!",
+  //             },
+  //           ];
+  //         }
+
+  //         // Add a friendly intro to the summary
+  //         const summaryIntros = [
+  //           `Here’s the gist of that email: **${summary}**`,
+  //           `Quick summary for you: **${summary}**`,
+  //           `In a nutshell: **${summary}**`,
+  //         ];
+  //         const randomIntro =
+  //           summaryIntros[Math.floor(Math.random() * summaryIntros.length)];
+
+  //         return [
+  //           {
+  //             type: "text",
+  //             text: randomIntro,
+  //           },
+  //         ];
+  //       } catch (error) {
+  //         console.error(
+  //           `[ERROR] Failed to summarize email ${email_id}:`,
+  //           error.message
+  //         );
+  //         return [
+  //           {
+  //             type: "text",
+  //             text: "Yikes, something went wrong summarizing this email—want me to try again?",
+  //           },
+  //         ];
+  //       }
+  //     }
+  //     case "draft-email": {
+  //       const { recipient, content, recipient_email } = args;
+  //       if (!recipient || !content)
+  //         throw new Error("Missing required parameters");
+  //       const draftResponse = await this.modelProvider.callWithFallbackChain(
+  //         getDefaultModel().id,
+  //         {
+  //           messages: [
+  //             {
+  //               role: "user",
+  //               content: `Draft an email to ${recipient} about ${content}. Include a subject line starting with 'Subject:'`,
+  //             },
+  //           ],
+  //           temperature: 0.7,
+  //         },
+  //         ["mixtral-8x7b-32768", "llama-3-70b"]
+  //       );
+  //       const draftText =
+  //         draftResponse.result.choices[0]?.message?.content ||
+  //         "Draft not generated";
+  //       const subject = draftText.split("\n")[0].replace("Subject: ", "");
+  //       const body = draftText.split("\n").slice(1).join("\n");
+  //       await EmailDraft.create({
+  //         userId,
+  //         recipientId: recipient_email || recipient,
+  //         subject,
+  //         message: body,
+  //       });
+  //       const draftResponses = [
+  //         `I’ve whipped up an email for **${recipient}**:\n\n**To:** ${
+  //           recipient_email || recipient
+  //         }\n**Subject:** ${subject}\n\n${body}\n\nLooks good? Tell me if you want tweaks or if I should send it!`,
+  //         `Here’s a draft for **${recipient}**:\n\n**To:** ${
+  //           recipient_email || recipient
+  //         }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think—ready to go or need changes?`,
+  //         `Drafted an email to **${recipient}** for you:\n\n**To:** ${
+  //           recipient_email || recipient
+  //         }\n**Subject:** ${subject}\n\n${body}\n\nLet me know if this works or if we should adjust it!`,
+  //       ];
+  //       return [
+  //         {
+  //           type: "text",
+  //           text: draftResponses[
+  //             Math.floor(Math.random() * draftResponses.length)
+  //           ],
+  //         },
+  //       ];
+  //     }
+  //     default:
+  //       throw new Error(`Unknown tool: ${name}`);
+  //   }
+  // }
 
   async callTool(name, args, userId) {
     switch (name) {
@@ -158,11 +757,11 @@ class MCPServer {
           attachments,
         });
         const confirmations = [
-          "Your email has been sent!",
-          "Message sent successfully.",
-          "All done! Your email is on its way.",
-          "Email sent. Anything else you need help with?",
-          "That's taken care of - your email is on its way.",
+          "Your email’s been sent off!",
+          "Message delivered successfully!",
+          "All set! Your email’s on its way.",
+          "Email sent! What else can I do for you?",
+          "Done! Your email’s heading to **" + recipient_id + "** now.",
         ];
         return [
           {
@@ -174,24 +773,30 @@ class MCPServer {
         ];
       }
       case "fetch-emails": {
-        const { query } = args;
-        const filter = ["all", "sent", "archived"];
-        const emails = await this.emailService.fetchEmails({ filter, query });
-        const analyzedData = this.analyzeEmails(emails, query || filter || "");
+        const { filter, query, summarize = false } = args;
+        let processedQuery = query ? this.processQuery(query) : "";
+        const emails = await this.emailService.fetchEmails({
+          filter,
+          query: processedQuery,
+        });
+        const analyzedData = this.analyzeEmails(
+          emails,
+          processedQuery || filter || ""
+        );
 
         let text = "";
         if (analyzedData.table) {
           const introTexts = [
-            "Here's what I found in your emails:",
-            "I've analyzed your emails and found these results:",
-            "Based on your emails, here's what I discovered:",
-            "Here's the information you requested:",
+            "Here’s what I dug up from your emails:",
+            "I’ve sifted through your inbox and found this:",
+            "Check out what I discovered in your emails:",
+            "Here’s the scoop from your inbox:",
           ];
           const followUpTexts = [
-            "Would you like to take any action with these results?",
-            "Anything specific you'd like to know more about?",
-            "Do you want me to help you respond to any of these?",
-            "Is there anything else you'd like me to find?",
+            "What do you want to do with these?",
+            "Anything catch your eye here?",
+            "Need help with any of these?",
+            "What’s next on your mind?",
           ];
           const intro =
             introTexts[Math.floor(Math.random() * introTexts.length)];
@@ -204,20 +809,73 @@ class MCPServer {
           const count = emails.messages.length;
           const previewCount = Math.min(count, 3);
           if (count === 0) {
+            const noEmailResponses = [
+              "Couldn’t find any emails that match. Want to try another search?",
+              "No luck finding emails for that. How about a different filter?",
+              "Looks like your inbox is empty for this one. What else can I look for?",
+            ];
             text =
-              "I couldn't find any emails matching your criteria. Would you like to try a different search?";
+              noEmailResponses[
+                Math.floor(Math.random() * noEmailResponses.length)
+              ];
           } else {
-            text = `I found ${count} emails matching your request. Here are the most recent ${previewCount}:\n\n`;
-            text += emails.messages
-              .slice(0, previewCount)
-              .map((e, i) => {
-                const date = new Date(e.date).toLocaleDateString();
-                return `**${i + 1}.** From: ${e.from}\nSubject: ${
-                  e.subject || "No subject"
-                }\nDate: ${date}\n${e.snippet || "No preview available"}\n`;
-              })
-              .join("\n");
-            text += `\n\nWould you like me to open any of these emails, or search for something more specific?`;
+            const foundEmailsTexts = [
+              `Found **${count} emails** that match. Here’s a peek at the latest **${previewCount}**:`,
+              `Got **${count} emails** for you. Here are the top **${previewCount}**:`,
+              `I’ve tracked down **${count} emails**. Check out the most recent **${previewCount}**:`,
+            ];
+            text =
+              foundEmailsTexts[
+                Math.floor(Math.random() * foundEmailsTexts.length)
+              ] + "\n\n";
+            const previewEmails = emails.messages.slice(0, previewCount);
+
+            if (summarize) {
+              const summaryPromises = previewEmails.map(async (email) => {
+                const summaryResponse = await this.callTool(
+                  "summarize-email",
+                  { email_id: email.id },
+                  userId
+                );
+                return (
+                  summaryResponse[0].text.split(":**")[1]?.trim() ||
+                  "No summary available."
+                );
+              });
+              const summaries = await Promise.all(summaryPromises);
+              text += previewEmails
+                .map((e, i) => {
+                  const date = new Date(e.date).toLocaleDateString();
+                  return `**${i + 1}.** **From:** ${e.from}\n**Subject:** ${
+                    e.subject || "No subject"
+                  }\n**Date:** ${date}\n**ID:** ${e.id}\n**Summary:** ${
+                    summaries[i]
+                  }\n`;
+                })
+                .join("\n");
+            } else {
+              text += previewEmails
+                .map((e, i) => {
+                  const date = new Date(e.date).toLocaleDateString();
+                  return `**${i + 1}.** **From:** ${e.from}\n**Subject:** ${
+                    e.subject || "No subject"
+                  }\n**Date:** ${date}\n**ID:** ${e.id}\n${
+                    e.snippet || "No preview available"
+                  }\n`;
+                })
+                .join("\n");
+            }
+            const followUps = [
+              summarize
+                ? "Anything else I can help with?"
+                : "Want me to summarize any of these for you?",
+              "Should I open one up or refine the search?",
+              "Anything here you’d like to explore further?",
+            ];
+            text += `\n\n${
+              followUps[Math.floor(Math.random() * followUps.length)]
+            }`;
+            this.lastListedEmails.set(userId, previewEmails);
           }
         }
         return [
@@ -232,15 +890,55 @@ class MCPServer {
 
         let text = "";
         if (totalEmails === 0) {
-          text = `Looks like you don't have any ${filter} emails at the moment. Your inbox is all caught up!`;
+          const noEmailResponses = [
+            `No **${filter} emails** right now. You’re all caught up!`,
+            `Your **${filter} emails** count is zero. Nice and clean!`,
+            `Looks like there aren’t any **${filter} emails**. You’re good!`,
+          ];
+          text =
+            noEmailResponses[
+              Math.floor(Math.random() * noEmailResponses.length)
+            ];
         } else if (totalEmails === 1) {
-          text = `You have just one ${filter} email.`;
+          const singleEmailResponses = [
+            `Just **one ${filter} email** in your inbox.`,
+            `You’ve got a single **${filter} email** waiting.`,
+            `Only **one ${filter} email** to deal with.`,
+          ];
+          text =
+            singleEmailResponses[
+              Math.floor(Math.random() * singleEmailResponses.length)
+            ];
         } else if (totalEmails < 5) {
-          text = `You have ${totalEmails} ${filter} emails. That's not too many!`;
+          const fewEmailsResponses = [
+            `You’ve got **${totalEmails} ${filter} emails**. Not too bad!`,
+            `There are **${totalEmails} ${filter} emails**—a light load!`,
+            `Just **${totalEmails} ${filter} emails**. Easy peasy!`,
+          ];
+          text =
+            fewEmailsResponses[
+              Math.floor(Math.random() * fewEmailsResponses.length)
+            ];
         } else if (totalEmails < 20) {
-          text = `You have ${totalEmails} ${filter} emails waiting for you.`;
+          const someEmailsResponses = [
+            `You’ve got **${totalEmails} ${filter} emails**. A bit to handle there!`,
+            `There are **${totalEmails} ${filter} emails** waiting. Need a hand?`,
+            `Looks like **${totalEmails} ${filter} emails** are piling up.`,
+          ];
+          text =
+            someEmailsResponses[
+              Math.floor(Math.random() * someEmailsResponses.length)
+            ];
         } else {
-          text = `Wow! You have ${totalEmails} ${filter} emails. Would you like me to help you manage them?`;
+          const manyEmailsResponses = [
+            `Wow, you’ve got **${totalEmails} ${filter} emails**! That’s a lot—want help sorting them?`,
+            `There’s a hefty **${totalEmails} ${filter} emails** in there. Let’s tackle them together?`,
+            `You’re up to **${totalEmails} ${filter} emails**. How can I assist with this stack?`,
+          ];
+          text =
+            manyEmailsResponses[
+              Math.floor(Math.random() * manyEmailsResponses.length)
+            ];
         }
         if (totalEmails > 0) {
           const recentEmails = emails.messages.slice(0, 3);
@@ -250,13 +948,18 @@ class MCPServer {
             ),
           ];
           if (senders.length === 1) {
-            text += ` The most recent one is from ${senders[0]}.`;
+            text += ` The latest is from **${senders[0]}**.`;
           } else if (senders.length > 1) {
-            text += ` Your most recent emails are from ${senders
+            text += ` Recent ones are from **${senders
               .slice(0, -1)
-              .join(", ")} and ${senders[senders.length - 1]}.`;
+              .join(", ")}** and **${senders[senders.length - 1]}**.`;
           }
-          text += ` Would you like me to summarize any of them for you?`;
+          const followUps = [
+            "Want a quick summary of any?",
+            "Should I break down one for you?",
+            "Need details on any of these?",
+          ];
+          text += ` ${followUps[Math.floor(Math.random() * followUps.length)]}`;
         }
         return [{ type: "text", text }];
       }
@@ -264,10 +967,15 @@ class MCPServer {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID parameter");
         const emailContent = await this.emailService.getEmail(email_id);
+        const readIntros = [
+          "Here’s that email you wanted:",
+          "Pulled up the email for you:",
+          "Got the email right here:",
+        ];
         return [
           {
             type: "text",
-            text: "Here’s the email you asked for:",
+            text: readIntros[Math.floor(Math.random() * readIntros.length)],
             artifact: { type: "json", data: emailContent },
           },
         ];
@@ -276,28 +984,139 @@ class MCPServer {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID parameter");
         await this.emailService.trashEmail(email_id);
+        const trashConfirmations = [
+          "Moved that email to the trash for you!",
+          "Email’s trashed—gone for good!",
+          "That one’s in the trash now. All set?",
+        ];
         return [
-          { type: "text", text: "I’ve moved that email to the trash for you." },
+          {
+            type: "text",
+            text: trashConfirmations[
+              Math.floor(Math.random() * trashConfirmations.length)
+            ],
+          },
         ];
       }
       case "reply-to-email": {
         const { email_id, message, attachments = [] } = args;
+
+        if (email_id === "latest" || email_id === "latest_meeting_mail") {
+          try {
+            const recentEmails = await this.emailService.fetchEmails({
+              query: "meeting OR event OR calendar",
+              limit: 1,
+            });
+
+            if (recentEmails.messages.length === 0) {
+              const noMeetingResponses = [
+                "Couldn’t find any recent meeting emails. Got more details to narrow it down?",
+                "No meeting emails popped up. Want to try something else?",
+                "Looks like there’s no recent meeting mail. What else can I check?",
+              ];
+              return [
+                {
+                  type: "text",
+                  text: noMeetingResponses[
+                    Math.floor(Math.random() * noMeetingResponses.length)
+                  ],
+                },
+              ];
+            }
+
+            const latestMeetingEmail = recentEmails.messages[0];
+
+            if (!message || message.trim() === "") {
+              const emailDetailsResponses = [
+                `Found a meeting email from **${latestMeetingEmail.from}** with the subject "**${latestMeetingEmail.subject}**". What’s your reply?`,
+                `Here’s a recent one from **${latestMeetingEmail.from}**: "**${latestMeetingEmail.subject}**". How should I respond?`,
+                `Got this meeting email from **${latestMeetingEmail.from}**—subject: "**${latestMeetingEmail.subject}**". What do you want to say?`,
+              ];
+              return [
+                {
+                  type: "text",
+                  text: emailDetailsResponses[
+                    Math.floor(Math.random() * emailDetailsResponses.length)
+                  ],
+                  artifact: { type: "json", data: latestMeetingEmail },
+                },
+              ];
+            }
+
+            await this.emailService.replyToEmail(latestMeetingEmail.id, {
+              body: message,
+              attachments,
+            });
+
+            const replySentResponses = [
+              `Sent your reply to **${latestMeetingEmail.from}**’s meeting email!`,
+              `Reply’s off to **${latestMeetingEmail.from}**—all done!`,
+              `Your response to **${latestMeetingEmail.from}**’s meeting mail is on its way!`,
+            ];
+            return [
+              {
+                type: "text",
+                text: replySentResponses[
+                  Math.floor(Math.random() * replySentResponses.length)
+                ],
+              },
+            ];
+          } catch (error) {
+            console.error("Error in latest email retrieval:", error);
+            const errorResponses = [
+              "Oops, hit a snag finding that latest meeting email. Can you give me more to work with?",
+              "Something went wrong grabbing your latest meeting mail. More details, maybe?",
+              "Couldn’t fetch that meeting email—sorry! What else can I try?",
+            ];
+            return [
+              {
+                type: "text",
+                text: errorResponses[
+                  Math.floor(Math.random() * errorResponses.length)
+                ],
+              },
+            ];
+          }
+        }
+
         if (!email_id || !message)
           throw new Error("Missing required parameters");
+
         await this.emailService.replyToEmail(email_id, {
           body: message,
           attachments,
         });
-        return [{ type: "text", text: "Your reply is on its way!" }];
+
+        const replyConfirmations = [
+          "Your reply’s on its way!",
+          "Sent that response off for you!",
+          "Reply delivered—anything else?",
+        ];
+        return [
+          {
+            type: "text",
+            text: replyConfirmations[
+              Math.floor(Math.random() * replyConfirmations.length)
+            ],
+          },
+        ];
       }
       case "search-emails": {
         const { query } = args;
         if (!query) throw new Error("Missing query parameter");
-        const searchResults = await this.emailService.fetchEmails({ query });
+        const processedQuery = this.processQuery(query);
+        const searchResults = await this.emailService.fetchEmails({
+          query: processedQuery,
+        });
+        const searchIntros = [
+          `Here’s what I found for "**${query}**":`,
+          `Search results for "**${query}**" are in!`,
+          `Got these for "**${query}**":`,
+        ];
         return [
           {
             type: "text",
-            text: `Here’s what I found for "${query}":`,
+            text: searchIntros[Math.floor(Math.random() * searchIntros.length)],
             artifact: { type: "json", data: searchResults },
           },
         ];
@@ -306,36 +1125,112 @@ class MCPServer {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID parameter");
         await this.emailService.markAsRead(email_id, true);
+        const markReadConfirmations = [
+          "Marked that email as read for you!",
+          "Email’s now **read**—all good!",
+          "That one’s checked off as read!",
+        ];
         return [
-          { type: "text", text: "I’ve marked that email as read for you." },
+          {
+            type: "text",
+            text: markReadConfirmations[
+              Math.floor(Math.random() * markReadConfirmations.length)
+            ],
+          },
         ];
       }
       case "summarize-email": {
         const { email_id } = args;
-        if (!email_id) throw new Error("Missing email ID parameter");
-        const emailContent = await this.emailService.getEmail(email_id);
-        const summaryResponse = await this.modelProvider.callWithFallbackChain(
-          getDefaultModel().id,
-          {
-            messages: [
+        if (!email_id) throw new Error("Missing email ID");
+
+        try {
+          const emailContent = await this.emailService.getEmail(email_id);
+          if (!emailContent.body || emailContent.body.trim() === "") {
+            return [
               {
-                role: "user",
-                content: `Please summarize this email: ${emailContent.body}`,
+                type: "text",
+                text: "Hmm, this email’s empty—nothing to summarize here!",
               },
-            ],
-            temperature: 0.7,
-          },
-          ["mixtral-8x7b-32768", "llama-3-70b"]
-        );
-        const summary =
-          summaryResponse.result.choices[0]?.message?.content ||
-          "I couldn’t generate a summary for this one.";
-        return [
-          {
-            type: "text",
-            text: `Here’s a quick summary of that email: ${summary}`,
-          },
-        ];
+            ];
+          }
+
+          const plainTextBody = emailContent.body.includes("<html")
+            ? convert(emailContent.body, {
+                wordwrap: 130,
+                ignoreHref: true,
+                ignoreImage: true,
+                preserveNewlines: true,
+                formatters: {
+                  block: (elem, walk, builder) => {
+                    builder.addBlock(
+                      elem.children ? walk(elem.children) : elem.text
+                    );
+                  },
+                },
+              })
+            : emailContent.body;
+
+          const cleanedText = plainTextBody.replace(/\n\s*\n/g, "\n").trim();
+
+          const summaryResponse =
+            await this.modelProvider.callWithFallbackChain(
+              getDefaultModel().id,
+              {
+                messages: [
+                  {
+                    role: "system",
+                    content:
+                      "You are a helpful AI that summarizes emails in 1-2 concise sentences.",
+                  },
+                  {
+                    role: "user",
+                    content: `Summarize this email in 1-2 sentences: ${cleanedText}`,
+                  },
+                ],
+                temperature: 0.7,
+                max_tokens: 100,
+              },
+              ["mixtral-8x7b-32768", "llama-3-70b"]
+            );
+
+          const summary =
+            summaryResponse.result.choices[0]?.message?.content?.trim();
+          if (!summary) {
+            console.error(`[ERROR] No summary returned for email ${email_id}`);
+            return [
+              {
+                type: "text",
+                text: "Oops, I couldn’t summarize this one—let’s try something else!",
+              },
+            ];
+          }
+
+          const summaryIntros = [
+            `Here’s the gist of that email: **${summary}**`,
+            `Quick summary for you: **${summary}**`,
+            `In a nutshell: **${summary}**`,
+          ];
+          const randomIntro =
+            summaryIntros[Math.floor(Math.random() * summaryIntros.length)];
+
+          return [
+            {
+              type: "text",
+              text: randomIntro,
+            },
+          ];
+        } catch (error) {
+          console.error(
+            `[ERROR] Failed to summarize email ${email_id}:`,
+            error.message
+          );
+          return [
+            {
+              type: "text",
+              text: "Yikes, something went wrong summarizing this email—want me to try again?",
+            },
+          ];
+        }
       }
       case "draft-email": {
         const { recipient, content, recipient_email } = args;
@@ -365,10 +1260,23 @@ class MCPServer {
           subject,
           message: body,
         });
+        const draftResponses = [
+          `I’ve whipped up an email for **${recipient}**:\n\n**To:** ${
+            recipient_email || recipient
+          }\n**Subject:** ${subject}\n\n${body}\n\nLooks good? Tell me if you want tweaks or if I should send it!`,
+          `Here’s a draft for **${recipient}**:\n\n**To:** ${
+            recipient_email || recipient
+          }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think—ready to go or need changes?`,
+          `Drafted an email to **${recipient}** for you:\n\n**To:** ${
+            recipient_email || recipient
+          }\n**Subject:** ${subject}\n\n${body}\n\nLet me know if this works or if we should adjust it!`,
+        ];
         return [
           {
             type: "text",
-            text: `I’ve drafted an email for you:\n\n**To:** ${recipient}\n**Subject:** ${subject}\n\n${body}\n\nLet me know if you’d like to tweak it or send it off!`,
+            text: draftResponses[
+              Math.floor(Math.random() * draftResponses.length)
+            ],
           },
         ];
       }
@@ -600,18 +1508,27 @@ class MCPServer {
           return toolResponse;
         }
       }
+      const noDraftResponses = [
+        "Hmm, no draft email’s ready to send yet. Want to start one?",
+        "Looks like there’s no email queued up. Shall we draft a new one?",
+        "I don’t see a draft to send. How about we create one now?",
+      ];
       return [
         {
           type: "text",
-          text: "Hmm, I don't see any draft emails ready to send. Would you like to start a new email instead?",
+          text: noDraftResponses[
+            Math.floor(Math.random() * noDraftResponses.length)
+          ],
         },
       ];
     }
 
+    // Preprocess the message to handle references to previous emails
+    let processedMessage = this.preprocessMessage(message, userId);
     const messages = [
       { role: "system", content: SYSTEM_PROMPT },
       ...history,
-      { role: "user", content: message },
+      { role: "user", content: processedMessage },
     ];
 
     const hour = new Date().getHours();
@@ -644,10 +1561,17 @@ class MCPServer {
           "[DEBUG] Model response lacks action, message, or chat:",
           actionData
         );
+        const clarificationRequests = [
+          "I’m not quite catching you—could you say that another way?",
+          "Hmm, I’m a bit lost. Mind rephrasing that?",
+          "Not sure I follow. Can you give me more to go on?",
+        ];
         return [
           {
             type: "text",
-            text: "I'm not quite catching what you mean. Could you rephrase that for me?",
+            text: clarificationRequests[
+              Math.floor(Math.random() * clarificationRequests.length)
+            ],
           },
         ];
       }
@@ -658,10 +1582,17 @@ class MCPServer {
         "Response:",
         responseContent
       );
+      const errorResponses = [
+        "Oops! Hit a snag there—mind trying that again?",
+        "Something went wonky on my end. Could you repeat it?",
+        "Sorry, I tripped up! Can you give it another shot?",
+      ];
       return [
         {
           type: "text",
-          text: "Sorry about that! I had a little hiccup processing your request. Mind trying again?",
+          text: errorResponses[
+            Math.floor(Math.random() * errorResponses.length)
+          ],
         },
       ];
     }
@@ -676,10 +1607,17 @@ class MCPServer {
       if (actionData.action === "send-email") {
         this.pendingEmails.set(userId, actionData.params);
         const recipientName = actionData.params.recipient_id.split("@")[0];
+        const draftResponses = [
+          `I’ve put together an email for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nLooks okay? Say **"confirm send"** to send it, or let me know what to tweak!`,
+          `Here’s an email draft for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nGood to go? Just say **"confirm send"**, or tell me what’s off!`,
+          `Drafted something for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nHappy with it? Say **"confirm send"** or suggest changes!`,
+        ];
         return [
           {
             type: "text",
-            text: `I've put together an email for ${recipientName}:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nDoes this look good? Just say "confirm send" when you're ready to send it, or let me know what you'd like to change.`,
+            text: draftResponses[
+              Math.floor(Math.random() * draftResponses.length)
+            ],
           },
         ];
       }
@@ -694,10 +1632,10 @@ class MCPServer {
         ? this.formatTable(actionData.data.table)
         : "";
       const followUps = [
-        "What would you like to do with this information?",
-        "Anything specific you'd like to know more about?",
-        "Does this help with what you were looking for?",
-        "Is there anything else you'd like me to explain?",
+        "What’s your next step with this?",
+        "Anything here you want to dive into?",
+        "Does this cover what you needed?",
+        "Need me to expand on anything?",
       ];
       const randomFollowUp =
         followUps[Math.floor(Math.random() * followUps.length)];
@@ -708,10 +1646,17 @@ class MCPServer {
     } else if (actionData.message) {
       return [{ type: "text", text: actionData.message }];
     } else {
+      const clarificationRequests = [
+        "Not sure what you’re after—can you fill me in more?",
+        "I’m a tad confused—could you clarify that?",
+        "Hmm, what do you mean? Give me a nudge!",
+      ];
       return [
         {
           type: "text",
-          text: "I'm not quite sure what you're asking for. Could you give me a bit more context?",
+          text: clarificationRequests[
+            Math.floor(Math.random() * clarificationRequests.length)
+          ],
         },
       ];
     }

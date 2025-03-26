@@ -1,3 +1,4 @@
+// index.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -15,7 +16,6 @@ import requestLogger from "./utils/requestLogger.js";
 import "./config/passport.js";
 
 dotenv.config();
-
 const app = express();
 const PORT = process.env.PORT || 4000;
 
@@ -41,13 +41,14 @@ app.use(
     },
   })
 );
+
 app.use(passport.initialize());
 app.use(passport.session());
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      console.log("[DEBUG] Request Origin:", origin);
+      // Allow requests with no origin (like Postman) or from allowed origins
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
