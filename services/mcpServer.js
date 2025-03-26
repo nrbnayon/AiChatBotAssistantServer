@@ -688,30 +688,43 @@ class MCPServer {
         const { recipient, content, recipient_email } = args;
         if (!recipient || !content)
           throw new Error("Missing required parameters");
+
+        // Updated prompt to ensure a full, professional email
+        const prompt = `Draft a polite and professional email to ${recipient} based on the following message: "${content}". Include a suitable subject line starting with 'Subject:'. If the message is brief, expand it into a complete email body with appropriate greetings, context, and a sign-off. Ensure the email is clear, courteous, and professional.`;
+
         const draftResponse = await this.modelProvider.callWithFallbackChain(
           getDefaultModel().id,
           {
             messages: [
               {
                 role: "user",
-                content: `Draft an email to ${recipient} about ${content}. Include a subject line starting with 'Subject:'`,
+                content: prompt,
               },
             ],
             temperature: 0.7,
+            max_tokens: 300, // Increased to allow for detailed responses
           },
           ["mixtral-8x7b-32768", "llama-3-70b"]
         );
+
         const draftText =
           draftResponse.result.choices[0]?.message?.content ||
           "Draft not generated";
-        const subject = draftText.split("\n")[0].replace("Subject: ", "");
-        const body = draftText.split("\n").slice(1).join("\n");
+
+        // Extract subject and body reliably
+        const subjectMatch = draftText.match(/Subject:\s*(.+?)(?=\n|$)/);
+        const subject = subjectMatch ? subjectMatch[1].trim() : "No subject";
+        const body = draftText.split("\n").slice(1).join("\n").trim();
+
+        // Save the draft
         await EmailDraft.create({
           userId,
           recipientId: recipient_email || recipient,
           subject,
           message: body,
         });
+
+        // Response variations
         const draftResponses = [
           `I’ve whipped up an email for **${recipient}**:\n\n**To:** ${
             recipient_email || recipient
@@ -719,10 +732,11 @@ class MCPServer {
           `Here’s a draft for **${recipient}**:\n\n**To:** ${
             recipient_email || recipient
           }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think—ready to go or need changes?`,
-          `Drafted an email to **${recipient}** for you:\n\n**To:** ${
+          `Drafted something for **${recipient}**:\n\n**To:** ${
             recipient_email || recipient
           }\n**Subject:** ${subject}\n\n${body}\n\nLet me know if this works or if we should adjust it!`,
         ];
+
         return [
           {
             type: "text",

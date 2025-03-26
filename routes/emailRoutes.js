@@ -72,20 +72,45 @@ router.post(
   replyToEmail
 );
 
-router.delete("/trash/:emailId", auth(), emailAuth, trashEmail);
+router.delete(
+  "/trash/:emailId",
+  auth(),
+  emailAuth,
+  setRefreshedTokenCookie,
+  trashEmail
+);
 
-router.get("/all/search", auth(), emailAuth, searchEmails);
+router.get(
+  "/all/search",
+  auth(),
+  emailAuth,
+  setRefreshedTokenCookie,
+  searchEmails
+);
 
-router.patch("/mark-as-read/:emailId", auth(), emailAuth, markEmailAsRead);
+router.patch(
+  "/mark-as-read/:emailId",
+  auth(),
+  emailAuth,
+  setRefreshedTokenCookie,
+  markEmailAsRead
+);
 
-router.get("/summarize/:emailId", auth(), emailAuth, summarizeEmail);
+router.get(
+  "/summarize/:emailId",
+  auth(),
+  emailAuth,
+  setRefreshedTokenCookie,
+  summarizeEmail
+);
 
-router.post("/chat", auth(), emailAuth, chatWithBot);
+router.post("/chat", auth(), emailAuth, setRefreshedTokenCookie, chatWithBot);
 
 router.post(
   "/draft",
   auth(),
   emailAuth,
+  setRefreshedTokenCookie,
   uploadMiddleware.array("attachments"),
   createDraft
 );

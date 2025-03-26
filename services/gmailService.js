@@ -4,7 +4,7 @@ import { ApiError } from "../utils/errorHandler.js";
 import { StatusCodes } from "http-status-codes";
 import EmailService from "./emailService.js";
 import { convert } from "html-to-text";
-import { decrypt } from "../utils/encryptionUtils.js"; 
+import { decrypt, encrypt } from "../utils/encryptionUtils.js";
 
 class GmailService extends EmailService {
   async getClient() {
@@ -14,7 +14,6 @@ class GmailService extends EmailService {
       process.env.GOOGLE_REDIRECT_URI
     );
 
-    // Check if refresh token exists
     const encryptedRefreshToken = this.user.googleRefreshToken;
     if (!encryptedRefreshToken) {
       throw new ApiError(
@@ -23,20 +22,19 @@ class GmailService extends EmailService {
       );
     }
 
-    // Decrypt the refresh token
     const refreshToken = decrypt(encryptedRefreshToken);
 
     const googleTokenExpiry = this.user.googleAccessTokenExpires || 0;
     if (googleTokenExpiry < Date.now()) {
       auth.setCredentials({
         access_token: this.user.googleAccessToken,
-        refresh_token: refreshToken, // Use decrypted refresh token
+        refresh_token: refreshToken,
       });
       try {
         const { credentials } = await auth.refreshAccessToken();
         this.user.googleAccessToken = credentials.access_token;
         this.user.googleRefreshToken = credentials.refresh_token
-          ? encrypt(credentials.refresh_token) // Re-encrypt if a new refresh token is provided
+          ? encrypt(credentials.refresh_token)
           : this.user.googleRefreshToken;
         this.user.googleAccessTokenExpires = credentials.expiry_date;
         await this.user.save();
@@ -51,7 +49,7 @@ class GmailService extends EmailService {
     }
     auth.setCredentials({
       access_token: this.user.googleAccessToken,
-      refresh_token: refreshToken, // Use decrypted refresh token
+      refresh_token: refreshToken,
     });
     return google.gmail({ version: "v1", auth });
   }
