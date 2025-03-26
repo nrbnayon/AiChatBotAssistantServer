@@ -61,7 +61,6 @@ class ModelProvider {
 
     while (attemptCount < this.retryCount) {
       try {
-        // console.log(`[DEBUG] Calling model ${modelId} with options:`, options);
         const result = await this.groq.chat.completions.create({
           ...options,
           model: modelId,
@@ -98,20 +97,17 @@ class MCPServer {
     this.lastListedEmails = new Map();
   }
 
-  // Enhanced processQuery to handle dynamic time frames
   processQuery(query) {
     const today = new Date();
     const year = today.getFullYear();
     const month = String(today.getMonth() + 1).padStart(2, "0");
     const day = String(today.getDate()).padStart(2, "0");
 
-    // Handle "today"
     query = query.replace(/today/g, `${year}/${month}/${day}`);
 
-    // Handle "this week" (assuming week starts on Sunday)
     if (query.toLowerCase().includes("this week")) {
       const startOfWeek = new Date(today);
-      startOfWeek.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
+      startOfWeek.setDate(today.getDate() - today.getDay());
       const weekYear = startOfWeek.getFullYear();
       const weekMonth = String(startOfWeek.getMonth() + 1).padStart(2, "0");
       const weekDay = String(startOfWeek.getDate()).padStart(2, "0");
@@ -121,7 +117,6 @@ class MCPServer {
       );
     }
 
-    // Handle "this month"
     if (query.toLowerCase().includes("this month")) {
       query = query.replace(/this month/i, `${year}/${month}/01`);
     }
@@ -129,7 +124,6 @@ class MCPServer {
     return query;
   }
 
-  // Preprocess user message to map "the first email" or "email 2" to IDs
   preprocessMessage(message, userId) {
     const lastListed = this.lastListedEmails.get(userId);
     if (!lastListed) return message;
@@ -251,11 +245,11 @@ class MCPServer {
                   userId
                 );
                 const summaryText = summaryResponse[0].text;
-                const parts = summaryText.split(": **"); // Fix the split to match the format
+                const parts = summaryText.split(": **");
                 if (parts.length > 1) {
-                  return parts[1].replace("**", "").trim(); // Extract summary and remove trailing **
+                  return parts[1].replace("**", "").trim();
                 } else {
-                  return "No summary available."; // Fallback if format doesn’t match
+                  return "No summary available.";
                 }
               });
               const summaries = await Promise.all(summaryPromises);
@@ -559,13 +553,9 @@ class MCPServer {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID");
 
-        let emailContent; // Declare outside try-catch for scope access
+        let emailContent;
         try {
           emailContent = await this.emailService.getEmail(email_id);
-          // console.log(
-          //   `[DEBUG] Email content for ${email_id}:`,
-          //   emailContent.body
-          // );
 
           if (!emailContent.body || emailContent.body.trim() === "") {
             console.warn(`[WARN] Email ${email_id} has no body content.`);
@@ -580,8 +570,8 @@ class MCPServer {
           const plainTextBody = emailContent.body.includes("<html")
             ? convert(emailContent.body, {
                 wordwrap: false,
-                ignoreHref: true, // Remove links
-                ignoreImage: true, // Remove images
+                ignoreHref: true,
+                ignoreImage: true,
                 preserveNewlines: true,
                 formatters: {
                   block: (elem, walk, builder) => {
@@ -602,9 +592,7 @@ class MCPServer {
             : emailContent.body;
 
           const cleanedText = plainTextBody.replace(/\n\s*\n/g, "\n").trim();
-          // console.log(`[DEBUG] Cleaned text for ${email_id}:`, cleanedText);
 
-          // Limit text length to avoid token limit issues
           const MAX_TEXT_LENGTH = 2000;
           let summaryText = cleanedText;
           if (cleanedText.length > MAX_TEXT_LENGTH) {
@@ -612,7 +600,6 @@ class MCPServer {
               cleanedText.substring(0, MAX_TEXT_LENGTH) + "... (truncated)";
           }
 
-          // Log options before the AI call
           const aiOptions = {
             messages: [
               {
@@ -628,7 +615,6 @@ class MCPServer {
             temperature: 0.7,
             max_tokens: 100,
           };
-          // console.log(`[DEBUG] AI options for ${email_id}:`, aiOptions);
 
           const summaryResponse =
             await this.modelProvider.callWithFallbackChain(
@@ -639,7 +625,6 @@ class MCPServer {
 
           const summary =
             summaryResponse.result.choices[0]?.message?.content?.trim();
-          // console.log(`[DEBUG] Model response for ${email_id}:`, summary);
 
           if (!summary) {
             console.error(`[ERROR] No summary returned for email ${email_id}`);
@@ -674,8 +659,7 @@ class MCPServer {
             `[ERROR] Failed to summarize email ${email_id}:`,
             error.stack
           );
-          // Use a fallback if emailContent isn’t available
-          const subject = emailContent?.subject || "No subject";
+          const subject = emailContent?.subject || "No subject videogame";
           return [
             {
               type: "text",
@@ -689,7 +673,6 @@ class MCPServer {
         if (!recipient || !content)
           throw new Error("Missing required parameters");
 
-        // Updated prompt to ensure a full, professional email
         const prompt = `Draft a polite and professional email to ${recipient} based on the following message: "${content}". Include a suitable subject line starting with 'Subject:'. If the message is brief, expand it into a complete email body with appropriate greetings, context, and a sign-off. Ensure the email is clear, courteous, and professional.`;
 
         const draftResponse = await this.modelProvider.callWithFallbackChain(
@@ -702,7 +685,7 @@ class MCPServer {
               },
             ],
             temperature: 0.7,
-            max_tokens: 300, // Increased to allow for detailed responses
+            max_tokens: 300,
           },
           ["mixtral-8x7b-32768", "llama-3-70b"]
         );
@@ -711,12 +694,10 @@ class MCPServer {
           draftResponse.result.choices[0]?.message?.content ||
           "Draft not generated";
 
-        // Extract subject and body reliably
         const subjectMatch = draftText.match(/Subject:\s*(.+?)(?=\n|$)/);
         const subject = subjectMatch ? subjectMatch[1].trim() : "No subject";
         const body = draftText.split("\n").slice(1).join("\n").trim();
 
-        // Save the draft
         await EmailDraft.create({
           userId,
           recipientId: recipient_email || recipient,
@@ -724,7 +705,6 @@ class MCPServer {
           message: body,
         });
 
-        // Response variations
         const draftResponses = [
           `I’ve whipped up an email for **${recipient}**:\n\n**To:** ${
             recipient_email || recipient
@@ -736,7 +716,6 @@ class MCPServer {
             recipient_email || recipient
           }\n**Subject:** ${subject}\n\n${body}\n\nLet me know if this works or if we should adjust it!`,
         ];
-
         return [
           {
             type: "text",
@@ -942,6 +921,12 @@ class MCPServer {
 
   async chatWithBot(req, message, history = []) {
     const userId = req.user.id;
+    const userName = req.user.name || "User";
+    const userEmail = req.user.email;
+    const personalizedSystemPrompt = SYSTEM_PROMPT.replace(
+      "{{USER_NAME}}",
+      userName
+    ).replace("{{USER_EMAIL}}", userEmail);
 
     if (
       message.toLowerCase().includes("confirm") &&
@@ -953,7 +938,7 @@ class MCPServer {
         .find((msg) => msg.role === "assistant")?.content;
       if (
         lastAssistantMessage &&
-        lastAssistantMessage.includes("I've put together an email")
+        lastAssistantMessage.includes("I’ve put together an email")
       ) {
         const toMatch = lastAssistantMessage.match(/\*\*To:\*\* (.+?)\n/);
         const subjectMatch = lastAssistantMessage.match(
@@ -989,19 +974,18 @@ class MCPServer {
       ];
     }
 
-    // Preprocess the message to handle references to previous emails
     let processedMessage = this.preprocessMessage(message, userId);
     const messages = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: personalizedSystemPrompt },
       ...history,
       { role: "user", content: processedMessage },
     ];
 
     const hour = new Date().getHours();
     let timeContext = "";
-    if (hour >= 5 && hour < 12) timeContext = "It's morning, ";
-    else if (hour >= 12 && hour < 18) timeContext = "It's afternoon, ";
-    else timeContext = "It's evening, ";
+    if (hour >= 5 && hour < 12) timeContext = "It’s morning, ";
+    else if (hour >= 12 && hour < 18) timeContext = "It’s afternoon, ";
+    else timeContext = "It’s evening, ";
     messages.push({
       role: "system",
       content: `${timeContext}the user might appreciate a response that acknowledges their busy schedule.`,
@@ -1017,16 +1001,11 @@ class MCPServer {
       fallbackChain
     );
     const responseContent = result.choices[0]?.message?.content || "{}";
-    // console.log("[DEBUG] Raw model response:", responseContent);
 
     let actionData;
     try {
       actionData = JSON.parse(responseContent);
       if (!actionData.action && !actionData.message && !actionData.chat) {
-        // console.log(
-        //   "[DEBUG] Model response lacks action, message, or chat:",
-        //   actionData
-        // );
         const clarificationRequests = [
           "I’m not quite catching you—could you say that another way?",
           "Hmm, I’m a bit lost. Mind rephrasing that?",
@@ -1064,12 +1043,6 @@ class MCPServer {
     }
 
     if (actionData.action) {
-      // console.log(
-      //   "[DEBUG] Action recognized:",
-      //   actionData.action,
-      //   "Params:",
-      //   actionData.params
-      // );
       if (actionData.action === "send-email") {
         this.pendingEmails.set(userId, actionData.params);
         const recipientName = actionData.params.recipient_id.split("@")[0];
