@@ -153,6 +153,7 @@ const deleteUser = catchAsync(async (req, res, next) => {
 const addInbox = catchAsync(async (req, res, next) => {
   const { inbox } = req.body;
   const user = await User.findById(req.user.id);
+  if (!user) return next(new ApiError("User not found", 404));
   const maxInboxes = {
     basic: 1,
     premium: 3,

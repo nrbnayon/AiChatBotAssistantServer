@@ -20,6 +20,18 @@ import WaitingList from "../models/WaitingList.js";
 
 const router = express.Router();
 
+/**
+ * ╔═══════════════════════════════════════╗
+ * ║    Public Waiting List Endpoint       ║
+ * ╚═══════════════════════════════════════╝
+ * @description Allows users to join the waiting list
+ * @route POST /add-to-waiting-list
+ * @access Public
+ * @param {string} email - User's email address
+ * @param {string} name - User's name
+ * @param {string} inbox - User's preferred inbox
+ * @param {string} description - Additional user details
+ */
 router.post("/add-to-waiting-list", async (req, res) => {
   const { email, name, inbox, description } = req.body;
   try {
@@ -31,6 +43,13 @@ router.post("/add-to-waiting-list", async (req, res) => {
   }
 });
 
+/**
+ * ╔═══════════════════════════════════════╗
+ * ║    Authenticated User Endpoints       ║
+ * ╚═══════════════════════════════════════╝
+ * @description Routes for authenticated user operations
+ */
+// 🔐 Retrieve current user's profile information
 router.get(
   "/me",
   auth(),
@@ -38,6 +57,8 @@ router.get(
   rateLimitMiddleware(),
   getMe
 );
+
+// 🖊️ Update user profile details
 router.put(
   "/profile",
   auth(),
@@ -45,6 +66,8 @@ router.put(
   rateLimitMiddleware(),
   updateProfile
 );
+
+// 💳 Manage user subscription settings
 router.put(
   "/subscription",
   auth("user"),
@@ -52,6 +75,8 @@ router.put(
   rateLimitMiddleware(),
   updateSubscription
 );
+
+// 🗑️ Delete user account
 router.delete(
   "/me",
   auth(),
@@ -59,13 +84,8 @@ router.delete(
   rateLimitMiddleware(),
   deleteMe
 );
-router.get(
-  "/admin/users",
-  auth("admin"),
-  setRefreshedTokenCookie,
-  rateLimitMiddleware({ max: 1000 }),
-  getAllUsers
-);
+
+// 🏷️ Update user's keywords or interests
 router.put(
   "/keywords",
   auth("user"),
@@ -73,20 +93,8 @@ router.put(
   rateLimitMiddleware(),
   updateKeywords
 );
-router.post(
-  "/admin/users",
-  auth("admin"),
-  setRefreshedTokenCookie,
-  rateLimitMiddleware(),
-  createUser
-);
-router.delete(
-  "/admin/users/:id",
-  auth("admin"),
-  setRefreshedTokenCookie,
-  rateLimitMiddleware(),
-  deleteUser
-);
+
+// 📥 Add a new inbox for the user
 router.post(
   "/add-inbox",
   auth(),
@@ -94,9 +102,75 @@ router.post(
   rateLimitMiddleware(),
   addInbox
 );
-router.get("/income", auth("admin"), getIncome);
-router.get("/stats", auth("admin"), getUserStats);
-router.post("/waiting-list/approve", auth("admin"), approveWaitingList);
-router.post("/waiting-list/reject", auth("admin"), rejectWaitingList);
+
+/**
+ * ╔═══════════════════════════════════════╗
+ * ║     Admin: User Management            ║
+ * ╚═══════════════════════════════════════╝
+ * @description Administrative routes for user management
+ * @access Admin only
+ */
+// Retrieve all registered users
+router.get(
+  "/admin/users",
+  auth("admin"),
+  setRefreshedTokenCookie,
+  rateLimitMiddleware({ max: 1000 }),
+  getAllUsers
+);
+
+// Create a new user
+router.post(
+  "/admin/users",
+  auth("admin"),
+  setRefreshedTokenCookie,
+  rateLimitMiddleware(),
+  createUser
+);
+
+// Delete a specific user
+router.delete(
+  "/admin/users/:id",
+  auth("admin"),
+  setRefreshedTokenCookie,
+  rateLimitMiddleware(),
+  deleteUser
+);
+
+/**
+ * ╔═══════════════════════════════════════╗
+ * ║     Admin: Financial Endpoints        ║
+ * ╚═══════════════════════════════════════╝
+ * @description Routes for financial and statistical data
+ * @access Admin only
+ */
+// Retrieve income information
+router.get("/income", auth("admin"), setRefreshedTokenCookie, getIncome);
+
+// Get user platform statistics
+router.get("/stats", auth("admin"), setRefreshedTokenCookie, getUserStats);
+
+/**
+ * ╔═══════════════════════════════════════╗
+ * ║     Waiting List Management           ║
+ * ╚═══════════════════════════════════════╝
+ * @description Admin routes for waiting list operations
+ * @access Admin only
+ */
+// Approve a user from the waiting list
+router.post(
+  "/waiting-list/approve",
+  auth("admin"),
+  setRefreshedTokenCookie,
+  approveWaitingList
+);
+
+// Reject a user from the waiting list
+router.post(
+  "/waiting-list/reject",
+  auth("admin"),
+  setRefreshedTokenCookie,
+  rejectWaitingList
+);
 
 export default router;
