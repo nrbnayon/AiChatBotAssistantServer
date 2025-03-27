@@ -1,3 +1,4 @@
+// controllers\userController.js
 import User from "../models/User.js";
 import userService from "../services/userService.js";
 import WaitingList from "../models/WaitingList.js";

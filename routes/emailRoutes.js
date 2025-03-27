@@ -1,11 +1,10 @@
-// routes\emailRoutes.js
 import express from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 import auth, { setRefreshedTokenCookie } from "../middleware/authMiddleware.js";
 import emailAuth from "../middleware/emailMiddleware.js";
-import { rateLimitMiddleware } from "../middleware/rateLimit.js";
+import { rateLimitMiddleware, chatRateLimit } from "../middleware/rateLimit.js";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 import {
@@ -31,8 +30,6 @@ const __dirname = dirname(__filename);
  * ╔═══════════════════════════════════════╗
  * ║    File Upload Configuration          ║
  * ╚═══════════════════════════════════════╝
- * @description Configures multer for file upload management
- * @middleware Handles file storage and naming conventions
  */
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -51,14 +48,22 @@ const uploadMiddleware = multer({ storage });
  * ╔═══════════════════════════════════════╗
  * ║    Email Fetching Routes              ║
  * ╚═══════════════════════════════════════╝
- * @description Routes for retrieving emails
- * @access Authenticated Users
  */
 // Fetch emails with optional filtering
-router.get("/", auth(), emailAuth, rateLimitMiddleware(), (req, res) => {
-  const filter = req.query.filter || "all";
-  fetchEmails(req, res, filter);
-});
+router.get(
+  "/",
+  auth(),
+  emailAuth,
+  rateLimitMiddleware({
+    windowMs: 15 * 60 * 1000, 
+    max: 50, 
+    message: "Too many email fetch requests. Please try again later.",
+  }),
+  (req, res) => {
+    const filter = req.query.filter || "all";
+    fetchEmails(req, res, filter);
+  }
+);
 
 // Fetch important emails
 router.get(
@@ -66,24 +71,43 @@ router.get(
   auth(),
   emailAuth,
   setRefreshedTokenCookie,
+  rateLimitMiddleware({
+    windowMs: 15 * 60 * 1000,
+    max: 20, 
+    message: "Too many important email requests. Please try again later.",
+  }),
   fetchImportantEmails
 );
 
 // Read a specific email
-router.get("/:emailId", auth(), setRefreshedTokenCookie, emailAuth, readEmail);
+router.get(
+  "/:emailId",
+  auth(),
+  setRefreshedTokenCookie,
+  emailAuth,
+  rateLimitMiddleware({
+    windowMs: 15 * 60 * 1000, 
+    max: 100, 
+    message: "Too many email read requests. Please slow down.",
+  }),
+  readEmail
+);
 
 /**
  * ╔═══════════════════════════════════════╗
  * ║    Email Interaction Routes            ║
  * ╚═══════════════════════════════════════╝
- * @description Routes for email sending, replying, and management
- * @access Authenticated Users
  */
 // Send a new email with attachments
 router.post(
   "/send",
   auth(),
   emailAuth,
+  rateLimitMiddleware({
+    windowMs: 60 * 60 * 1000, 
+    max: 10, 
+    message: "Too many emails sent. Please wait before sending more.",
+  }),
   uploadMiddleware.array("attachments"),
   sendEmail
 );
@@ -94,6 +118,11 @@ router.post(
   auth(),
   emailAuth,
   setRefreshedTokenCookie,
+  rateLimitMiddleware({
+    windowMs: 30 * 60 * 1000,
+    max: 15, 
+    message: "Too many email replies. Please slow down.",
+  }),
   uploadMiddleware.array("attachments"),
   replyToEmail
 );
@@ -104,6 +133,11 @@ router.delete(
   auth(),
   emailAuth,
   setRefreshedTokenCookie,
+  rateLimitMiddleware({
+    windowMs: 15 * 60 * 1000, 
+    max: 30, 
+    message: "Too many trash actions. Please slow down.",
+  }),
   trashEmail
 );
 
@@ -111,8 +145,6 @@ router.delete(
  * ╔═══════════════════════════════════════╗
  * ║    Email Management Routes            ║
  * ╚═══════════════════════════════════════╝
- * @description Routes for email search and status management
- * @access Authenticated Users
  */
 // Search emails
 router.get(
@@ -120,6 +152,11 @@ router.get(
   auth(),
   emailAuth,
   setRefreshedTokenCookie,
+  rateLimitMiddleware({
+    windowMs: 15 * 60 * 1000, 
+    max: 25, 
+    message: "Too many search requests. Please try again later.",
+  }),
   searchEmails
 );
 
@@ -129,6 +166,11 @@ router.patch(
   auth(),
   emailAuth,
   setRefreshedTokenCookie,
+  rateLimitMiddleware({
+    windowMs: 15 * 60 * 1000, 
+    max: 50, 
+    message: "Too many mark as read actions. Please slow down.",
+  }),
   markEmailAsRead
 );
 
@@ -138,6 +180,11 @@ router.get(
   auth(),
   emailAuth,
   setRefreshedTokenCookie,
+  rateLimitMiddleware({
+    windowMs: 30 * 60 * 1000, 
+    max: 10, 
+    message: "Too many email summarization requests. Please try again later.",
+  }),
   summarizeEmail
 );
 
@@ -145,11 +192,16 @@ router.get(
  * ╔═══════════════════════════════════════╗
  * ║    Additional Email Features          ║
  * ╚═══════════════════════════════════════╝
- * @description Advanced email interaction routes
- * @access Authenticated Users
  */
 // AI-powered email chat
-router.post("/chat", auth(), emailAuth, setRefreshedTokenCookie, chatWithBot);
+router.post(
+  "/chat",
+  auth(),
+  emailAuth,
+  setRefreshedTokenCookie,
+  chatRateLimit(),
+  chatWithBot
+);
 
 // Create email draft with attachments
 router.post(
@@ -157,6 +209,11 @@ router.post(
   auth(),
   emailAuth,
   setRefreshedTokenCookie,
+  rateLimitMiddleware({
+    windowMs: 15 * 60 * 1000, 
+    max: 20,
+    message: "Too many draft creations. Please slow down.",
+  }),
   uploadMiddleware.array("attachments"),
   createDraft
 );

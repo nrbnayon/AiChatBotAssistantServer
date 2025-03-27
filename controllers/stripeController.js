@@ -1,10 +1,8 @@
+// controllers/stripeController.js
 import Stripe from "stripe";
-import dotenv from "dotenv";
 import User from "../models/User.js";
 import { ApiError, catchAsync } from "../utils/errorHandler.js";
-import { StatusCodes } from "http-status-codes";
 
-dotenv.config();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const priceIdToPlan = {
@@ -18,21 +16,19 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
   const user = await User.findById(req.user.id);
 
   if (!["basic", "premium", "enterprise"].includes(plan)) {
-    return next(new AppError("Invalid plan", 400));
+    return next(new ApiError("Invalid plan", 400));
   }
 
-  if (user.subscription.status === "active") {
-    return next(new AppError("Subscription already active", 400));
+  if (
+    user.subscription.status === "active" &&
+    user.subscription.endDate > new Date()
+  ) {
+    return next(new ApiError("Subscription already active", 400));
   }
 
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ["card"],
-    line_items: [
-      {
-        price: getStripePriceId(plan),
-        quantity: 1,
-      },
-    ],
+    line_items: [{ price: getStripePriceId(plan), quantity: 1 }],
     mode: "subscription",
     success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${process.env.FRONTEND_URL}/cancel`,
@@ -41,14 +37,6 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
 
   res.json({ sessionId: session.id });
 });
-
-const getStripePriceId = (plan) => {
-  return {
-    basic: process.env.STRIPE_PRICE_BASIC || 5,
-    premium: process.env.STRIPE_PRICE_PREMIUM || 15,
-    enterprise: process.env.STRIPE_PRICE_ENTERPRISE || 50,
-  }[plan];
-};
 
 export const handleWebhook = catchAsync(async (req, res, next) => {
   const sig = req.headers["stripe-signature"];
@@ -77,13 +65,39 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
     if (user) {
       user.subscription.plan = plan;
       user.subscription.status = "active";
-      user.subscription.dailyQueries = getDailyQueries(plan);
-      user.subscription.startDate = new Date();
-
+      user.subscription.dailyQueries = 0;
+      user.subscription.startDate = new Date(subscription.start_date * 1000);
+      user.subscription.endDate = new Date(
+        subscription.current_period_end * 1000
+      );
+      user.subscription.stripeSubscriptionId = subscription.id;
       const maxInboxes = getMaxInboxes(plan);
       if (user.inboxList.length > maxInboxes) {
         user.inboxList = user.inboxList.slice(0, maxInboxes);
       }
+      await user.save();
+    }
+  } else if (event.type === "customer.subscription.updated") {
+    const subscription = event.data.object;
+    const user = await User.findOne({
+      "subscription.stripeSubscriptionId": subscription.id,
+    });
+    if (user) {
+      user.subscription.status =
+        subscription.status === "active" ? "active" : "canceled";
+      user.subscription.endDate = new Date(
+        subscription.current_period_end * 1000
+      );
+      await user.save();
+    }
+  } else if (event.type === "customer.subscription.deleted") {
+    const subscription = event.data.object;
+    const user = await User.findOne({
+      "subscription.stripeSubscriptionId": subscription.id,
+    });
+    if (user) {
+      user.subscription.status = "canceled";
+      user.subscription.endDate = new Date();
       await user.save();
     }
   }
@@ -91,20 +105,14 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
   res.json({ received: true });
 });
 
-const getPlanFromPriceId = (priceId) => {
-  return priceIdToPlan[priceId] || "basic"; // Fallback to "basic" if price ID is unrecognized
+const getStripePriceId = (plan) => {
+  return {
+    basic: process.env.STRIPE_PRICE_BASIC,
+    premium: process.env.STRIPE_PRICE_PREMIUM,
+    enterprise: process.env.STRIPE_PRICE_ENTERPRISE,
+  }[plan];
 };
 
-const getDailyQueries = (plan) =>
-  ({
-    basic: 15,
-    premium: 100,
-    enterprise: Infinity,
-  }[plan]);
-
+const getPlanFromPriceId = (priceId) => priceIdToPlan[priceId] || "basic";
 const getMaxInboxes = (plan) =>
-  ({
-    basic: 1,
-    premium: 3,
-    enterprise: 10,
-  }[plan]);
+  ({ basic: 1, premium: 3, enterprise: 10 }[plan]);

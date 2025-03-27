@@ -1,3 +1,4 @@
+// models\WaitingList.js
 import mongoose from "mongoose";
 
 const waitingListSchema = new mongoose.Schema({

@@ -1,3 +1,4 @@
+// routes\authRoutes.js
 import express from "express";
 import passport from "../config/passport.js";
 import {

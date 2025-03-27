@@ -1,3 +1,4 @@
+// models\User.js
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 
@@ -26,9 +27,11 @@ const subscriptionSchema = new mongoose.Schema({
     enum: ["active", "pending", "canceled"],
     default: "pending",
   },
-  dailyQueries: { type: Number, default: 15 },
+  dailyQueries: { type: Number, default: 0 }, 
   autoRenew: { type: Boolean, default: true },
   startDate: { type: Date, default: Date.now },
+  endDate: { type: Date }, 
+  stripeSubscriptionId: { type: String }, 
   lastRequestDate: { type: Date },
 });
 
