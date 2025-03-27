@@ -13,6 +13,15 @@ import auth from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
+/**
+ * ╔═══════════════════════════════════════╗
+ * ║    OAuth Authentication Providers     ║
+ * ╚═══════════════════════════════════════╝
+ * @description Manages OAuth authentication for multiple providers
+ * @route GET /oauth/:provider
+ * @access Public
+ * @param {string} provider - Authentication provider (google, microsoft)
+ */
 router.get("/oauth/:provider", authRateLimit(), (req, res, next) => {
   const { provider } = req.params;
   const providers = {
@@ -46,12 +55,21 @@ router.get("/oauth/:provider", authRateLimit(), (req, res, next) => {
   }
   const { strategy, scope, options = {} } = providers[provider];
   const state = Buffer.from(
-    JSON.stringify({ redirect: req.query.redirect || "/" })
+    JSON.stringify({ redirect: req.query.redirect || "/dashboard" })
   ).toString("base64");
 
   passport.authenticate(strategy, { scope, state, ...options })(req, res, next);
 });
 
+/**
+ * ╔═══════════════════════════════════════╗
+ * ║    OAuth Callback Handling            ║
+ * ╚═══════════════════════════════════════╝
+ * @description Handles OAuth provider callback
+ * @route GET /:provider/callback
+ * @access Public
+ * @param {string} provider - Authentication provider
+ */
 router.get(
   "/:provider/callback",
   authRateLimit(),
@@ -66,10 +84,33 @@ router.get(
   oauthCallback
 );
 
+/**
+ * ╔═══════════════════════════════════════╗
+ * ║    Authentication Error Handling      ║
+ * ╚═══════════════════════════════════════╝
+ * @description Provides error information for authentication failures
+ * @route GET /error
+ * @access Public
+ */
 router.get("/error", authError);
+
+/**
+ * ╔═══════════════════════════════════════╗
+ * ║    Authentication Management Routes   ║
+ * ╚═══════════════════════════════════════╝
+ * @description Routes for local authentication and account management
+ * @access Public/Authenticated
+ */
+// Local user login
 router.post("/login", authRateLimit(), localLogin);
+
+// User registration
 router.post("/register", authRateLimit(), register);
+
+// Token refresh
 router.post("/refresh", authRateLimit(), refresh);
+
+// User logout (requires authentication)
 router.get("/logout", auth(), logout);
 
 export default router;

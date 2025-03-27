@@ -27,6 +27,13 @@ const router = express.Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+/**
+ * ╔═══════════════════════════════════════╗
+ * ║    File Upload Configuration          ║
+ * ╚═══════════════════════════════════════╝
+ * @description Configures multer for file upload management
+ * @middleware Handles file storage and naming conventions
+ */
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = path.join(__dirname, "../uploads");
@@ -40,11 +47,20 @@ const storage = multer.diskStorage({
 
 const uploadMiddleware = multer({ storage });
 
+/**
+ * ╔═══════════════════════════════════════╗
+ * ║    Email Fetching Routes              ║
+ * ╚═══════════════════════════════════════╝
+ * @description Routes for retrieving emails
+ * @access Authenticated Users
+ */
+// Fetch emails with optional filtering
 router.get("/", auth(), emailAuth, rateLimitMiddleware(), (req, res) => {
   const filter = req.query.filter || "all";
   fetchEmails(req, res, filter);
 });
 
+// Fetch important emails
 router.get(
   "/important",
   auth(),
@@ -53,8 +69,17 @@ router.get(
   fetchImportantEmails
 );
 
+// Read a specific email
 router.get("/:emailId", auth(), setRefreshedTokenCookie, emailAuth, readEmail);
 
+/**
+ * ╔═══════════════════════════════════════╗
+ * ║    Email Interaction Routes            ║
+ * ╚═══════════════════════════════════════╝
+ * @description Routes for email sending, replying, and management
+ * @access Authenticated Users
+ */
+// Send a new email with attachments
 router.post(
   "/send",
   auth(),
@@ -63,6 +88,7 @@ router.post(
   sendEmail
 );
 
+// Reply to an existing email with attachments
 router.post(
   "/reply/:emailId",
   auth(),
@@ -72,6 +98,7 @@ router.post(
   replyToEmail
 );
 
+// Move email to trash
 router.delete(
   "/trash/:emailId",
   auth(),
@@ -80,6 +107,14 @@ router.delete(
   trashEmail
 );
 
+/**
+ * ╔═══════════════════════════════════════╗
+ * ║    Email Management Routes            ║
+ * ╚═══════════════════════════════════════╝
+ * @description Routes for email search and status management
+ * @access Authenticated Users
+ */
+// Search emails
 router.get(
   "/all/search",
   auth(),
@@ -88,6 +123,7 @@ router.get(
   searchEmails
 );
 
+// Mark email as read
 router.patch(
   "/mark-as-read/:emailId",
   auth(),
@@ -96,6 +132,7 @@ router.patch(
   markEmailAsRead
 );
 
+// Summarize email content
 router.get(
   "/summarize/:emailId",
   auth(),
@@ -104,8 +141,17 @@ router.get(
   summarizeEmail
 );
 
+/**
+ * ╔═══════════════════════════════════════╗
+ * ║    Additional Email Features          ║
+ * ╚═══════════════════════════════════════╝
+ * @description Advanced email interaction routes
+ * @access Authenticated Users
+ */
+// AI-powered email chat
 router.post("/chat", auth(), emailAuth, setRefreshedTokenCookie, chatWithBot);
 
+// Create email draft with attachments
 router.post(
   "/draft",
   auth(),

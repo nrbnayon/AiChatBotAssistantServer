@@ -923,10 +923,16 @@ class MCPServer {
     const userId = req.user.id;
     const userName = req.user.name || "User";
     const userEmail = req.user.email;
+    const { timeContext = "", emailCount = 0, unreadCount = 0 } = context;
+
     const personalizedSystemPrompt = SYSTEM_PROMPT.replace(
-      "{{USER_NAME}}",
+      /{{USER_NAME}}/g,
       userName
-    ).replace("{{USER_EMAIL}}", userEmail);
+    )
+      .replace(/{{USER_EMAIL}}/g, userEmail)
+      .replace(/{{TIME_CONTEXT}}/g, timeContext)
+      .replace(/{{EMAIL_COUNT}}/g, emailCount.toString())
+      .replace(/{{UNREAD_COUNT}}/g, unreadCount.toString());
 
     if (
       message.toLowerCase().includes("confirm") &&
@@ -982,7 +988,7 @@ class MCPServer {
     ];
 
     const hour = new Date().getHours();
-    let timeContext = "";
+    timeContext = "";
     if (hour >= 5 && hour < 12) timeContext = "It’s morning, ";
     else if (hour >= 12 && hour < 18) timeContext = "It’s afternoon, ";
     else timeContext = "It’s evening, ";

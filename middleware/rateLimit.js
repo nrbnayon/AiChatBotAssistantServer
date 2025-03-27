@@ -19,7 +19,7 @@ const rateLimit = (options = {}) => {
       }
 
       const planLimits = {
-        basic: 1500000,
+        basic: 15,
         premium: 100,
         enterprise: Infinity,
       };
