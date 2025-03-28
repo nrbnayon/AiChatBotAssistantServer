@@ -24,31 +24,25 @@ const updateProfile = async (userId, profileData) => {
   const updates = Object.keys(profileData)
     .filter((key) => allowedFields.includes(key))
     .reduce((obj, key) => ({ ...obj, [key]: profileData[key] }), {});
-
-  if (Object.keys(updates).length === 0) {
+  if (Object.keys(updates).length === 0)
     throw new ApiError("No valid fields to update", 400);
-  }
-
   const updatedUser = await User.findByIdAndUpdate(
     userId,
     { ...updates, lastSync: new Date() },
     { new: true }
   );
   if (!updatedUser) throw new ApiError("User not found or update failed", 404);
-
   return updatedUser;
 };
 
 const updateSubscription = async (userId, { plan, autoRenew }) => {
   const user = await User.findById(userId);
   if (!user) throw new ApiError("User not found", 404);
-
   const subscriptionPlans = {
     basic: { dailyQueries: 15, maxInboxes: 1 },
     premium: { dailyQueries: 100, maxInboxes: 3 },
     enterprise: { dailyQueries: Infinity, maxInboxes: 10 },
   };
-
   if (plan && subscriptionPlans[plan]) {
     user.subscription.plan = plan;
     user.subscription.startDate = new Date();
@@ -62,7 +56,6 @@ const updateSubscription = async (userId, { plan, autoRenew }) => {
     }
   }
   if (typeof autoRenew === "boolean") user.subscription.autoRenew = autoRenew;
-
   await user.save();
   return user;
 };
@@ -81,16 +74,19 @@ const getAllUsers = async () => {
 const createUser = async ({ name, email, password, role }) => {
   const existingUser = await User.findOne({ email });
   if (existingUser) throw new ApiError("User already exists", 400);
-
   const newUser = new User({
     name,
     email,
     password,
-    role: role || "admin",
+    role: role || "user", 
     authProvider: "local",
-    subscription: { plan: "basic", dailyQueries: 100000000, autoRenew: true, status: "active" },
+    subscription: {
+      plan: "basic",
+      dailyQueries: 15,
+      autoRenew: true,
+      status: "active",
+    },
   });
-
   await newUser.save();
   const { password: _, ...userWithoutPassword } = newUser.toObject();
   return userWithoutPassword;

@@ -14,10 +14,27 @@ import aiChatRoutes from "./routes/aiChatRoutes.js";
 import { globalErrorHandler } from "./utils/errorHandler.js";
 import requestLogger from "./utils/requestLogger.js";
 import "./config/passport.js";
+import os from "os";
 
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+// Get local IP address
+const getLocalIpAddress = () => {
+  const networkInterfaces = os.networkInterfaces();
+  for (const devName in networkInterfaces) {
+    const iface = networkInterfaces[devName];
+    for (const details of iface) {
+      if (details.family === "IPv4" && !details.internal) {
+        return details.address;
+      }
+    }
+  }
+  return "localhost";
+};
+
+const localIpAddress = getLocalIpAddress();
 
 const allowedOrigins = [
   "http://localhost:3000",
@@ -25,6 +42,8 @@ const allowedOrigins = [
   "https://email-aichatbot.netlify.app",
   process.env.FRONTEND_URL,
   process.env.FRONTEND_LIVE_URL,
+  `http://${localIpAddress}:3000`, // Add local network frontend URL
+  `http://${localIpAddress}:5173`, // Add another common frontend port
 ].filter(Boolean);
 
 app.use(cookieParser());
@@ -48,7 +67,7 @@ app.use(passport.session());
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like Postman) or from allowed origins
+      // Allow requests with no origin or from allowed origins
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -91,11 +110,11 @@ app.use((req, res) => {
 app.use(globalErrorHandler);
 
 connectDB().then(() => {
-  app.listen(PORT, () => {
+  app.listen(PORT, localIpAddress, () => {
     console.log(`
     ╔═════════════════════════════════════╗
     ║  🚀 Server launched successfully!   ║
-    ║  🌐 Running on port: ${PORT.toString().padEnd(14, " ")} ║
+    ║  🌐 Running on IP: ${localIpAddress}:${PORT.toString().padEnd(10, " ")} ║
     ╚═════════════════════════════════════╝
     `);
   });
