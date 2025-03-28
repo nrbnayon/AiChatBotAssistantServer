@@ -5,6 +5,8 @@ import WaitingList from "../models/WaitingList.js";
 import { StatusCodes } from "http-status-codes";
 import { ApiError, catchAsync } from "../utils/errorHandler.js";
 import Stripe from "stripe";
+import AiModel from "../models/AiModel.js";
+import SystemMessage from "../models/SystemMessage.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -126,23 +128,87 @@ const updateKeywords = catchAsync(async (req, res, next) => {
 
 const createUser = catchAsync(async (req, res, next) => {
   const { name, email, password, role } = req.body;
+  const requesterRole = req.user.role;
 
   if (!email || !password) {
-    return next(new AppError("Email and password are required", 400));
+    return next(new ApiError("Email and password are required", 400));
   }
-  if (role && !["user", "admin"].includes(role)) {
-    return next(new AppError("Invalid role", 400));
+
+  // Super Admin can create any role
+  if (requesterRole === "super_admin") {
+    if (role && !["user", "admin", "super_admin"].includes(role)) {
+      return next(new ApiError("Invalid role", 400));
+    }
+  }
+  // Admin can only create Admins and Users
+  else if (requesterRole === "admin") {
+    if (role && !["user", "admin"].includes(role)) {
+      return next(new ApiError("Admins cannot create Super Admins", 403));
+    }
+  } else {
+    return next(new ApiError("Unauthorized to create users", 403));
   }
 
   const newUser = await userService.createUser({ name, email, password, role });
   res.status(StatusCodes.CREATED).json({ success: true, data: newUser });
 });
 
+const updateUser = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const updates = req.body;
+  const requesterRole = req.user.role;
+
+  if (id === req.user.id) {
+    return next(new ApiError("Use /profile to update your own details", 403));
+  }
+
+  const targetUser = await User.findById(id);
+  if (!targetUser) {
+    return next(new ApiError("User not found", 404));
+  }
+
+  if (requesterRole === "super_admin") {
+    // Super Admin can update any field of any user
+  } else if (requesterRole === "admin") {
+    if (targetUser.role === "super_admin") {
+      return next(new ApiError("Admins cannot modify Super Admins", 403));
+    }
+    if (updates.role) {
+      return next(new ApiError("Admins cannot change user roles", 403));
+    }
+    if (updates.status && targetUser.role !== "user") {
+      return next(new ApiError("Admins can only change status of Users", 403));
+    }
+  } else {
+    return next(new ApiError("Unauthorized to update users", 403));
+  }
+
+  Object.assign(targetUser, updates);
+  await targetUser.save();
+  res.json({ success: true, user: targetUser });
+});
+
 const deleteUser = catchAsync(async (req, res, next) => {
   const { id } = req.params;
+  const requesterRole = req.user.role;
 
   if (id === req.user.id) {
     return next(new ApiError("Cannot delete yourself", 403));
+  }
+
+  const targetUser = await User.findById(id);
+  if (!targetUser) {
+    return next(new ApiError("User not found", 404));
+  }
+
+  if (requesterRole === "super_admin") {
+    // Super Admin can delete any user
+  } else if (requesterRole === "admin") {
+    if (targetUser.role !== "user") {
+      return next(new ApiError("Admins can only delete Users", 403));
+    }
+  } else {
+    return next(new ApiError("Unauthorized to delete users", 403));
   }
 
   await userService.deleteUser(id);
@@ -173,6 +239,147 @@ const addInbox = catchAsync(async (req, res, next) => {
   res.json({ message: "Inbox added", inboxList: user.inboxList });
 });
 
+// System Messages Management
+const getAllSystemMessages = catchAsync(async (req, res) => {
+  const systemMessages = await SystemMessage.find();
+  res.json({ success: true, systemMessages });
+});
+
+const getSystemMessage = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const systemMessage = await SystemMessage.findById(id);
+  if (!systemMessage) {
+    return next(new ApiError("System message not found", 404));
+  }
+  res.json({ success: true, systemMessage });
+});
+
+const createSystemMessage = catchAsync(async (req, res) => {
+  const { content, isDefault } = req.body;
+  if (!content) throw new ApiError("Content is required", 400);
+
+  if (isDefault) {
+    await SystemMessage.updateMany({}, { isDefault: false });
+  }
+  const newSystemMessage = new SystemMessage({ content, isDefault });
+  await newSystemMessage.save();
+  res.status(201).json({ success: true, systemMessage: newSystemMessage });
+});
+
+const updateSystemMessage = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const { content, isDefault } = req.body;
+
+  if (isDefault) {
+    await SystemMessage.updateMany({}, { isDefault: false });
+  }
+  const systemMessage = await SystemMessage.findByIdAndUpdate(
+    id,
+    { content, isDefault, updatedAt: new Date() },
+    { new: true }
+  );
+  if (!systemMessage) {
+    return next(new ApiError("System message not found", 404));
+  }
+  res.json({ success: true, systemMessage });
+});
+
+const deleteSystemMessage = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const systemMessage = await SystemMessage.findById(id);
+  if (!systemMessage) {
+    return next(new ApiError("System message not found", 404));
+  }
+  if (systemMessage.isDefault) {
+    const totalMessages = await SystemMessage.countDocuments();
+    if (totalMessages <= 1) {
+      return next(
+        new ApiError("Cannot delete the only default system message", 403)
+      );
+    }
+  }
+  await systemMessage.remove();
+  res.json({ success: true, message: "System message deleted" });
+});
+
+// AI Model Management
+const getAllAiModels = catchAsync(async (req, res) => {
+  const aiModels = await AiModel.find();
+  res.json({ success: true, aiModels });
+});
+
+const getAiModel = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const aiModel = await AiModel.findById(id);
+  if (!aiModel) {
+    return next(new ApiError("AI model not found", 404));
+  }
+  res.json({ success: true, aiModel });
+});
+
+const createAiModel = catchAsync(async (req, res) => {
+  const { modelId, name, developer, contextWindow, description, isDefault } =
+    req.body;
+  if (!modelId || !name || !developer || !contextWindow || !description) {
+    throw new ApiError("All fields are required", 400);
+  }
+  const existingModel = await AiModel.findOne({ modelId });
+  if (existingModel) {
+    throw new ApiError("Model with this ID already exists", 400);
+  }
+  if (isDefault) {
+    await AiModel.updateMany({}, { isDefault: false });
+  }
+  const newAiModel = new AiModel({
+    modelId,
+    name,
+    developer,
+    contextWindow,
+    description,
+    isDefault,
+  });
+  await newAiModel.save();
+  res.status(201).json({ success: true, aiModel: newAiModel });
+});
+
+const updateAiModel = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const { modelId, name, developer, contextWindow, description, isDefault } =
+    req.body;
+  const aiModel = await AiModel.findById(id);
+  if (!aiModel) {
+    return next(new ApiError("AI model not found", 404));
+  }
+  if (isDefault) {
+    await AiModel.updateMany({}, { isDefault: false });
+  }
+  aiModel.modelId = modelId || aiModel.modelId;
+  aiModel.name = name || aiModel.name;
+  aiModel.developer = developer || aiModel.developer;
+  aiModel.contextWindow = contextWindow || aiModel.contextWindow;
+  aiModel.description = description || aiModel.description;
+  aiModel.isDefault = isDefault !== undefined ? isDefault : aiModel.isDefault;
+  aiModel.updatedAt = new Date();
+  await aiModel.save();
+  res.json({ success: true, aiModel });
+});
+
+const deleteAiModel = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const aiModel = await AiModel.findById(id);
+  if (!aiModel) {
+    return next(new ApiError("AI model not found", 404));
+  }
+  if (aiModel.isDefault) {
+    const totalModels = await AiModel.countDocuments();
+    if (totalModels <= 1) {
+      return next(new ApiError("Cannot delete the only default AI model", 403));
+    }
+  }
+  await aiModel.remove();
+  res.json({ success: true, message: "AI model deleted" });
+});
+
 export {
   getMe,
   updateProfile,
@@ -181,10 +388,21 @@ export {
   getAllUsers,
   updateKeywords,
   createUser,
+  updateUser,
   deleteUser,
   addInbox,
   getIncome,
   getUserStats,
   approveWaitingList,
   rejectWaitingList,
+  getAllSystemMessages,
+  getSystemMessage,
+  createSystemMessage,
+  updateSystemMessage,
+  deleteSystemMessage,
+  getAllAiModels,
+  getAiModel,
+  createAiModel,
+  updateAiModel,
+  deleteAiModel,
 };

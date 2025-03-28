@@ -27,16 +27,20 @@ const subscriptionSchema = new mongoose.Schema({
     enum: ["active", "pending", "canceled"],
     default: "pending",
   },
-  dailyQueries: { type: Number, default: 0 }, 
+  dailyQueries: { type: Number, default: 0 },
   autoRenew: { type: Boolean, default: true },
   startDate: { type: Date, default: Date.now },
-  endDate: { type: Date }, 
-  stripeSubscriptionId: { type: String }, 
+  endDate: { type: Date },
+  stripeSubscriptionId: { type: String },
   lastRequestDate: { type: Date },
 });
 
 const userSchema = new mongoose.Schema({
-  role: { type: String, default: "user", enum: ["admin", "user"] },
+  role: {
+    type: String,
+    default: "user",
+    enum: ["super_admin", "admin", "user"],
+  },
   name: { type: String },
   email: { type: String, required: true, unique: true },
   password: { type: String },
@@ -62,7 +66,7 @@ const userSchema = new mongoose.Schema({
   status: {
     type: String,
     default: "active",
-    enum: ["active", "canceled", "pending"],
+    enum: ["active", "canceled", "pending", "block"],
   },
   verified: { type: Boolean, default: false },
   subscription: { type: subscriptionSchema, default: () => ({}) },

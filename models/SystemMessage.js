@@ -8,5 +8,10 @@ const systemMessageSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now },
 });
 
+systemMessageSchema.pre("save", function (next) {
+  this.updatedAt = Date.now();
+  next();
+});
+
 const SystemMessage = mongoose.model("SystemMessage", systemMessageSchema);
 export default SystemMessage;

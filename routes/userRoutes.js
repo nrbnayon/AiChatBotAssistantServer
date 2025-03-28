@@ -9,11 +9,22 @@ import {
   updateKeywords,
   createUser,
   deleteUser,
+  updateUser, 
   addInbox,
   getIncome,
   getUserStats,
   approveWaitingList,
   rejectWaitingList,
+  getAllSystemMessages,
+  getSystemMessage,
+  createSystemMessage,
+  updateSystemMessage,
+  deleteSystemMessage,
+  getAllAiModels,
+  getAiModel,
+  createAiModel,
+  updateAiModel,
+  deleteAiModel,
 } from "../controllers/userController.js";
 import auth, { setRefreshedTokenCookie } from "../middleware/authMiddleware.js";
 import { rateLimitMiddleware } from "../middleware/rateLimit.js";
@@ -28,10 +39,6 @@ const router = express.Router();
  * @description Allows users to join the waiting list
  * @route POST /add-to-waiting-list
  * @access Public
- * @param {string} email - User's email address
- * @param {string} name - User's name
- * @param {string} inbox - User's preferred inbox
- * @param {string} description - Additional user details
  */
 router.post("/add-to-waiting-list", async (req, res) => {
   const { email, name, inbox, description } = req.body;
@@ -109,12 +116,12 @@ router.post(
  * ║     Admin: User Management            ║
  * ╚═══════════════════════════════════════╝
  * @description Administrative routes for user management
- * @access Admin only
+ * @access Admin and Super Admin
  */
 // Retrieve all registered users
 router.get(
   "/admin/users",
-  auth("admin"),
+  auth("admin", "super_admin"),
   setRefreshedTokenCookie,
   rateLimitMiddleware({ max: 1000 }),
   getAllUsers
@@ -123,16 +130,25 @@ router.get(
 // Create a new user
 router.post(
   "/admin/users",
-  auth("admin"),
+  auth("admin", "super_admin"),
   setRefreshedTokenCookie,
   rateLimitMiddleware(),
   createUser
 );
 
+// Update a specific user
+router.put(
+  "/admin/users/:id",
+  auth("admin", "super_admin"),
+  setRefreshedTokenCookie,
+  rateLimitMiddleware(),
+  updateUser
+);
+
 // Delete a specific user
 router.delete(
   "/admin/users/:id",
-  auth("admin"),
+  auth("admin", "super_admin"),
   setRefreshedTokenCookie,
   rateLimitMiddleware(),
   deleteUser
@@ -143,25 +159,35 @@ router.delete(
  * ║     Admin: Financial Endpoints        ║
  * ╚═══════════════════════════════════════╝
  * @description Routes for financial and statistical data
- * @access Admin only
+ * @access Admin and Super Admin
  */
 // Retrieve income information
-router.get("/income", auth("admin"), setRefreshedTokenCookie, getIncome);
+router.get(
+  "/income",
+  auth("admin", "super_admin"),
+  setRefreshedTokenCookie,
+  getIncome
+);
 
 // Get user platform statistics
-router.get("/stats", auth("admin"), setRefreshedTokenCookie, getUserStats);
+router.get(
+  "/stats",
+  auth("admin", "super_admin"),
+  setRefreshedTokenCookie,
+  getUserStats
+);
 
 /**
  * ╔═══════════════════════════════════════╗
  * ║     Waiting List Management           ║
  * ╚═══════════════════════════════════════╝
  * @description Admin routes for waiting list operations
- * @access Admin only
+ * @access Admin and Super Admin
  */
 // Approve a user from the waiting list
 router.post(
   "/waiting-list/approve",
-  auth("admin"),
+  auth("admin", "super_admin"),
   setRefreshedTokenCookie,
   approveWaitingList
 );
@@ -169,9 +195,85 @@ router.post(
 // Reject a user from the waiting list
 router.post(
   "/waiting-list/reject",
-  auth("admin"),
+  auth("admin", "super_admin"),
   setRefreshedTokenCookie,
   rejectWaitingList
+);
+
+/**
+ * ╔═══════════════════════════════════════╗
+ * ║     System Messages Management        ║
+ * ╚═══════════════════════════════════════╝
+ * @description Routes for managing system messages
+ * @access Admin and Super Admin
+ */
+router.get(
+  "/admin/system-messages",
+  auth("admin", "super_admin"),
+  setRefreshedTokenCookie,
+  getAllSystemMessages
+);
+router.get(
+  "/admin/system-messages/:id",
+  auth("admin", "super_admin"),
+  setRefreshedTokenCookie,
+  getSystemMessage
+);
+router.post(
+  "/admin/system-messages",
+  auth("admin", "super_admin"),
+  setRefreshedTokenCookie,
+  createSystemMessage
+);
+router.put(
+  "/admin/system-messages/:id",
+  auth("admin", "super_admin"),
+  setRefreshedTokenCookie,
+  updateSystemMessage
+);
+router.delete(
+  "/admin/system-messages/:id",
+  auth("admin", "super_admin"),
+  setRefreshedTokenCookie,
+  deleteSystemMessage
+);
+
+/**
+ * ╔═══════════════════════════════════════╗
+ * ║     AI Model Management               ║
+ * ╚═══════════════════════════════════════╝
+ * @description Routes for managing AI models
+ * @access Admin and Super Admin
+ */
+router.get(
+  "/admin/ai-models",
+  auth("admin", "super_admin"),
+  setRefreshedTokenCookie,
+  getAllAiModels
+);
+router.get(
+  "/admin/ai-models/:id",
+  auth("admin", "super_admin"),
+  setRefreshedTokenCookie,
+  getAiModel
+);
+router.post(
+  "/admin/ai-models",
+  auth("admin", "super_admin"),
+  setRefreshedTokenCookie,
+  createAiModel
+);
+router.put(
+  "/admin/ai-models/:id",
+  auth("admin", "super_admin"),
+  setRefreshedTokenCookie,
+  updateAiModel
+);
+router.delete(
+  "/admin/ai-models/:id",
+  auth("admin", "super_admin"),
+  setRefreshedTokenCookie,
+  deleteAiModel
 );
 
 export default router;

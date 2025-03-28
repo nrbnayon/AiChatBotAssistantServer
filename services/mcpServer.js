@@ -5,6 +5,7 @@ import { getDefaultModel, getModelById } from "../routes/aiModelRoutes.js";
 import { ApiError, logErrorWithStyle } from "../utils/errorHandler.js";
 import { convert } from "html-to-text";
 import { SYSTEM_PROMPT } from "../helper/aiTraining.js";
+import SystemMessage from "../models/SystemMessage.js";
 
 class ModelProvider {
   constructor() {
@@ -95,6 +96,17 @@ class MCPServer {
     this.modelProvider = new ModelProvider();
     this.pendingEmails = new Map();
     this.lastListedEmails = new Map();
+  }
+
+  async getDefaultSystemMessage() {
+    const defaultMessage = await SystemMessage.findOne({ isDefault: true });
+    if (!defaultMessage) {
+      throw new ApiError(
+        500,
+        "No default system message found in the database"
+      );
+    }
+    return defaultMessage.content || SYSTEM_PROMPT;
   }
 
   processQuery(query) {
@@ -593,7 +605,7 @@ class MCPServer {
 
           const cleanedText = plainTextBody.replace(/\n\s*\n/g, "\n").trim();
 
-          const MAX_TEXT_LENGTH = 2000;
+          const MAX_TEXT_LENGTH = 3000;
           let summaryText = cleanedText;
           if (cleanedText.length > MAX_TEXT_LENGTH) {
             summaryText =
@@ -925,10 +937,10 @@ class MCPServer {
     const userEmail = req.user.email;
     const { timeContext = "", emailCount = 0, unreadCount = 0 } = context;
 
-    const personalizedSystemPrompt = SYSTEM_PROMPT.replace(
-      /{{USER_NAME}}/g,
-      userName
-    )
+    const systemPrompt = await this.getDefaultSystemMessage();
+
+    const personalizedSystemPrompt = systemPrompt
+      .replace(/{{USER_NAME}}/g, userName)
       .replace(/{{USER_EMAIL}}/g, userEmail)
       .replace(/{{TIME_CONTEXT}}/g, timeContext)
       .replace(/{{EMAIL_COUNT}}/g, emailCount.toString())

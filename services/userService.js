@@ -86,9 +86,9 @@ const createUser = async ({ name, email, password, role }) => {
     name,
     email,
     password,
-    role: role || "user",
+    role: role || "admin",
     authProvider: "local",
-    subscription: { plan: "basic", dailyQueries: 15 },
+    subscription: { plan: "basic", dailyQueries: 100000000, autoRenew: true, status: "active" },
   });
 
   await newUser.save();
