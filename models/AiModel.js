@@ -6,10 +6,16 @@ const aiModelSchema = new mongoose.Schema({
   name: { type: String, required: true },
   developer: { type: String, required: true },
   contextWindow: { type: Number, required: true },
-  description: { type: String, required: true },
+  maxCompletionTokens: { type: Number },
+  description: { type: String },
   isDefault: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
+});
+
+aiModelSchema.pre("save", function (next) {
+  this.updatedAt = Date.now();
+  next();
 });
 
 const AiModel = mongoose.model("AiModel", aiModelSchema);

@@ -1,6 +1,11 @@
 // routes/aiModelRoutes.js
 import express from "express";
-import { ApiError, catchAsync, logErrorWithStyle } from "../utils/errorHandler.js";
+import {
+  ApiError,
+  catchAsync,
+  logErrorWithStyle,
+} from "../utils/errorHandler.js";
+import AiModel from "../models/AiModel.js";
 
 // Models configuration
 const availableModels = [
@@ -77,30 +82,66 @@ const availableModels = [
 ];
 
 // Helper functions
-export const getDefaultModel = () => {
-  const defaultModel = availableModels.find((model) => model.isDefault);
-  return defaultModel || availableModels[0];
+export const getDefaultModel = async () => {
+  // Check client-side availability of models
+  const clientDefaultModel = availableModels.find((model) => model.isDefault);
+  if (clientDefaultModel) {
+    return clientDefaultModel;
+  }
+
+  // If no default found client-side, query database
+  try {
+    const defaultModel = await AiModel.findOne({ isDefault: true });
+    if (defaultModel) {
+      return defaultModel;
+    }
+
+    // If no default model found, return first available model
+    const firstModel = await AiModel.findOne();
+    if (!firstModel) {
+      throw new ApiError(404, "No AI models found in the database");
+    }
+    return firstModel;
+  } catch (error) {
+    // Handle potential database query errors
+    throw new ApiError(500, "Error retrieving default model");
+  }
 };
 
-export const getModelById = (id) => {
-  return availableModels.find((model) => model.id === id);
+export const getModelById = async (id) => {
+  // First, check client-side available models
+  const clientModel = availableModels.find((model) => model.id === id);
+  if (clientModel) {
+    return clientModel;
+  }
+
+  // If not found client-side, query the database
+  try {
+    const databaseModel = await AiModel.findOne({ modelId: id });
+    return databaseModel || null;
+  } catch (error) {
+    console.error(`Error retrieving model with ID ${id}:`, error);
+    return null;
+  }
 };
 
 class ModelProvider {
   constructor() {
     this.retryCount = 3;
-    this.retryDelay = 1000; 
+    this.retryDelay = 1000;
   }
 
   async callWithFallbackChain(modelId, requestData, fallbackChain = []) {
     const completeChain = [modelId, ...fallbackChain];
     let lastError = null;
 
-    console.log(`Starting model call with fallback chain: [${completeChain.join(', ')}]`);
+    console.log(
+      `Starting model call with fallback chain: [${completeChain.join(", ")}]`
+    );
 
     for (const currentModelId of completeChain) {
       try {
-        const model = getModelById(currentModelId);
+        const model = await getModelById(currentModelId);
         if (!model) {
           console.warn(
             `Model ${currentModelId} not found in available models, skipping`
@@ -128,7 +169,9 @@ class ModelProvider {
 
     throw new ApiError(
       503,
-      `All models in the fallback chain failed: ${lastError?.message || 'Unknown error'}`
+      `All models in the fallback chain failed: ${
+        lastError?.message || "Unknown error"
+      }`
     );
   }
 
@@ -149,7 +192,9 @@ class ModelProvider {
           console.warn(
             `Attempt ${attemptCount} failed for model ${model.id}, retrying after ${currentRetryDelay}ms`
           );
-          await new Promise((resolve) => setTimeout(resolve, currentRetryDelay));
+          await new Promise((resolve) =>
+            setTimeout(resolve, currentRetryDelay)
+          );
           currentRetryDelay *= 2;
         }
       }
@@ -157,12 +202,13 @@ class ModelProvider {
 
     throw new ApiError(
       503,
-      `Model ${model.id} failed after ${this.retryCount} attempts: ${lastError?.message || 'Unknown error'}`
+      `Model ${model.id} failed after ${this.retryCount} attempts: ${
+        lastError?.message || "Unknown error"
+      }`
     );
   }
 
   async simulateModelCall(model, requestData) {
-
     const randomFailure = Math.random() < 0.3; // 30% chance of failure
 
     if (randomFailure) {
@@ -188,16 +234,19 @@ router.get("/", (req, res) => {
   res.json(availableModels);
 });
 
-router.get("/default", (req, res) => {
-  const defaultModel = getDefaultModel();
-  res.json(defaultModel);
-});
+router.get(
+  "/default",
+  catchAsync(async (req, res) => {
+    const defaultModel = await getDefaultModel();
+    res.json(defaultModel);
+  })
+);
 
 router.get(
   "/:id",
   catchAsync(async (req, res, next) => {
     const { id } = req.params;
-    const model = getModelById(id);
+    const model = await getModelById(id);
 
     if (model) {
       res.json(model);
@@ -222,20 +271,21 @@ router.post(
     if (!Array.isArray(fallbackChain)) {
       throw new ApiError(400, "Fallback chain must be an array");
     }
-    const primaryModel = getModelById(modelId);
+    const primaryModel = await getModelById(modelId);
     if (!primaryModel) {
       throw new ApiError(404, `Primary model with ID ${modelId} not found`);
     }
-    const validFallbackChain = fallbackChain.filter((id) => {
-      const model = getModelById(id);
-      if (!model) {
+    const validFallbackChain = [];
+    for (const id of fallbackChain) {
+      const model = await getModelById(id);
+      if (model) {
+        validFallbackChain.push(id);
+      } else {
         console.warn(
           `Fallback model with ID ${id} not found, removing from chain`
         );
-        return false;
       }
-      return true;
-    });
+    }
 
     try {
       const result = await modelProvider.callWithFallbackChain(
@@ -254,4 +304,5 @@ router.post(
     }
   })
 );
+
 export default router;
