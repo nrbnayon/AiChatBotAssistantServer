@@ -73,7 +73,7 @@ const oauthCallback = catchAsync(async (req, res) => {
   });
 
   const redirectUrl = `${getFrontendUrl}/auth-callback?token=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(
-    state.redirect || "/"
+    state.redirect || "/dashboard"
   )}`;
   res.redirect(redirectUrl);
 });
@@ -81,36 +81,52 @@ const oauthCallback = catchAsync(async (req, res) => {
 const localLogin = catchAsync(async (req, res, next) => {
   const { email, password } = req.body;
 
+  console.log("Login Attempt:", { email });
+
   if (!email || !password) {
     return next(new AppError("Email and password are required", 400));
   }
 
-  const user = await userService.handleLocalLogin(email, password);
-  if (!user) return next(new AppError("Invalid credentials", 401));
+  try {
+    const user = await userService.handleLocalLogin(email, password);
 
-  const { accessToken, refreshToken } = generateTokens(user);
-  user.refreshToken = refreshToken;
-  await user.save();
+    const { accessToken, refreshToken } = generateTokens(user);
+    user.refreshToken = refreshToken;
+    await user.save();
 
-  safeCookie.set(res, "accessToken", accessToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 24 * 60 * 60 * 1000,
-  });
-  safeCookie.set(res, "refreshToken", refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 30 * 24 * 60 * 60 * 1000,
-  });
+    safeCookie.set(res, "accessToken", accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 24 * 60 * 60 * 1000,
+    });
+    safeCookie.set(res, "refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
 
-  res.json({
-    success: true,
-    accessToken,
-    refreshToken,
-    user: { id: user._id, email: user.email, name: user.name },
-  });
+    res.json({
+      success: true,
+      accessToken,
+      refreshToken,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    // Log the error for server-side debugging
+    console.error("Login Error:", error);
+
+    // Send a clear, user-friendly error response
+    next(
+      new AppError(error.message || "Login failed", error.statusCode || 401)
+    );
+  }
 });
 
 const register = catchAsync(async (req, res, next) => {

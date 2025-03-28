@@ -42,8 +42,9 @@ const allowedOrigins = [
   "https://email-aichatbot.netlify.app",
   process.env.FRONTEND_URL,
   process.env.FRONTEND_LIVE_URL,
-  `http://${localIpAddress}:3000`, // Add local network frontend URL
-  `http://${localIpAddress}:5173`, // Add another common frontend port
+  `http://192.168.10.206:3000`,
+  `http://172.16.0.2:3000`,
+  `http://${localIpAddress}:5173`,
 ].filter(Boolean);
 
 app.use(cookieParser());

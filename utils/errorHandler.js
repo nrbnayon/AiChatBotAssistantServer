@@ -1,4 +1,5 @@
-// utils/errorHandler.js
+// utils\errorHandler.js
+
 /**
  * Custom error class with status code
  */
@@ -114,7 +115,6 @@ const globalErrorHandler = (err, req, res, next) => {
   err.statusCode = err.statusCode || 500;
   err.status = err.status || "error";
 
-  // Check environment for error detail level
   if (process.env.NODE_ENV === "development") {
     handleDevelopmentError(err, res);
   } else {
@@ -148,7 +148,6 @@ const handleDevelopmentError = (err, res) => {
  * Production error handler with limited details
  */
 const handleProductionError = (err, res) => {
-  // Operational errors we can send details to client
   if (err.isOperational) {
     return res.status(err.statusCode).json({
       success: false,
@@ -157,7 +156,6 @@ const handleProductionError = (err, res) => {
     });
   }
 
-  // Programming or unknown errors - don't leak details
   console.error("ERROR 💥", err);
   return res.status(500).json({
     success: false,
@@ -204,7 +202,7 @@ const handleMongoErrors = (err) => {
   return err;
 };
 
- const errorHandler = (err, req, res, next) => {
+const errorHandler = (err, req, res, next) => {
   const statusCode = err.statusCode || 500;
   const message = err.message || "Internal Server Error";
 

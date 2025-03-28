@@ -3,13 +3,49 @@ import User from "../models/User.js";
 import { ApiError } from "../utils/errorHandler.js";
 
 const handleLocalLogin = async (email, password) => {
-  const user = await User.findOne({ email });
-  if (!user || user.authProvider !== "local" || !user.password) {
-    throw new ApiError("Invalid credentials or wrong auth method", 401);
+  try {
+    // Convert email to lowercase to ensure consistent matching
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const user = await User.findOne({ email: normalizedEmail });
+
+    // Detailed logging for debugging
+    console.log("Login Attempt:", {
+      email: normalizedEmail,
+      userFound: !!user,
+      authProvider: user?.authProvider,
+      passwordSet: !!user?.password,
+    });
+
+    if (!user) {
+      throw new ApiError(401, "User not found");
+    }
+
+    if (user.authProvider !== "local") {
+      throw new ApiError(401, "Invalid authentication method");
+    }
+
+    if (!user.password) {
+      throw new ApiError(401, "Password not set for this account");
+    }
+
+    const isMatch = await user.comparePassword(password);
+
+    console.log("Password Match Result:", {
+      isMatch,
+      providedPassword: password,
+      storedPasswordHash: user.password,
+    });
+
+    if (!isMatch) {
+      throw new ApiError(401, "Invalid credentials");
+    }
+
+    return user;
+  } catch (error) {
+    console.error("Login Error:", error);
+    throw error;
   }
-  const isMatch = await user.comparePassword(password);
-  if (!isMatch) throw new ApiError("Invalid credentials", 401);
-  return user;
 };
 
 const updateProfile = async (userId, profileData) => {
