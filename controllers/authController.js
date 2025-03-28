@@ -61,15 +61,15 @@ const oauthCallback = catchAsync(async (req, res) => {
 
   safeCookie.set(res, "accessToken", accessToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 24 * 60 * 60 * 1000, // 1 day
+    secure: process.env.NODE_ENV === "production" ? "true" : "false",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    maxAge: 24 * 60 * 60 * 1000,
   });
   safeCookie.set(res, "refreshToken", refreshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    secure: process.env.NODE_ENV === "production" ? "true" : "false",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    maxAge: 30 * 24 * 60 * 60 * 1000,
   });
 
   const redirectUrl = `${getFrontendUrl}/auth-callback?token=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(
@@ -80,9 +80,6 @@ const oauthCallback = catchAsync(async (req, res) => {
 
 const localLogin = catchAsync(async (req, res, next) => {
   const { email, password } = req.body;
-
-  console.log("Login Attempt:", { email });
-
   if (!email || !password) {
     return next(new AppError("Email and password are required", 400));
   }
@@ -96,19 +93,20 @@ const localLogin = catchAsync(async (req, res, next) => {
 
     safeCookie.set(res, "accessToken", accessToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production" ? "true" : "false",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 24 * 60 * 60 * 1000,
     });
     safeCookie.set(res, "refreshToken", refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production" ? "true" : "false",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
     res.json({
       success: true,
+      message: "Login successful",
       accessToken,
       refreshToken,
       user: {
@@ -119,10 +117,7 @@ const localLogin = catchAsync(async (req, res, next) => {
       },
     });
   } catch (error) {
-    // Log the error for server-side debugging
     console.error("Login Error:", error);
-
-    // Send a clear, user-friendly error response
     next(
       new AppError(error.message || "Login failed", error.statusCode || 401)
     );
@@ -155,19 +150,20 @@ const register = catchAsync(async (req, res, next) => {
 
   safeCookie.set(res, "accessToken", accessToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production" ? "true" : "false",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     maxAge: 24 * 60 * 60 * 1000,
   });
   safeCookie.set(res, "refreshToken", refreshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production" ? "true" : "false",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     maxAge: 30 * 24 * 60 * 60 * 1000,
   });
 
   res.json({
     success: true,
+    message: "Registration successful",
     accessToken,
     refreshToken,
     user: { id: user._id, email: user.email, name: user.name },
@@ -199,14 +195,14 @@ const refresh = catchAsync(async (req, res, next) => {
 
   safeCookie.set(res, "accessToken", accessToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production" ? "true" : "false",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     maxAge: 24 * 60 * 60 * 1000,
   });
   safeCookie.set(res, "refreshToken", newRefreshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production" ? "true" : "false",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     maxAge: 30 * 24 * 60 * 60 * 1000,
   });
 
@@ -228,13 +224,13 @@ const logout = catchAsync(async (req, res, next) => {
 
   safeCookie.clear(res, "accessToken", {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production" ? "true" : "false",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
   });
   safeCookie.clear(res, "refreshToken", {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production" ? "true" : "false",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
   });
 
   res.json({ success: true, message: "Logged out successfully" });
