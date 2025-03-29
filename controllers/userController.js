@@ -91,12 +91,12 @@ const deleteMe = catchAsync(async (req, res) => {
   safeCookie.clear(res, "accessToken", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production" ? true : false,
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    sameSite: "strict",
   });
   safeCookie.clear(res, "refreshToken", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production" ? true : false,
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    sameSite: "strict",
   });
   res.json({ success: true, message: "User deleted" });
 });
@@ -149,13 +149,13 @@ const createUser = catchAsync(async (req, res, next) => {
   safeCookie.set(res, "accessToken", accessToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production" ? true : false,
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    sameSite: "strict",
     maxAge: 24 * 60 * 60 * 1000,
   });
   safeCookie.set(res, "refreshToken", refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production" ? true : false,
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    sameSite: "strict",
     maxAge: 30 * 24 * 60 * 60 * 1000,
   });
 
