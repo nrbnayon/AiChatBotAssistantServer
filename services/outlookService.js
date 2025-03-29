@@ -1,7 +1,6 @@
 // services\outlookService.js
 import fetch from "node-fetch";
 import { promises as fsPromises } from "fs";
-import fs from "fs";
 import { ApiError } from "../utils/errorHandler.js";
 import { StatusCodes } from "http-status-codes";
 import EmailService from "./emailService.js";
