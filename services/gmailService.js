@@ -1,6 +1,6 @@
 // services/gmailService.js
 import { google } from "googleapis";
-import fs from "fs/promises"; // Use promises for async file operations
+import fs from "fs/promises"; 
 import { ApiError } from "../utils/errorHandler.js";
 import { StatusCodes } from "http-status-codes";
 import EmailService from "./emailService.js";
