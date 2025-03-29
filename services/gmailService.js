@@ -1,6 +1,6 @@
-// services\gmailService.js
+// services/gmailService.js
 import { google } from "googleapis";
-import fs from "fs";
+import fs from "fs/promises"; // Use promises for async file operations
 import { ApiError } from "../utils/errorHandler.js";
 import { StatusCodes } from "http-status-codes";
 import EmailService from "./emailService.js";
@@ -41,6 +41,12 @@ class GmailService extends EmailService {
         await this.user.save();
         console.log("[DEBUG] Google token refreshed");
       } catch (error) {
+        if (error.response?.data?.error === "invalid_grant") {
+          throw new ApiError(
+            StatusCodes.UNAUTHORIZED,
+            "Refresh token is invalid or revoked. Please re-authenticate."
+          );
+        }
         console.error("[ERROR] Google token refresh failed:", error);
         throw new ApiError(
           StatusCodes.UNAUTHORIZED,
@@ -87,9 +93,6 @@ class GmailService extends EmailService {
       case "sent":
         params.labelIds = ["SENT"];
         break;
-      case "unread":
-        params.labelIds = ["UNREAD"];
-        break;
       case "drafts":
         params.labelIds = ["DRAFT"];
         break;
@@ -106,29 +109,37 @@ class GmailService extends EmailService {
         );
     }
 
-    const response = await client.users.messages.list(params);
-    if (!response.data.messages || response.data.messages.length === 0) {
+    try {
+      const response = await client.users.messages.list(params);
+      if (!response.data.messages || response.data.messages.length === 0) {
+        return {
+          messages: [],
+          nextPageToken: response.data.nextPageToken || null,
+        };
+      }
+
+      const emails = await Promise.all(
+        response.data.messages.map(async (msg) => {
+          const email = await client.users.messages.get({
+            userId: "me",
+            id: msg.id,
+            format: "full",
+          });
+          return this.formatEmail(email.data);
+        })
+      );
+
       return {
-        messages: [],
+        messages: emails,
         nextPageToken: response.data.nextPageToken || null,
       };
+    } catch (error) {
+      console.error("[ERROR] Failed to fetch emails:", error);
+      throw new ApiError(
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        `Failed to fetch emails: ${error.message}`
+      );
     }
-
-    const emails = await Promise.all(
-      response.data.messages.map(async (msg) => {
-        const email = await client.users.messages.get({
-          userId: "me",
-          id: msg.id,
-          format: "full",
-        });
-        return this.formatEmail(email.data);
-      })
-    );
-
-    return {
-      messages: emails,
-      nextPageToken: response.data.nextPageToken || null,
-    };
   }
 
   formatEmail(email) {
@@ -167,67 +178,115 @@ class GmailService extends EmailService {
 
   async sendEmail({ to, subject, body, attachments = [] }) {
     const client = await this.getClient();
-    const raw = this.createRawEmail({ to, subject, body, attachments });
-    await client.users.messages.send({
-      userId: "me",
-      requestBody: { raw },
-    });
+    const raw = await this.createRawEmail({ to, subject, body, attachments });
+    try {
+      await client.users.messages.send({
+        userId: "me",
+        requestBody: { raw },
+      });
+    } catch (error) {
+      console.error("[ERROR] Failed to send email:", error);
+      throw new ApiError(
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        `Failed to send email: ${error.message}`
+      );
+    }
   }
 
   async getEmail(emailId) {
     const client = await this.getClient();
-    const email = await client.users.messages.get({
-      userId: "me",
-      id: emailId,
-      format: "full",
-    });
-    return this.formatEmail(email.data);
+    try {
+      const email = await client.users.messages.get({
+        userId: "me",
+        id: emailId,
+        format: "full",
+      });
+      return this.formatEmail(email.data);
+    } catch (error) {
+      console.error("[ERROR] Failed to get email:", error);
+      throw new ApiError(
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        `Failed to get email: ${error.message}`
+      );
+    }
   }
 
   async replyToEmail(emailId, { body, attachments = [] }) {
     const client = await this.getClient();
     const email = await this.getEmail(emailId);
     const replyTo = email.from === this.user.email ? email.to : email.from;
-    const raw = this.createRawEmail({
+    const raw = await this.createRawEmail({
       to: replyTo,
       subject: `Re: ${email.subject}`,
       body,
       attachments,
     });
-    await client.users.messages.send({
-      userId: "me",
-      requestBody: { raw, threadId: email.threadId },
-    });
+    try {
+      await client.users.messages.send({
+        userId: "me",
+        requestBody: { raw, threadId: email.threadId },
+      });
+    } catch (error) {
+      console.error("[ERROR] Failed to reply to email:", error);
+      throw new ApiError(
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        `Failed to reply to email: ${error.message}`
+      );
+    }
   }
 
   async trashEmail(emailId) {
     const client = await this.getClient();
-    await client.users.messages.trash({ userId: "me", id: emailId });
+    try {
+      await client.users.messages.trash({ userId: "me", id: emailId });
+    } catch (error) {
+      console.error("[ERROR] Failed to trash email:", error);
+      throw new ApiError(
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        `Failed to trash email: ${error.message}`
+      );
+    }
   }
 
   async markAsRead(emailId, read = true) {
     const client = await this.getClient();
-    await client.users.messages.modify({
-      userId: "me",
-      id: emailId,
-      requestBody: {
-        removeLabelIds: read ? ["UNREAD"] : [],
-        addLabelIds: read ? [] : ["UNREAD"],
-      },
-    });
+    try {
+      await client.users.messages.modify({
+        userId: "me",
+        id: emailId,
+        requestBody: {
+          removeLabelIds: read ? ["UNREAD"] : [],
+          addLabelIds: read ? [] : ["UNREAD"],
+        },
+      });
+    } catch (error) {
+      console.error("[ERROR] Failed to mark email as read:", error);
+      throw new ApiError(
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        `Failed to mark email as read: ${error.message}`
+      );
+    }
   }
 
   async draftEmail({ to, subject, body, attachments = [] }) {
     const client = await this.getClient();
-    const raw = this.createRawEmail({ to, subject, body, attachments });
-    const draft = await client.users.drafts.create({
-      userId: "me",
-      requestBody: { message: { raw } },
-    });
-    return draft.data.id;
+    const raw = await this.createRawEmail({ to, subject, body, attachments });
+    try {
+      const draft = await client.users.drafts.create({
+        userId: "me",
+        requestBody: { message: { raw } },
+      });
+      return draft.data.id;
+    } catch (error) {
+      console.error("[ERROR] Failed to create draft:", error);
+      throw new ApiError(
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        `Failed to create draft: ${error.message}`
+      );
+    }
   }
 
-  createRawEmail({ to, subject, body, attachments }) {
+  async createRawEmail({ to, subject, body, attachments }) {
     const boundary = "boundary_example";
     let email = [
       `To: ${to}`,
@@ -240,7 +299,7 @@ class GmailService extends EmailService {
       body,
     ];
     for (const attachment of attachments) {
-      const fileContent = fs.readFileSync(attachment.path, {
+      const fileContent = await fs.readFile(attachment.path, {
         encoding: "base64",
       });
       email.push(

@@ -1,8 +1,33 @@
-// services\emailService.js
+// services/emailService.js
 import Groq from "groq-sdk";
 import { ApiError } from "../utils/errorHandler.js";
 import { StatusCodes } from "http-status-codes";
 import User from "../models/User.js";
+
+// Simple TTL cache implementation
+class TTLCache {
+  constructor(ttl = 3600000) { // 1 hour default TTL
+    this.cache = new Map();
+    this.ttl = ttl;
+  }
+
+  set(key, value) {
+    this.cache.set(key, { value, expiry: Date.now() + this.ttl });
+  }
+
+  get(key) {
+    const item = this.cache.get(key);
+    if (item && item.expiry > Date.now()) {
+      return item.value;
+    }
+    this.cache.delete(key);
+    return undefined;
+  }
+
+  clear() {
+    this.cache.clear();
+  }
+}
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -10,7 +35,7 @@ class EmailService {
   constructor(user) {
     this.user = user;
     this.grok = groq;
-    this.analysisCache = new Map();
+    this.analysisCache = new TTLCache(); // Use TTL cache
   }
 
   // Abstract methods to be implemented by provider-specific classes
@@ -52,6 +77,12 @@ class EmailService {
     customKeywords = [],
     timeRange = "weekly"
   ) {
+    // Validate timeRange
+    const validTimeRanges = ["daily", "weekly", "monthly"];
+    if (!validTimeRanges.includes(timeRange)) {
+      throw new ApiError(StatusCodes.BAD_REQUEST, `Invalid timeRange: ${timeRange}`);
+    }
+
     const userKeywords = this.user.userImportantMailKeywords || [];
     const keywords = [...new Set([...userKeywords, ...customKeywords])];
     const timeFrames = {
@@ -59,7 +90,7 @@ class EmailService {
       weekly: 7 * 24 * 60 * 60 * 1000,
       monthly: 30 * 24 * 60 * 60 * 1000,
     };
-    const timeLimit = timeFrames[timeRange] || timeFrames.weekly;
+    const timeLimit = timeFrames[timeRange];
 
     const recentEmails = emails.filter((email) => {
       const emailDate = new Date(email.date);
@@ -75,8 +106,9 @@ class EmailService {
       const content =
         `${email.subject} ${email.snippet} ${email.body}`.toLowerCase();
 
-      if (this.analysisCache.has(emailKey)) {
-        processedEmails.push(this.analysisCache.get(emailKey));
+      const cached = this.analysisCache.get(emailKey);
+      if (cached) {
+        processedEmails.push(cached);
         continue;
       }
 
@@ -172,18 +204,27 @@ export const createEmailService = async (req) => {
   const user = await User.findById(req.user.id);
   if (!user) throw new ApiError(StatusCodes.NOT_FOUND, "User not found");
 
-  switch (user.authProvider) {
-    case "google":
-      const { default: GmailService } = await import("./gmailService.js");
-      return new GmailService(user);
-    case "microsoft":
-      const { default: OutlookService } = await import("./outlookService.js");
-      return new OutlookService(user);
-    case "yahoo":
-      const { default: YahooService } = await import("./yahooService.js");
-      return new YahooService(user);
-    default:
-      throw new ApiError(StatusCodes.BAD_REQUEST, "Unsupported email provider");
+  if (!user.authProvider) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, "User has no authentication provider set");
+  }
+
+  try {
+    switch (user.authProvider) {
+      case "google":
+        const { default: GmailService } = await import("./gmailService.js");
+        return new GmailService(user);
+      case "microsoft":
+        const { default: OutlookService } = await import("./outlookService.js");
+        return new OutlookService(user);
+      case "yahoo":
+        const { default: YahooService } = await import("./yahooService.js");
+        return new YahooService(user);
+      default:
+        throw new ApiError(StatusCodes.BAD_REQUEST, "Unsupported email provider");
+    }
+  } catch (error) {
+    console.error("Error loading email service:", error);
+    throw new ApiError(StatusCodes.INTERNAL_SERVER_ERROR, "Failed to load email service");
   }
 };
 

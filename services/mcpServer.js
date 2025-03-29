@@ -12,11 +12,12 @@ class ModelProvider {
     this.groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
     this.retryCount = 3;
     this.retryDelay = 1000;
+    this.maxRetryDelay = 10000;
   }
 
   async callWithFallbackChain(primaryModelId, options, fallbackChain = []) {
-    if (!options) {
-      throw new ApiError(500, "Options object is undefined");
+    if (!options || !options.messages) {
+      throw new ApiError(500, "Invalid options for model call");
     }
     const completeChain = [primaryModelId, ...fallbackChain];
     let lastError = null;
@@ -53,8 +54,8 @@ class ModelProvider {
   }
 
   async callModelWithRetry(modelId, options) {
-    if (!options) {
-      throw new ApiError(500, "Options object is undefined in retry");
+    if (!options || !options.messages) {
+      throw new ApiError(500, "Invalid options for model retry");
     }
     let attemptCount = 0;
     let lastError = null;
@@ -77,7 +78,10 @@ class ModelProvider {
           await new Promise((resolve) =>
             setTimeout(resolve, currentRetryDelay)
           );
-          currentRetryDelay *= 2;
+          currentRetryDelay = Math.min(
+            currentRetryDelay * 2,
+            this.maxRetryDelay
+          );
         }
       }
     }

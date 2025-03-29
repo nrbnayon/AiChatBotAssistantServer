@@ -1,26 +1,35 @@
 // services\outlookService.js
 import fetch from "node-fetch";
-import fs from "fs";
+import fs from "fs/promises";
 import { ApiError } from "../utils/errorHandler.js";
 import { StatusCodes } from "http-status-codes";
 import EmailService from "./emailService.js";
 import { convert } from "html-to-text";
+import { decrypt, encrypt } from "../utils/encryptionUtils.js"; 
 
 class OutlookService extends EmailService {
   async getClient() {
-    const microsoftTokenExpiry = this.user.microsoftAccessTokenExpires || 0;
-    const isValidJwt =
-      this.user.microsoftAccessToken &&
-      this.user.microsoftAccessToken.includes(".");
+    // Retrieve encrypted refresh token from user model
+    const encryptedRefreshToken = this.user.microsoftRefreshToken;
+    if (!encryptedRefreshToken) {
+      throw new ApiError(
+        StatusCodes.UNAUTHORIZED,
+        "No Microsoft refresh token available. Please re-authenticate."
+      );
+    }
 
-    if (!isValidJwt || microsoftTokenExpiry < Date.now()) {
-      console.log("Refresh Token:", this.user.microsoftRefreshToken);
-      if (!this.user.microsoftRefreshToken) {
-        throw new ApiError(
-          StatusCodes.UNAUTHORIZED,
-          "No Microsoft refresh token available. Please re-authenticate."
-        );
-      }
+    // Decrypt the refresh token for use
+    const refreshToken = decrypt(encryptedRefreshToken);
+
+    // Retrieve encrypted access token from user model
+    const encryptedAccessToken = this.user.microsoftAccessToken;
+    let accessToken = encryptedAccessToken
+      ? decrypt(encryptedAccessToken)
+      : null;
+
+    const microsoftTokenExpiry = this.user.microsoftAccessTokenExpires || 0;
+    // Check if access token is expired or missing
+    if (microsoftTokenExpiry < Date.now() || !accessToken) {
       const response = await fetch(
         "https://login.microsoftonline.com/common/oauth2/v2.0/token",
         {
@@ -29,7 +38,7 @@ class OutlookService extends EmailService {
           body: new URLSearchParams({
             client_id: process.env.MICROSOFT_CLIENT_ID,
             client_secret: process.env.MICROSOFT_CLIENT_SECRET,
-            refresh_token: this.user.microsoftRefreshToken,
+            refresh_token: refreshToken, // Use decrypted refresh token
             grant_type: "refresh_token",
             scope:
               "offline_access User.Read Mail.Read Mail.ReadWrite Mail.Send",
@@ -47,24 +56,21 @@ class OutlookService extends EmailService {
         );
       }
       const { access_token, refresh_token, expires_in } = await response.json();
-      this.user.microsoftAccessToken = access_token;
-      this.user.microsoftRefreshToken =
-        refresh_token || this.user.microsoftRefreshToken;
+      accessToken = access_token; // Assign new plain access token
+      const newEncryptedAccessToken = encrypt(access_token); // Encrypt new access token
+      this.user.microsoftAccessToken = newEncryptedAccessToken; // Save encrypted access token
+      if (refresh_token) {
+        const newEncryptedRefreshToken = encrypt(refresh_token); // Encrypt new refresh token if provided
+        this.user.microsoftRefreshToken = newEncryptedRefreshToken;
+      } // If no new refresh token, retain the existing one
       this.user.microsoftAccessTokenExpires = Date.now() + expires_in * 1000;
       await this.user.save();
       console.log("[DEBUG] Microsoft token refreshed");
     }
-    if (
-      !this.user.microsoftAccessToken ||
-      !this.user.microsoftAccessToken.includes(".")
-    ) {
-      throw new ApiError(
-        StatusCodes.UNAUTHORIZED,
-        "Invalid Microsoft access token format."
-      );
-    }
+
+    // Return the decrypted access token for API calls
     return {
-      accessToken: this.user.microsoftAccessToken,
+      accessToken, // Plain text token for immediate use
       baseUrl: "https://graph.microsoft.com/v1.0/me",
     };
   }
