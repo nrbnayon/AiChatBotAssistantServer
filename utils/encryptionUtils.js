@@ -2,7 +2,7 @@
 import crypto from "crypto";
 
 const algorithm = "aes-256-gcm";
-const key = Buffer.from(process.env.ENCRYPTION_KEY, "hex"); // 32-byte key from .env
+const key = Buffer.from(process.env.ENCRYPTION_KEY, "hex"); // 32-byte key from .env variable
 
 if (key.length !== 32) {
   throw new Error("ENCRYPTION_KEY must be 32 bytes (64 hex characters)");
