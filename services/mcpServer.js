@@ -935,7 +935,7 @@ class MCPServer {
       .join(" | ")} |\n${rows.map((row) => `| ${row} |`).join("\n")}`;
   }
 
-  async chatWithBot(req, message, history = []) {
+  async chatWithBot(req, message, history = [], context = {}) {
     const userId = req.user.id;
     const userName = req.user.name || "User";
     const userEmail = req.user.email;
