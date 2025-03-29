@@ -95,13 +95,6 @@ app.get("/", (req, res) => {
 });
 
 // **Routes** //
-app.use("/api/v1", (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "Welcome to the you mail ai assistant!",
-  });
-});
-
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/stripe", stripeRoutes);
