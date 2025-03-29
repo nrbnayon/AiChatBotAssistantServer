@@ -23,7 +23,9 @@ const router = express.Router();
  * @access Public
  * @param {string} provider - Authentication provider (google, microsoft)
  */
-router.get("/oauth/:provider", authRateLimit(), (req, res, next) => {
+router.get("/oauth/:provider",
+  // authRateLimit(),
+  (req, res, next) => {
   const { provider } = req.params;
   const providers = {
     google: {
@@ -73,7 +75,7 @@ router.get("/oauth/:provider", authRateLimit(), (req, res, next) => {
  */
 router.get(
   "/:provider/callback",
-  authRateLimit(),
+  // authRateLimit(),
   (req, res, next) => {
     const { provider } = req.params;
     passport.authenticate(provider, {
@@ -103,7 +105,9 @@ router.get("/error", authError);
  * @access Public/Authenticated
  */
 // Local user login
-router.post("/login", authRateLimit(), localLogin);
+router.post("/login",
+  // authRateLimit(),
+   localLogin);
 
 // User registration
 router.post("/register", authRateLimit(), register);
