@@ -61,15 +61,12 @@ const oauthCallback = catchAsync(async (req, res) => {
 
   safeCookie.set(res, "accessToken", accessToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production" ? true : false,
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 24 * 60 * 60 * 1000,
+    // secure: process.env.NODE_ENV === "production" ? true : false,
+    // sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    // maxAge: 24 * 60 * 60 * 1000,
   });
   safeCookie.set(res, "refreshToken", refreshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production" ? true : false,
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 30 * 24 * 60 * 60 * 1000,
   });
 
   const redirectUrl = `${getFrontendUrl}/auth-callback?token=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(
@@ -93,15 +90,9 @@ const localLogin = catchAsync(async (req, res, next) => {
 
     safeCookie.set(res, "accessToken", accessToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production" ? true : false,
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      maxAge: 24 * 60 * 60 * 1000,
     });
     safeCookie.set(res, "refreshToken", refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production" ? true : false,
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
     res.json({
@@ -150,15 +141,9 @@ const register = catchAsync(async (req, res, next) => {
 
   safeCookie.set(res, "accessToken", accessToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production" ? true : false,
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 24 * 60 * 60 * 1000,
   });
   safeCookie.set(res, "refreshToken", refreshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production" ? true : false,
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 30 * 24 * 60 * 60 * 1000,
   });
 
   res.json({
@@ -195,15 +180,9 @@ const refresh = catchAsync(async (req, res, next) => {
 
   safeCookie.set(res, "accessToken", accessToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production" ? true : false,
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 24 * 60 * 60 * 1000,
   });
   safeCookie.set(res, "refreshToken", newRefreshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production" ? true : false,
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 30 * 24 * 60 * 60 * 1000,
   });
 
   res.json({ success: true, accessToken, refreshToken: newRefreshToken });
