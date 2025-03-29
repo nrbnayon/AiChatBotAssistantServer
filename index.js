@@ -91,7 +91,7 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(requestLogger);
 
 app.get("/", (req, res) => {
-  res.send("Welcome to the User Management API!");
+  res.send("Welcome to the you mail ai assistant!");
 });
 
 app.use("/api/v1/auth", authRoutes);
