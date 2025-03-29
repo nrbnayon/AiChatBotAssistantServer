@@ -51,10 +51,10 @@ const shouldUseSecure = () => {
 
 const getSameSiteSetting = () => {
   if (process.env.NODE_ENV === "production") {
-    return "none";
+    return "strict";
   }
   if (process.env.ALLOW_LOCAL_NETWORK === "true") {
-    return "none";
+    return "strict";
   }
   return "lax";
 };
@@ -113,7 +113,7 @@ export const safeCookie = {
       if (isLocalhost() || process.env.ALLOW_LOCAL_NETWORK === "true") {
         modifiedOptions.secure = false;
         if (process.env.ALLOW_LOCAL_NETWORK === "true") {
-          modifiedOptions.sameSite = "none";
+          modifiedOptions.sameSite = "strict";
           if (process.env.FORCE_SECURE_COOKIES === "true") {
             modifiedOptions.secure = true;
           }
@@ -145,7 +145,7 @@ export const safeCookie = {
       if (isLocalhost() || process.env.ALLOW_LOCAL_NETWORK === "true") {
         modifiedOptions.secure = false;
         if (process.env.ALLOW_LOCAL_NETWORK === "true") {
-          modifiedOptions.sameSite = "none";
+          modifiedOptions.sameSite = "strict";
           if (process.env.FORCE_SECURE_COOKIES === "true") {
             modifiedOptions.secure = true;
           }
