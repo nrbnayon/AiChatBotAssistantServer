@@ -44,7 +44,7 @@ const allowedOrigins = [
   process.env.FRONTEND_LIVE_URL,
   `http://192.168.10.206:3000`,
   `http://172.16.0.2:3000`,
-  `http://${localIpAddress}:5173`,
+  `http://${localIpAddress}:3000`,
 ].filter(Boolean);
 
 app.use(cookieParser());
