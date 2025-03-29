@@ -996,21 +996,21 @@ class MCPServer {
       ];
     }
 
-    let processedMessage = this.preprocessMessage(message, userId);
-    const messages = [
-      { role: "system", content: personalizedSystemPrompt },
-      ...history,
-      { role: "user", content: processedMessage },
-    ];
+   let processedMessage = this.preprocessMessage(message, userId);
+   const messages = [
+     { role: "system", content: personalizedSystemPrompt },
+     ...history,
+     { role: "user", content: processedMessage },
+   ];
 
     const hour = new Date().getHours();
-    timeContext = "";
-    if (hour >= 5 && hour < 12) timeContext = "It’s morning, ";
-    else if (hour >= 12 && hour < 18) timeContext = "It’s afternoon, ";
-    else timeContext = "It’s evening, ";
+    let timeGreeting = "";
+    if (hour >= 5 && hour < 12) timeGreeting = "It’s morning, ";
+    else if (hour >= 12 && hour < 18) timeGreeting = "It’s afternoon, ";
+    else timeGreeting = "It’s evening, ";
     messages.push({
       role: "system",
-      content: `${timeContext}the user might appreciate a response that acknowledges their busy schedule.`,
+      content: `${timeGreeting}the user might appreciate a response that acknowledges their busy schedule.`,
     });
 
     const primaryModelId = getDefaultModel().id;
