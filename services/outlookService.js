@@ -1,11 +1,12 @@
 // services\outlookService.js
 import fetch from "node-fetch";
-import fs from "fs/promises";
+import { promises as fsPromises } from "fs";
+import fs from "fs";
 import { ApiError } from "../utils/errorHandler.js";
 import { StatusCodes } from "http-status-codes";
 import EmailService from "./emailService.js";
 import { convert } from "html-to-text";
-import { decrypt, encrypt } from "../utils/encryptionUtils.js"; 
+import { decrypt, encrypt } from "../utils/encryptionUtils.js";
 
 class OutlookService extends EmailService {
   async getClient() {
@@ -30,42 +31,58 @@ class OutlookService extends EmailService {
     const microsoftTokenExpiry = this.user.microsoftAccessTokenExpires || 0;
     // Check if access token is expired or missing
     if (microsoftTokenExpiry < Date.now() || !accessToken) {
-      const response = await fetch(
-        "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            client_id: process.env.MICROSOFT_CLIENT_ID,
-            client_secret: process.env.MICROSOFT_CLIENT_SECRET,
-            refresh_token: refreshToken, // Use decrypted refresh token
-            grant_type: "refresh_token",
-            scope:
-              "offline_access User.Read Mail.Read Mail.ReadWrite Mail.Send",
-          }),
+      try {
+        const response = await fetch(
+          "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              client_id: process.env.MICROSOFT_CLIENT_ID,
+              client_secret: process.env.MICROSOFT_CLIENT_SECRET,
+              refresh_token: refreshToken, 
+              grant_type: "refresh_token",
+              scope:
+                "offline_access User.Read Mail.Read Mail.ReadWrite Mail.Send",
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          let errorMessage;
+          try {
+            const errorData = JSON.parse(errorText);
+            errorMessage = errorData.error_description || errorData.error;
+          } catch (e) {
+            errorMessage = errorText || "Unknown error";
+          }
+          console.error("Microsoft token refresh error:", errorMessage);
+          throw new ApiError(
+            StatusCodes.UNAUTHORIZED,
+            `Failed to refresh Microsoft token: ${errorMessage}`
+          );
         }
-      );
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("Microsoft token refresh error:", errorData);
+
+        const { access_token, refresh_token, expires_in } =
+          await response.json();
+        accessToken = access_token; // Assign new plain access token
+        const newEncryptedAccessToken = encrypt(access_token); // Encrypt new access token
+        this.user.microsoftAccessToken = newEncryptedAccessToken; // Save encrypted access token
+        if (refresh_token) {
+          const newEncryptedRefreshToken = encrypt(refresh_token); // Encrypt new refresh token if provided
+          this.user.microsoftRefreshToken = newEncryptedRefreshToken;
+        } // If no new refresh token, retain the existing one
+        this.user.microsoftAccessTokenExpires = Date.now() + expires_in * 1000;
+        await this.user.save();
+        console.log("[DEBUG] Microsoft token refreshed");
+      } catch (error) {
+        if (error instanceof ApiError) throw error;
         throw new ApiError(
-          StatusCodes.UNAUTHORIZED,
-          `Failed to refresh Microsoft token: ${
-            errorData.error_description || errorData.error
-          }`
+          StatusCodes.INTERNAL_SERVER_ERROR,
+          `Token refresh failed: ${error.message}`
         );
       }
-      const { access_token, refresh_token, expires_in } = await response.json();
-      accessToken = access_token; // Assign new plain access token
-      const newEncryptedAccessToken = encrypt(access_token); // Encrypt new access token
-      this.user.microsoftAccessToken = newEncryptedAccessToken; // Save encrypted access token
-      if (refresh_token) {
-        const newEncryptedRefreshToken = encrypt(refresh_token); // Encrypt new refresh token if provided
-        this.user.microsoftRefreshToken = newEncryptedRefreshToken;
-      } // If no new refresh token, retain the existing one
-      this.user.microsoftAccessTokenExpires = Date.now() + expires_in * 1000;
-      await this.user.save();
-      console.log("[DEBUG] Microsoft token refreshed");
     }
 
     // Return the decrypted access token for API calls
@@ -79,59 +96,60 @@ class OutlookService extends EmailService {
     const client = await this.getClient();
     let endpoint;
     const baseParams = `?$top=${maxResults}&$select=id,subject,from,toRecipients,receivedDateTime,bodyPreview,body,isRead`;
-    let filterQuery = "";
-    switch (filter.toLowerCase()) {
-      case "all":
-        endpoint = `${client.baseUrl}/messages${baseParams}`; // Inbox
-        break;
-      case "sent":
-        endpoint = `${client.baseUrl}/mailFolders/sentitems/messages${baseParams}`;
-        break;
-      case "archived":
-        endpoint = `${client.baseUrl}/mailFolders/archive/messages${baseParams}`;
-        break;
-      case "unread":
-        filterQuery = "&$filter=isRead eq false";
-        endpoint = `${client.baseUrl}/messages${baseParams}${filterQuery}`;
-        break;
-      case "starred": // Flagged in Outlook
-        filterQuery = "&$filter=flag/flagStatus eq 'flagged'";
-        endpoint = `${client.baseUrl}/messages${baseParams}${filterQuery}`;
-        break;
-      case "drafts":
-        endpoint = `${client.baseUrl}/mailFolders/drafts/messages${baseParams}`;
-        break;
-      case "important":
-        filterQuery = "&$filter=importance eq 'high'";
-        endpoint = `${client.baseUrl}/messages${baseParams}${filterQuery}`;
-        break;
-      case "trash":
-        endpoint = `${client.baseUrl}/mailFolders/deleteditems/messages${baseParams}`;
-        break;
-      default:
-        throw new ApiError(
-          StatusCodes.BAD_REQUEST,
-          `Unsupported filter: ${filter}`
-        );
+
+    const filterMap = {
+      all: `${client.baseUrl}/messages${baseParams}`,
+      sent: `${client.baseUrl}/mailFolders/sentitems/messages${baseParams}`,
+      archived: `${client.baseUrl}/mailFolders/archive/messages${baseParams}`,
+      unread: `${client.baseUrl}/messages${baseParams}&$filter=isRead eq false`,
+      starred: `${client.baseUrl}/messages${baseParams}&$filter=flag/flagStatus eq 'flagged'`,
+      drafts: `${client.baseUrl}/mailFolders/drafts/messages${baseParams}`,
+      important: `${client.baseUrl}/messages${baseParams}&$filter=importance eq 'high'`,
+      trash: `${client.baseUrl}/mailFolders/deleteditems/messages${baseParams}`,
+    };
+
+    endpoint = filterMap[filter.toLowerCase()];
+
+    if (!endpoint) {
+      throw new ApiError(
+        StatusCodes.BAD_REQUEST,
+        `Unsupported filter: ${filter}`
+      );
     }
-    if (pageToken) endpoint += `&$skiptoken=${pageToken}`;
+
+    if (pageToken) endpoint += `&$skiptoken=${encodeURIComponent(pageToken)}`;
     if (query) endpoint += `&$search="${encodeURIComponent(query)}"`;
 
     const response = await fetch(endpoint, {
       headers: { Authorization: `Bearer ${client.accessToken}` },
     });
+
     if (!response.ok) {
-      const errorData = await response.json();
+      const errorText = await response.text();
+      let errorMessage;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error?.message || JSON.stringify(errorData);
+      } catch (e) {
+        errorMessage = errorText || "Unknown error";
+      }
       throw new ApiError(
         StatusCodes.BAD_REQUEST,
-        `Microsoft API error: ${errorData.error.message}`
+        `Microsoft API error: ${errorMessage}`
       );
     }
+
     const data = await response.json();
     const emails = data.value.map(this.formatEmail.bind(this));
-    const nextPageToken = data["@odata.nextLink"]
-      ? data["@odata.nextLink"].split("skiptoken=")[1]
-      : null;
+
+    let nextPageToken = null;
+    if (data["@odata.nextLink"]) {
+      const linkParts = data["@odata.nextLink"].split("skiptoken=");
+      if (linkParts.length > 1) {
+        nextPageToken = decodeURIComponent(linkParts[1]);
+      }
+    }
+
     return { messages: emails, nextPageToken };
   }
 
@@ -140,11 +158,14 @@ class OutlookService extends EmailService {
     const bodyText =
       email.body?.contentType === "html" ? convert(bodyContent) : bodyContent;
     return {
-      id: email.id,
+      id: email.id || "",
       subject: email.subject || "",
       from: email.from?.emailAddress?.address || "",
       to:
-        email.toRecipients?.map((r) => r.emailAddress.address).join(", ") || "",
+        email.toRecipients
+          ?.map((r) => r.emailAddress?.address || "")
+          .filter(Boolean)
+          .join(", ") || "",
       date: email.receivedDateTime || "",
       snippet: email.bodyPreview || "",
       body: bodyText,
@@ -159,14 +180,20 @@ class OutlookService extends EmailService {
       body: { contentType: "Text", content: body },
       toRecipients: [{ emailAddress: { address: to } }],
     };
+
     if (attachments.length > 0) {
-      message.attachments = attachments.map((file) => ({
-        "@odata.type": "#microsoft.graph.fileAttachment",
-        name: file.filename,
-        contentBytes: fs.readFileSync(file.path, { encoding: "base64" }),
-        contentType: file.mimetype,
-      }));
+      message.attachments = await Promise.all(
+        attachments.map(async (file) => ({
+          "@odata.type": "#microsoft.graph.fileAttachment",
+          name: file.filename,
+          contentBytes: (
+            await fsPromises.readFile(file.path)
+          ).toString("base64"),
+          contentType: file.mimetype,
+        }))
+      );
     }
+
     const sendMailBody = { message, saveToSentItems: "true" };
     const response = await fetch(`${client.baseUrl}/sendMail`, {
       method: "POST",
@@ -176,11 +203,19 @@ class OutlookService extends EmailService {
       },
       body: JSON.stringify(sendMailBody),
     });
+
     if (!response.ok) {
-      const errorData = await response.json();
+      const errorText = await response.text();
+      let errorMessage;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error?.message || JSON.stringify(errorData);
+      } catch (e) {
+        errorMessage = errorText || "Unknown error";
+      }
       throw new ApiError(
         StatusCodes.BAD_REQUEST,
-        `Failed to send Microsoft email: ${errorData.error.message}`
+        `Failed to send Microsoft email: ${errorMessage}`
       );
     }
   }
@@ -190,13 +225,22 @@ class OutlookService extends EmailService {
     const response = await fetch(`${client.baseUrl}/messages/${emailId}`, {
       headers: { Authorization: `Bearer ${client.accessToken}` },
     });
+
     if (!response.ok) {
-      const errorData = await response.json();
+      const errorText = await response.text();
+      let errorMessage;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error?.message || JSON.stringify(errorData);
+      } catch (e) {
+        errorMessage = errorText || "Unknown error";
+      }
       throw new ApiError(
         StatusCodes.BAD_REQUEST,
-        `Microsoft API error: ${errorData.error.message}`
+        `Microsoft API error: ${errorMessage}`
       );
     }
+
     return this.formatEmail(await response.json());
   }
 
@@ -209,14 +253,20 @@ class OutlookService extends EmailService {
       body: { contentType: "Text", content: body },
       toRecipients: [{ emailAddress: { address: replyTo } }],
     };
+
     if (attachments.length > 0) {
-      message.attachments = attachments.map((file) => ({
-        "@odata.type": "#microsoft.graph.fileAttachment",
-        name: file.filename,
-        contentBytes: fs.readFileSync(file.path, { encoding: "base64" }),
-        contentType: file.mimetype,
-      }));
+      message.attachments = await Promise.all(
+        attachments.map(async (file) => ({
+          "@odata.type": "#microsoft.graph.fileAttachment",
+          name: file.filename,
+          contentBytes: (
+            await fsPromises.readFile(file.path)
+          ).toString("base64"),
+          contentType: file.mimetype,
+        }))
+      );
     }
+
     const sendMailBody = { message, saveToSentItems: "true" };
     const response = await fetch(`${client.baseUrl}/sendMail`, {
       method: "POST",
@@ -226,11 +276,19 @@ class OutlookService extends EmailService {
       },
       body: JSON.stringify(sendMailBody),
     });
+
     if (!response.ok) {
-      const errorData = await response.json();
+      const errorText = await response.text();
+      let errorMessage;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error?.message || JSON.stringify(errorData);
+      } catch (e) {
+        errorMessage = errorText || "Unknown error";
+      }
       throw new ApiError(
         StatusCodes.BAD_REQUEST,
-        `Failed to reply to Microsoft email: ${errorData.error.message}`
+        `Failed to reply to Microsoft email: ${errorMessage}`
       );
     }
   }
@@ -245,11 +303,19 @@ class OutlookService extends EmailService {
       },
       body: JSON.stringify({ destinationId: "deleteditems" }),
     });
+
     if (!response.ok) {
-      const errorData = await response.json();
+      const errorText = await response.text();
+      let errorMessage;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error?.message || JSON.stringify(errorData);
+      } catch (e) {
+        errorMessage = errorText || "Unknown error";
+      }
       throw new ApiError(
         StatusCodes.BAD_REQUEST,
-        `Failed to trash Microsoft email: ${errorData.error.message}`
+        `Failed to trash Microsoft email: ${errorMessage}`
       );
     }
   }
@@ -264,11 +330,19 @@ class OutlookService extends EmailService {
       },
       body: JSON.stringify({ isRead: read }),
     });
+
     if (!response.ok) {
-      const errorData = await response.json();
+      const errorText = await response.text();
+      let errorMessage;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error?.message || JSON.stringify(errorData);
+      } catch (e) {
+        errorMessage = errorText || "Unknown error";
+      }
       throw new ApiError(
         StatusCodes.BAD_REQUEST,
-        `Failed to mark Microsoft email as read: ${errorData.error.message}`
+        `Failed to mark Microsoft email as read: ${errorMessage}`
       );
     }
   }
@@ -281,6 +355,7 @@ class OutlookService extends EmailService {
       toRecipients: [{ emailAddress: { address: to } }],
       isDraft: true,
     };
+
     const createResponse = await fetch(`${client.baseUrl}/messages`, {
       method: "POST",
       headers: {
@@ -289,26 +364,35 @@ class OutlookService extends EmailService {
       },
       body: JSON.stringify(message),
     });
+
     if (!createResponse.ok) {
-      const errorData = await createResponse.json();
+      const errorText = await createResponse.text();
+      let errorMessage;
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error?.message || JSON.stringify(errorData);
+      } catch (e) {
+        errorMessage = errorText || "Unknown error";
+      }
       throw new ApiError(
         StatusCodes.BAD_REQUEST,
-        `Failed to create draft: ${errorData.error.message}`
+        `Failed to create draft: ${errorMessage}`
       );
     }
+
     const draft = await createResponse.json();
     const draftId = draft.id;
 
     if (attachments.length > 0) {
       for (const attachment of attachments) {
+        const fileBuffer = await fsPromises.readFile(attachment.path);
         const attachmentData = {
           "@odata.type": "#microsoft.graph.fileAttachment",
           name: attachment.filename,
-          contentBytes: fs.readFileSync(attachment.path, {
-            encoding: "base64",
-          }),
+          contentBytes: fileBuffer.toString("base64"),
           contentType: attachment.mimetype,
         };
+
         const attachResponse = await fetch(
           `${client.baseUrl}/messages/${draftId}/attachments`,
           {
@@ -320,11 +404,20 @@ class OutlookService extends EmailService {
             body: JSON.stringify(attachmentData),
           }
         );
+
         if (!attachResponse.ok) {
-          const errorData = await attachResponse.json();
+          const errorText = await attachResponse.text();
+          let errorMessage;
+          try {
+            const errorData = JSON.parse(errorText);
+            errorMessage =
+              errorData.error?.message || JSON.stringify(errorData);
+          } catch (e) {
+            errorMessage = errorText || "Unknown error";
+          }
           throw new ApiError(
             StatusCodes.BAD_REQUEST,
-            `Failed to attach file: ${errorData.error.message}`
+            `Failed to attach file: ${errorMessage}`
           );
         }
       }
