@@ -72,7 +72,7 @@ const oauthCallback = catchAsync(async (req, res) => {
     maxAge: 30 * 24 * 60 * 60 * 1000,
   });
 
-  const redirectUrl = `${getFrontendUrl}/auth-callback?token=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(
+  const redirectUrl = `${getFrontendUrl}/auth-callback?accessToken=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(
     state.redirect || "/dashboard"
   )}`;
   res.redirect(redirectUrl);
