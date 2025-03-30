@@ -967,22 +967,25 @@ class MCPServer {
 
     const systemPrompt = await this.getDefaultSystemMessage();
 
-    const personalizedSystemPrompt = systemPrompt
-      .replace(/{{USER_NAME}}/g, userName)
-      .replace(/{{USER_EMAIL}}/g, userEmail)
-      .replace(/{{TIME_CONTEXT}}/g, timeContext)
-      .replace(/{{EMAIL_COUNT}}/g, emailCount.toString())
-      .replace(/{{UNREAD_COUNT}}/g, unreadCount.toString());
+    const personalizedSystemPrompt =
+      systemPrompt
+        .replace(/{{USER_NAME}}/g, userName)
+        .replace(/{{USER_EMAIL}}/g, userEmail)
+        .replace(/{{TIME_CONTEXT}}/g, timeContext)
+        .replace(/{{EMAIL_COUNT}}/g, emailCount.toString())
+        .replace(/{{UNREAD_COUNT}}/g, unreadCount.toString()) +
+      "\n\nWhen there’s a pending email draft, interpret affirmative responses like 'confirm sent', 'yes', or 'send it' as a command to send the email, returning {\"action\": \"send-email\", \"params\": {...}}. If the user says 'send draft 1' or 'send draft 2' after a list of drafts, select the corresponding draft (1 for the most recent, 2 for the second most recent) and return the same action.";
 
     if (
       (message.toLowerCase().includes("confirm") &&
-        message.toLowerCase().includes("send")) ||
-      (message.toLowerCase().includes("send email") &&
-        message.toLowerCase().includes("confirm")) ||
-      (message.toLowerCase().includes("confirm") &&
-        message.toLowerCase().includes("send it")) ||
-      message.toLowerCase().includes("sent it now") ||
-      message.toLowerCase().includes("sent it please")
+        (message.toLowerCase().includes("send") ||
+          message.toLowerCase().includes("sent"))) ||
+      message.toLowerCase().includes("yes send it") ||
+      message.toLowerCase().includes("go ahead") ||
+      message.toLowerCase().includes("proceed") ||
+      message.toLowerCase().includes("send it now") ||
+      message.toLowerCase().includes("send draft 1") ||
+      message.toLowerCase().includes("send draft 2")
     ) {
       let pendingDraft = null;
       let recentDraft = null;
@@ -1008,7 +1011,7 @@ class MCPServer {
             to = lines[i].replace("**To:**", "").trim();
           } else if (lines[i].startsWith("**Subject:**")) {
             subject = lines[i].replace("**Subject:**", "").trim();
-            messageStartIndex = i + 2; 
+            messageStartIndex = i + 2;
           }
         }
 
@@ -1036,6 +1039,31 @@ class MCPServer {
         }
       }
 
+      const drafts = await EmailDraft.find({ userId }).sort({ createdAt: -1 });
+      if (drafts.length > 1 && !pendingDraft) {
+        // If user said "send draft 1" or "send draft 2", select the draft
+        if (message.toLowerCase().includes("send draft 1")) {
+          pendingDraft = {
+            recipient_id: drafts[0].recipientId,
+            subject: drafts[0].subject,
+            message: drafts[0].message,
+          };
+        } else if (message.toLowerCase().includes("send draft 2")) {
+          pendingDraft = {
+            recipient_id: drafts[1].recipientId,
+            subject: drafts[1].subject,
+            message: drafts[1].message,
+          };
+        } else {
+          return {
+            type: "text",
+            text: `I found ${drafts.length} drafts:\n1. To: ${drafts[0].recipientId}, Subject: ${drafts[0].subject}\n2. To: ${drafts[1].recipientId}, Subject: ${drafts[1].subject}\nWhich one? Say "send draft 1" or "send draft 2".`,
+            modelUsed: "N/A",
+            fallbackUsed: false,
+          };
+        }
+      }
+
       // Step 2: Fallback to database if history didn’t provide a draft
       if (!pendingDraft) {
         const recentDraft = await EmailDraft.findOne({ userId }).sort({
@@ -1050,28 +1078,43 @@ class MCPServer {
         }
       }
 
-      if (pendingDraft) {
-       try {
-         const toolResponse = await this.callTool(
-           "send-email",
-           pendingDraft,
-           userId
-         );
-         await EmailDraft.deleteMany({ userId: userId });
-         return {
-           ...toolResponse[0],
-           modelUsed: modelId ? (await getModelById(modelId)).name : "N/A",
-           fallbackUsed: false,
-         };
-       } catch (error) {
-         console.error("Failed to send email:", error);
-         return {
-           type: "text",
-           text: "Oops, something went wrong while sending the email. Please try again later.",
-           modelUsed: "N/A",
-           fallbackUsed: false,
-         };
-       }
+      const affirmativeResponses = [
+        "yes",
+        "ok",
+        "sure",
+        "confirm",
+        "send",
+        "sent",
+        "go ahead",
+        "proceed",
+      ];
+      if (
+        pendingDraft &&
+        affirmativeResponses.some((word) =>
+          message.toLowerCase().includes(word)
+        )
+      ) {
+        try {
+          const toolResponse = await this.callTool(
+            "send-email",
+            pendingDraft,
+            userId
+          );
+          await EmailDraft.deleteMany({ userId: userId });
+          return {
+            ...toolResponse[0],
+            modelUsed: modelId ? (await getModelById(modelId)).name : "N/A",
+            fallbackUsed: false,
+          };
+        } catch (error) {
+          console.error("Failed to send email:", error);
+          return {
+            type: "text",
+            text: "Oops, something went wrong while sending the email. Please try again later.",
+            modelUsed: "N/A",
+            fallbackUsed: false,
+          };
+        }
       } else {
         const noDraftResponses = [
           "Hmm, no draft email’s ready to send yet. Want to start one?",

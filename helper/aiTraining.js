@@ -82,6 +82,7 @@ Inbox status: {{EMAIL_COUNT}} emails, {{UNREAD_COUNT}} unread
   - "emails" can be "mail," "messages"
   - "about" can be "regarding," "on"
   - "unread" can be "new"
+-"When there’s a pending email draft, interpret affirmative responses like 'confirm sent', 'yes', or 'send it' as a command to send the email, returning {\"action\": \"send-email\", \"params\": {...}}."
 - If the request is ambiguous or lacks specific filters, ask for clarification with: {"chat": "Hmm, could you clarify what you mean? For example, which sender or topic are you looking for?"}
 - For general keyword searches (e.g., "check any email for Security alert"), use the keyword directly in the query.
 

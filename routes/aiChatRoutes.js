@@ -1,4 +1,5 @@
 // routes\aiChatRoutes.js
+// routes\aiChatRoutes.js
 import express from "express";
 import auth from "../middleware/authMiddleware.js";
 import { createEmailService } from "../services/emailService.js";
@@ -9,6 +10,12 @@ import path from "path";
 import fs from "fs";
 import * as pdfjsLib from "pdfjs-dist";
 import mammoth from "mammoth";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
+// Fix for __dirname in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const router = express.Router();
 
@@ -92,15 +99,36 @@ router.post(
     } = req.body;
     const userId = req.user.id;
 
-    if (!message) {
+    if (!message && !req.file) {
       return res
         .status(400)
-        .json({ success: false, message: "Message is required" });
+        .json({ success: false, message: "Message or file is required" });
     }
 
     const history = providedHistory || getConversationHistory(userId);
 
-    const userMessage = message; 
+    let userMessage = message || "";
+    
+    // Process uploaded file if present
+    if (req.file) {
+      try {
+        const fileText = await extractTextFromFile(req.file.path, req.file.mimetype);
+        userMessage = userMessage ? 
+          `${userMessage}\n\nContent from file ${req.file.originalname}:\n${fileText}` : 
+          `Analyze this file (${req.file.originalname}):\n${fileText}`;
+        
+        // Clean up file after processing
+        fs.unlink(req.file.path, (err) => {
+          if (err) console.error(`Error deleting file: ${err}`);
+        });
+      } catch (error) {
+        console.error("File processing error:", error);
+        return res.status(400).json({
+          success: false,
+          message: `Error processing uploaded file: ${error.message}`,
+        });
+      }
+    }
 
     try {
       const emails = (await emailService.fetchEmails({ maxResults })).messages;
@@ -136,6 +164,7 @@ router.post(
       res.status(500).json({
         success: false,
         message: "I'm having trouble processing your request right now.",
+        error: process.env.NODE_ENV === "development" ? error.message : undefined,
       });
     }
   })
