@@ -84,81 +84,32 @@ router.post(
   catchAsync(async (req, res) => {
     const emailService = await createEmailService(req);
     const mcpServer = new MCPServer(emailService);
-    const { message, maxResults = 5000, modelId } = req.body;
+    const {
+      message,
+      maxResults = 5000,
+      modelId,
+      history: providedHistory,
+    } = req.body;
     const userId = req.user.id;
 
-    // **Validate Message**
     if (!message) {
       return res
         .status(400)
         .json({ success: false, message: "Message is required" });
     }
 
-    // **Handle Ffile Upload**
-    let fileContent = "";
-    const supportedTypes = [
-      "text/plain",
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ];
+    const history = providedHistory || getConversationHistory(userId);
 
-    if (req.file) {
-      // **Check File Size (Limit to 5MB)**
-      if (req.file.size > 5 * 1024 * 1024) {
-        fs.unlink(req.file.path, () => {});
-        return res.status(400).json({
-          success: false,
-          message: "File is too large. Please upload a file smaller than 5MB.",
-        });
-      }
+    const userMessage = message; 
 
-      // **Check File Type**
-      if (!supportedTypes.includes(req.file.mimetype)) {
-        fs.unlink(req.file.path, () => {});
-        return res.status(400).json({
-          success: false,
-          message:
-            "Unsupported file type. Please upload a TXT, PDF, or DOCX file.",
-        });
-      }
-
-      try {
-        fileContent = await extractTextFromFile(
-          req.file.path,
-          req.file.mimetype
-        );
-        fileContent = fileContent.substring(0, 2000);
-      } catch (error) {
-        console.error("Error extracting file content:", error);
-        fs.unlink(req.file.path, () => {});
-        return res.status(400).json({
-          success: false,
-          message: "Failed to extract content from the uploaded file.",
-        });
-      } finally {
-        fs.unlink(req.file.path, (err) => {
-          if (err) console.error("Error deleting uploaded file:", err);
-        });
-      }
-    }
-
-    const history = getConversationHistory(userId);
-
-    const userMessage = fileContent
-      ? `The user has uploaded a file. Here is the content (truncated to 2000 characters):\n${fileContent}\n\nUser's request: ${message}`
-      : message;
-
-    // **Process the Request**
     try {
       const emails = (await emailService.fetchEmails({ maxResults })).messages;
-
       const hour = new Date().getHours();
       let timeContext = "";
       if (hour >= 5 && hour < 12) timeContext = "morning";
       else if (hour >= 12 && hour < 18) timeContext = "afternoon";
       else timeContext = "evening";
 
-      // **Generate AI Response**
       const chatResponse = await mcpServer.chatWithBot(
         req,
         userMessage,
@@ -173,7 +124,6 @@ router.post(
 
       updateConversationHistory(userId, userMessage, chatResponse.text);
 
-      // **Send Response**
       res.json({
         success: true,
         message: chatResponse.text,
@@ -185,8 +135,7 @@ router.post(
       console.error("Error processing request:", error);
       res.status(500).json({
         success: false,
-        message:
-          "I'm having trouble processing your request right now. Could you try again in a moment?",
+        message: "I'm having trouble processing your request right now.",
       });
     }
   })

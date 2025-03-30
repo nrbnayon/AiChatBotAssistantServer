@@ -704,7 +704,8 @@ class MCPServer {
         if (!recipient || !content)
           throw new Error("Missing required parameters");
 
-        const prompt = `Draft a polite and professional email to ${recipient} based on the following message: "${content}". Include a suitable subject line starting with 'Subject:'. If the message is brief, expand it into a complete email body with appropriate greetings, context, and a sign-off. Ensure the email is clear, courteous, and professional.`;
+        const userName = this.emailService.user.name || "Your Name"; // Fallback to "User" if name is missing
+        const prompt = `Draft a polite and professional email from ${userName} to ${recipient} based on the following message: "${content}". Include a suitable subject line starting with 'Subject:'. If the message is brief, expand it into a complete email body with appropriate greetings, context, and a sign-off using the sender's name "${userName}". Ensure the email is clear, courteous, and professional.`;
 
         const defaultModel = await getDefaultModel();
         const draftResponse = await this.modelProvider.callWithFallbackChain(
@@ -730,11 +731,18 @@ class MCPServer {
         const subject = subjectMatch ? subjectMatch[1].trim() : "No subject";
         const body = draftText.split("\n").slice(1).join("\n").trim();
 
+        this.pendingEmails.set(userId, {
+          recipient_id: recipient_email || recipient,
+          subject,
+          message: body,
+        });
+
         await EmailDraft.create({
           userId,
           recipientId: recipient_email || recipient,
           subject,
           message: body,
+          status: "draft",
         });
 
         const draftResponses = [
@@ -967,51 +975,121 @@ class MCPServer {
       .replace(/{{UNREAD_COUNT}}/g, unreadCount.toString());
 
     if (
-      message.toLowerCase().includes("confirm") &&
-      message.toLowerCase().includes("send")
+      (message.toLowerCase().includes("confirm") &&
+        message.toLowerCase().includes("send")) ||
+      (message.toLowerCase().includes("send email") &&
+        message.toLowerCase().includes("confirm")) ||
+      (message.toLowerCase().includes("confirm") &&
+        message.toLowerCase().includes("send it")) ||
+      message.toLowerCase().includes("sent it now") ||
+      message.toLowerCase().includes("sent it please")
     ) {
+      let pendingDraft = null;
+      let recentDraft = null;
+
+      // Step 1: Try to extract draft from history (first priority)
       const lastAssistantMessage = history
         .slice()
         .reverse()
         .find((msg) => msg.role === "assistant")?.content;
       if (
         lastAssistantMessage &&
-        lastAssistantMessage.includes("I’ve put together an email")
+        (lastAssistantMessage.includes("Drafted something for") ||
+          lastAssistantMessage.includes("I’ve put together an email") ||
+          lastAssistantMessage.includes("Here’s a draft for"))
       ) {
-        const toMatch = lastAssistantMessage.match(/\*\*To:\*\* (.+?)\n/);
-        const subjectMatch = lastAssistantMessage.match(
-          /\*\*Subject:\*\* (.+?)\n/
-        );
-        const messageMatch = lastAssistantMessage.match(
-          /\n\n(.+?)\n\nDoes this look good/
-        );
-        if (toMatch && subjectMatch && messageMatch) {
-          const to = toMatch[1].trim();
-          const subject = subjectMatch[1].trim();
-          const emailMessage = messageMatch[1].trim();
-          const toolResponse = await this.callTool(
-            "send-email",
-            { recipient_id: to, subject, message: emailMessage },
-            userId
-          );
-          return toolResponse[0]; // Adjusted to return object directly
+        const lines = lastAssistantMessage.split("\n");
+        let to = null;
+        let subject = null;
+        let messageStartIndex = -1;
+
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].startsWith("**To:**")) {
+            to = lines[i].replace("**To:**", "").trim();
+          } else if (lines[i].startsWith("**Subject:**")) {
+            subject = lines[i].replace("**Subject:**", "").trim();
+            messageStartIndex = i + 2; 
+          }
+        }
+
+        if (to && subject && messageStartIndex !== -1) {
+          let messageLines = [];
+          for (let i = messageStartIndex; i < lines.length; i++) {
+            if (
+              lines[i].includes("Looks good?") ||
+              lines[i].includes("What do you think—") ||
+              lines[i].includes("Happy with it?") ||
+              lines[i].includes("Let me know if this works")
+            ) {
+              break;
+            }
+            messageLines.push(lines[i]);
+          }
+          const message = messageLines.join("\n").trim();
+          if (message) {
+            pendingDraft = {
+              recipient_id: to,
+              subject: subject,
+              message: message,
+            };
+          }
         }
       }
-      const noDraftResponses = [
-        "Hmm, no draft email’s ready to send yet. Want to start one?",
-        "Looks like there’s no email queued up. Shall we draft a new one?",
-        "I don’t see a draft to send. How about we create one now?",
-      ];
-      return {
-        type: "text",
-        text: noDraftResponses[
-          Math.floor(Math.random() * noDraftResponses.length)
-        ],
-        modelUsed: "N/A",
-        fallbackUsed: false,
-      };
+
+      // Step 2: Fallback to database if history didn’t provide a draft
+      if (!pendingDraft) {
+        const recentDraft = await EmailDraft.findOne({ userId }).sort({
+          createdAt: -1,
+        });
+        if (recentDraft) {
+          pendingDraft = {
+            recipient_id: recentDraft.recipientId,
+            subject: recentDraft.subject,
+            message: recentDraft.message,
+          };
+        }
+      }
+
+      if (pendingDraft) {
+       try {
+         const toolResponse = await this.callTool(
+           "send-email",
+           pendingDraft,
+           userId
+         );
+         await EmailDraft.deleteMany({ userId: userId });
+         return {
+           ...toolResponse[0],
+           modelUsed: modelId ? (await getModelById(modelId)).name : "N/A",
+           fallbackUsed: false,
+         };
+       } catch (error) {
+         console.error("Failed to send email:", error);
+         return {
+           type: "text",
+           text: "Oops, something went wrong while sending the email. Please try again later.",
+           modelUsed: "N/A",
+           fallbackUsed: false,
+         };
+       }
+      } else {
+        const noDraftResponses = [
+          "Hmm, no draft email’s ready to send yet. Want to start one?",
+          "Looks like there’s no email queued up. Shall we draft a new one?",
+          "I don’t see a draft to send. How about we create one now?",
+        ];
+        return {
+          type: "text",
+          text: noDraftResponses[
+            Math.floor(Math.random() * noDraftResponses.length)
+          ],
+          modelUsed: "N/A",
+          fallbackUsed: false,
+        };
+      }
     }
 
+    // Rest of the function remains unchanged
     let processedMessage = this.preprocessMessage(message, userId);
     const messages = [
       { role: "system", content: personalizedSystemPrompt },
@@ -1069,7 +1147,7 @@ class MCPServer {
           text: clarificationRequests[
             Math.floor(Math.random() * clarificationRequests.length)
           ],
-          modelUsed: modelUsed.name,
+          modelUsed: modelUsed.name || "N/A",
           fallbackUsed: fallbackUsed,
         };
       }
@@ -1088,7 +1166,7 @@ class MCPServer {
       return {
         type: "text",
         text: errorResponses[Math.floor(Math.random() * errorResponses.length)],
-        modelUsed: modelUsed.name,
+        modelUsed: modelUsed.name || "N/A",
         fallbackUsed: fallbackUsed,
       };
     }
@@ -1107,7 +1185,7 @@ class MCPServer {
           text: draftResponses[
             Math.floor(Math.random() * draftResponses.length)
           ],
-          modelUsed: modelUsed.name,
+          modelUsed: modelUsed.name || "N/A",
           fallbackUsed: fallbackUsed,
         };
       }
@@ -1118,7 +1196,7 @@ class MCPServer {
       );
       return {
         ...toolResponse[0],
-        modelUsed: modelUsed.name,
+        modelUsed: modelUsed.name || "N/A",
         fallbackUsed: fallbackUsed,
       };
     } else if (actionData.message && actionData.data) {
@@ -1139,7 +1217,7 @@ class MCPServer {
         text: fallbackUsed
           ? `⚠️ The selected model is unavailable due to quota limits. Using fallback instead.\n\n${text}`
           : text,
-        modelUsed: modelUsed.name,
+        modelUsed: modelUsed.name || "N/A",
         fallbackUsed: fallbackUsed,
       };
     } else if (actionData.chat) {
@@ -1148,7 +1226,7 @@ class MCPServer {
         text: fallbackUsed
           ? `⚠️ The selected model is unavailable due to quota limits. Using fallback instead.\n\n${actionData.chat}`
           : actionData.chat,
-        modelUsed: modelUsed.name,
+        modelUsed: modelUsed.name || "N/A",
         fallbackUsed: fallbackUsed,
       };
     } else if (actionData.message) {
@@ -1157,7 +1235,7 @@ class MCPServer {
         text: fallbackUsed
           ? `⚠️ The selected model is unavailable due to quota limits. Using fallback instead.\n\n${actionData.message}`
           : actionData.message,
-        modelUsed: modelUsed.name,
+        modelUsed: modelUsed.name || "N/A",
         fallbackUsed: fallbackUsed,
       };
     } else {
@@ -1171,7 +1249,7 @@ class MCPServer {
         text: clarificationRequests[
           Math.floor(Math.random() * clarificationRequests.length)
         ],
-        modelUsed: modelUsed.name,
+        modelUsed: modelUsed.name || "N/A",
         fallbackUsed: fallbackUsed,
       };
     }
