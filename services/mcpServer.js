@@ -1,5 +1,6 @@
 // services\mcpServer.js
 import Groq from "groq-sdk";
+import OpenAI from "openai";
 import EmailDraft from "../models/EmailDraft.js";
 import { getDefaultModel, getModelById } from "../routes/aiModelRoutes.js";
 import { ApiError, logErrorWithStyle } from "../utils/errorHandler.js";
@@ -10,6 +11,9 @@ import SystemMessage from "../models/SystemMessage.js";
 class ModelProvider {
   constructor() {
     this.groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    this.openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
     this.retryCount = 3;
     this.retryDelay = 1000;
     this.maxRetryDelay = 10000;
@@ -24,13 +28,13 @@ class ModelProvider {
 
     for (const currentModelId of completeChain) {
       try {
-        const model = getModelById(currentModelId);
+        const model = await getModelById(currentModelId);
         if (!model) {
           console.warn(`Model ${currentModelId} not found, skipping`);
           continue;
         }
         console.log(`Attempting to use model: ${model.name}`);
-        const result = await this.callModelWithRetry(currentModelId, options);
+        const result = await this.callModelWithRetry(model, options);
         console.log(`Successfully used model: ${model.name}`);
         return {
           result,
@@ -53,27 +57,37 @@ class ModelProvider {
     );
   }
 
-  async callModelWithRetry(modelId, options) {
+  async callModelWithRetry(model, options) {
     if (!options || !options.messages) {
       throw new ApiError(500, "Invalid options for model retry");
     }
+    const requestOptions = {
+      ...options,
+      model: model.id,
+      response_format: { type: "json_object" }, // Enforce JSON output
+    };
+
     let attemptCount = 0;
     let lastError = null;
     let currentRetryDelay = this.retryDelay;
 
     while (attemptCount < this.retryCount) {
       try {
-        const result = await this.groq.chat.completions.create({
-          ...options,
-          model: modelId,
-        });
+        let result;
+        if (model.provider === "groq") {
+          result = await this.groq.chat.completions.create(requestOptions);
+        } else if (model.provider === "openai") {
+          result = await this.openai.chat.completions.create(requestOptions);
+        } else {
+          throw new ApiError(400, `Unsupported provider: ${model.provider}`);
+        }
         return result;
       } catch (error) {
         lastError = error;
         attemptCount++;
         if (attemptCount < this.retryCount) {
           console.warn(
-            `Attempt ${attemptCount} failed for model ${modelId}, retrying after ${currentRetryDelay}ms`
+            `Attempt ${attemptCount} failed for model ${model.id}, retrying after ${currentRetryDelay}ms`
           );
           await new Promise((resolve) =>
             setTimeout(resolve, currentRetryDelay)
@@ -87,7 +101,7 @@ class ModelProvider {
     }
     throw new ApiError(
       503,
-      `Model ${modelId} failed after ${this.retryCount} attempts: ${
+      `Model ${model.id} failed after ${this.retryCount} attempts: ${
         lastError?.message || "Unknown error"
       }`
     );
@@ -610,7 +624,7 @@ class MCPServer {
           const cleanedText = plainTextBody.replace(/\n\s*\n/g, "\n").trim();
 
           const MAX_TEXT_LENGTH = 3000;
-          let summaryText = cleanedText;
+          let summaryText = leftText;
           if (cleanedText.length > MAX_TEXT_LENGTH) {
             summaryText =
               cleanedText.substring(0, MAX_TEXT_LENGTH) + "... (truncated)";
@@ -632,11 +646,12 @@ class MCPServer {
             max_tokens: 100,
           };
 
+          const defaultModel = await getDefaultModel();
           const summaryResponse =
             await this.modelProvider.callWithFallbackChain(
-              getDefaultModel().id,
+              defaultModel.id,
               aiOptions,
-              ["mixtral-8x7b-32768", "llama-3-70b"]
+              ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
             );
 
           const summary =
@@ -675,7 +690,7 @@ class MCPServer {
             `[ERROR] Failed to summarize email ${email_id}:`,
             error.stack
           );
-          const subject = emailContent?.subject || "No subject videogame";
+          const subject = emailContent?.subject || "No subject available";
           return [
             {
               type: "text",
@@ -691,8 +706,9 @@ class MCPServer {
 
         const prompt = `Draft a polite and professional email to ${recipient} based on the following message: "${content}". Include a suitable subject line starting with 'Subject:'. If the message is brief, expand it into a complete email body with appropriate greetings, context, and a sign-off. Ensure the email is clear, courteous, and professional.`;
 
+        const defaultModel = await getDefaultModel();
         const draftResponse = await this.modelProvider.callWithFallbackChain(
-          getDefaultModel().id,
+          defaultModel.id,
           {
             messages: [
               {
@@ -703,7 +719,7 @@ class MCPServer {
             temperature: 0.7,
             max_tokens: 300,
           },
-          ["mixtral-8x7b-32768", "llama-3-70b"]
+          ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
         );
 
         const draftText =
@@ -935,7 +951,7 @@ class MCPServer {
       .join(" | ")} |\n${rows.map((row) => `| ${row} |`).join("\n")}`;
   }
 
-  async chatWithBot(req, message, history = [], context = {}) {
+  async chatWithBot(req, message, history = [], context = {}, modelId = null) {
     const userId = req.user.id;
     const userName = req.user.name || "User";
     const userEmail = req.user.email;
@@ -978,7 +994,7 @@ class MCPServer {
             { recipient_id: to, subject, message: emailMessage },
             userId
           );
-          return toolResponse;
+          return toolResponse[0]; // Adjusted to return object directly
         }
       }
       const noDraftResponses = [
@@ -986,22 +1002,22 @@ class MCPServer {
         "Looks like there’s no email queued up. Shall we draft a new one?",
         "I don’t see a draft to send. How about we create one now?",
       ];
-      return [
-        {
-          type: "text",
-          text: noDraftResponses[
-            Math.floor(Math.random() * noDraftResponses.length)
-          ],
-        },
-      ];
+      return {
+        type: "text",
+        text: noDraftResponses[
+          Math.floor(Math.random() * noDraftResponses.length)
+        ],
+        modelUsed: "N/A",
+        fallbackUsed: false,
+      };
     }
 
-   let processedMessage = this.preprocessMessage(message, userId);
-   const messages = [
-     { role: "system", content: personalizedSystemPrompt },
-     ...history,
-     { role: "user", content: processedMessage },
-   ];
+    let processedMessage = this.preprocessMessage(message, userId);
+    const messages = [
+      { role: "system", content: personalizedSystemPrompt },
+      ...history,
+      { role: "user", content: processedMessage },
+    ];
 
     const hour = new Date().getHours();
     let timeGreeting = "";
@@ -1013,15 +1029,26 @@ class MCPServer {
       content: `${timeGreeting}the user might appreciate a response that acknowledges their busy schedule.`,
     });
 
-    const primaryModelId = getDefaultModel().id;
-    const fallbackChain = ["mixtral-8x7b-32768", "llama-3-70b"];
+    let primaryModelId;
+    if (modelId) {
+      const selectedModel = await getModelById(modelId);
+      if (!selectedModel) {
+        throw new ApiError(400, `Selected model ${modelId} not found`);
+      }
+      primaryModelId = selectedModel.id;
+    } else {
+      const defaultModel = await getDefaultModel();
+      primaryModelId = defaultModel.id;
+    }
+    const fallbackChain = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
     const options = { messages, temperature: 0.7 };
 
-    const { result } = await this.modelProvider.callWithFallbackChain(
-      primaryModelId,
-      options,
-      fallbackChain
-    );
+    const { result, modelUsed, fallbackUsed } =
+      await this.modelProvider.callWithFallbackChain(
+        primaryModelId,
+        options,
+        fallbackChain
+      );
     const responseContent = result.choices[0]?.message?.content || "{}";
 
     let actionData;
@@ -1033,14 +1060,14 @@ class MCPServer {
           "Hmm, I’m a bit lost. Mind rephrasing that?",
           "Not sure I follow. Can you give me more to go on?",
         ];
-        return [
-          {
-            type: "text",
-            text: clarificationRequests[
-              Math.floor(Math.random() * clarificationRequests.length)
-            ],
-          },
-        ];
+        return {
+          type: "text",
+          text: clarificationRequests[
+            Math.floor(Math.random() * clarificationRequests.length)
+          ],
+          modelUsed: modelUsed.name,
+          fallbackUsed: fallbackUsed,
+        };
       }
     } catch (error) {
       console.error(
@@ -1054,14 +1081,12 @@ class MCPServer {
         "Something went wonky on my end. Could you repeat it?",
         "Sorry, I tripped up! Can you give it another shot?",
       ];
-      return [
-        {
-          type: "text",
-          text: errorResponses[
-            Math.floor(Math.random() * errorResponses.length)
-          ],
-        },
-      ];
+      return {
+        type: "text",
+        text: errorResponses[Math.floor(Math.random() * errorResponses.length)],
+        modelUsed: modelUsed.name,
+        fallbackUsed: fallbackUsed,
+      };
     }
 
     if (actionData.action) {
@@ -1073,21 +1098,25 @@ class MCPServer {
           `Here’s an email draft for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nGood to go? Just say **"confirm send"**, or tell me what’s off!`,
           `Drafted something for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nHappy with it? Say **"confirm send"** or suggest changes!`,
         ];
-        return [
-          {
-            type: "text",
-            text: draftResponses[
-              Math.floor(Math.random() * draftResponses.length)
-            ],
-          },
-        ];
+        return {
+          type: "text",
+          text: draftResponses[
+            Math.floor(Math.random() * draftResponses.length)
+          ],
+          modelUsed: modelUsed.name,
+          fallbackUsed: fallbackUsed,
+        };
       }
       const toolResponse = await this.callTool(
         actionData.action,
         actionData.params,
         userId
       );
-      return toolResponse;
+      return {
+        ...toolResponse[0],
+        modelUsed: modelUsed.name,
+        fallbackUsed: fallbackUsed,
+      };
     } else if (actionData.message && actionData.data) {
       const formattedTable = actionData.data.table
         ? this.formatTable(actionData.data.table)
@@ -1101,25 +1130,46 @@ class MCPServer {
       const randomFollowUp =
         followUps[Math.floor(Math.random() * followUps.length)];
       let text = `${actionData.message}\n\n${formattedTable}\n\n${randomFollowUp}`;
-      return [{ type: "text", text }];
+      return {
+        type: "text",
+        text: fallbackUsed
+          ? `⚠️ The selected model is unavailable due to quota limits. Using fallback instead.\n\n${text}`
+          : text,
+        modelUsed: modelUsed.name,
+        fallbackUsed: fallbackUsed,
+      };
     } else if (actionData.chat) {
-      return [{ type: "text", text: actionData.chat }];
+      return {
+        type: "text",
+        text: fallbackUsed
+          ? `⚠️ The selected model is unavailable due to quota limits. Using fallback instead.\n\n${actionData.chat}`
+          : actionData.chat,
+        modelUsed: modelUsed.name,
+        fallbackUsed: fallbackUsed,
+      };
     } else if (actionData.message) {
-      return [{ type: "text", text: actionData.message }];
+      return {
+        type: "text",
+        text: fallbackUsed
+          ? `⚠️ The selected model is unavailable due to quota limits. Using fallback instead.\n\n${actionData.message}`
+          : actionData.message,
+        modelUsed: modelUsed.name,
+        fallbackUsed: fallbackUsed,
+      };
     } else {
       const clarificationRequests = [
         "Not sure what you’re after—can you fill me in more?",
         "I’m a tad confused—could you clarify that?",
         "Hmm, what do you mean? Give me a nudge!",
       ];
-      return [
-        {
-          type: "text",
-          text: clarificationRequests[
-            Math.floor(Math.random() * clarificationRequests.length)
-          ],
-        },
-      ];
+      return {
+        type: "text",
+        text: clarificationRequests[
+          Math.floor(Math.random() * clarificationRequests.length)
+        ],
+        modelUsed: modelUsed.name,
+        fallbackUsed: fallbackUsed,
+      };
     }
   }
 }

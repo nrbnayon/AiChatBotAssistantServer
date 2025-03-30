@@ -10,41 +10,29 @@ import AiModel from "../models/AiModel.js";
 // Models configuration
 const availableModels = [
   {
-    id: "mixtral-8x7b-32768",
-    name: "Mixtral-8x7b-32768",
-    developer: "Mistral",
-    contextWindow: 32768,
-    description:
-      "Powerful open-source mixture-of-experts model with exceptional reasoning capabilities",
-  },
-  {
-    id: "llama-3-70b",
-    name: "Llama 3 70B",
-    developer: "Meta",
-    contextWindow: 128000,
-    maxCompletionTokens: 32768,
-    description:
-      "Meta's largest open LLM offering best-in-class performance and reasoning",
+    id: "gpt-4o-mini", // gpt 4o mini
+    name: "GPT-4.o Mini", // gpt 4.o mini
+    developer: "OpenAI",
+    provider: "openai",
+    contextWindow: 100000000,
+    maxCompletionTokens: 10000000000,
+    description: "OpenAI's efficient and versatile chat model",
+    isDefault: true,
   },
   {
     id: "llama-3.1-8b-instant",
     name: "Llama 3.1 8B Instant",
     developer: "Meta",
+    provider: "groq",
     contextWindow: 128000,
     maxCompletionTokens: 8192,
     description: "Efficient and responsive model for quick interactions",
   },
   {
-    id: "gemma-7b",
-    name: "Gemma 7B",
-    developer: "Google",
-    contextWindow: 8192,
-    description: "Google's lightweight yet powerful open model",
-  },
-  {
     id: "gemma2-9b-it",
     name: "Gemma 2 9B IT",
     developer: "Google",
+    provider: "groq",
     contextWindow: 8192,
     description: "Instruction-tuned version of Google's Gemma 2 9B model",
   },
@@ -52,23 +40,17 @@ const availableModels = [
     id: "llama-3.3-70b-versatile",
     name: "Llama 3.3 70B Versatile",
     developer: "Meta",
+    provider: "groq",
     contextWindow: 128000,
     maxCompletionTokens: 32768,
     description:
       "Meta's advanced 70B parameter model with versatile capabilities",
-    isDefault: true,
-  },
-  {
-    id: "llama-guard-3-8b",
-    name: "Llama Guard 3 8B",
-    developer: "Meta",
-    contextWindow: 8192,
-    description: "Specialized safety model from Meta's Llama 3 family",
   },
   {
     id: "llama3-70b-8192",
     name: "Llama 3 70B (8K)",
     developer: "Meta",
+    provider: "groq",
     contextWindow: 8192,
     description: "Meta's 70B parameter model with 8K context window",
   },
@@ -76,6 +58,7 @@ const availableModels = [
     id: "llama3-8b-8192",
     name: "Llama 3 8B (8K)",
     developer: "Meta",
+    provider: "groq",
     contextWindow: 8192,
     description: "Meta's efficient 8B parameter model with 8K context window",
   },
@@ -103,9 +86,10 @@ export const getDefaultModel = async () => {
     }
     return firstModel;
   } catch (error) {
-    // Handle potential database query errors
     throw new ApiError(500, "Error retrieving default model");
   }
+
+  
 };
 
 export const getModelById = async (id) => {

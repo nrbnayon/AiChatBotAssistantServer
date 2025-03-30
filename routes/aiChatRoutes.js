@@ -43,7 +43,7 @@ function updateConversationHistory(userId, message, response) {
   history.push({ role: "assistant", content: response });
 
   if (history.length > 20) {
-    history.splice(0, 2); 
+    history.splice(0, 2);
   }
 }
 
@@ -54,7 +54,7 @@ async function extractTextFromFile(filePath, mimeType) {
       return fs.readFileSync(filePath, "utf-8");
     } else if (mimeType === "application/pdf") {
       const data = new Uint8Array(fs.readFileSync(filePath));
-      const pdf = await pdfjsLib.getDocument({ data }).promise; 
+      const pdf = await pdfjsLib.getDocument({ data }).promise;
       let text = "";
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
@@ -80,11 +80,11 @@ async function extractTextFromFile(filePath, mimeType) {
 router.post(
   "/",
   auth(),
-  upload.single("file"), 
+  upload.single("file"),
   catchAsync(async (req, res) => {
     const emailService = await createEmailService(req);
     const mcpServer = new MCPServer(emailService);
-    const { message, maxResults = 500 } = req.body; 
+    const { message, maxResults = 5000, modelId } = req.body;
     const userId = req.user.id;
 
     // **Validate Message**
@@ -94,7 +94,7 @@ router.post(
         .json({ success: false, message: "Message is required" });
     }
 
-    // **Handle File Upload**
+    // **Handle Ffile Upload**
     let fileContent = "";
     const supportedTypes = [
       "text/plain",
@@ -105,7 +105,7 @@ router.post(
     if (req.file) {
       // **Check File Size (Limit to 5MB)**
       if (req.file.size > 5 * 1024 * 1024) {
-        fs.unlink(req.file.path, () => {}); 
+        fs.unlink(req.file.path, () => {});
         return res.status(400).json({
           success: false,
           message: "File is too large. Please upload a file smaller than 5MB.",
@@ -114,7 +114,7 @@ router.post(
 
       // **Check File Type**
       if (!supportedTypes.includes(req.file.mimetype)) {
-        fs.unlink(req.file.path, () => {}); 
+        fs.unlink(req.file.path, () => {});
         return res.status(400).json({
           success: false,
           message:
@@ -127,10 +127,10 @@ router.post(
           req.file.path,
           req.file.mimetype
         );
-        fileContent = fileContent.substring(0, 2000); 
+        fileContent = fileContent.substring(0, 2000);
       } catch (error) {
         console.error("Error extracting file content:", error);
-        fs.unlink(req.file.path, () => {}); 
+        fs.unlink(req.file.path, () => {});
         return res.status(400).json({
           success: false,
           message: "Failed to extract content from the uploaded file.",
@@ -159,19 +159,27 @@ router.post(
       else timeContext = "evening";
 
       // **Generate AI Response**
-      const response = await mcpServer.chatWithBot(req, userMessage, history, {
-        timeContext,
-        emailCount: emails.length,
-        unreadCount: emails.filter((e) => e.unread).length,
-      });
+      const chatResponse = await mcpServer.chatWithBot(
+        req,
+        userMessage,
+        history,
+        {
+          timeContext,
+          emailCount: emails.length,
+          unreadCount: emails.filter((e) => e.unread).length,
+        },
+        modelId
+      );
 
-      updateConversationHistory(userId, userMessage, response[0].text);
+      updateConversationHistory(userId, userMessage, chatResponse.text);
 
       // **Send Response**
       res.json({
         success: true,
-        message: response[0].text,
-        data: response[0].artifact?.data || null,
+        message: chatResponse.text,
+        modelUsed: chatResponse.modelUsed,
+        fallbackUsed: chatResponse.fallbackUsed,
+        data: chatResponse.artifact?.data || null,
       });
     } catch (error) {
       console.error("Error processing request:", error);
@@ -193,7 +201,7 @@ router.get(
 
     res.json({
       success: true,
-      conversationLength: history.length / 2, 
+      conversationLength: history.length / 2,
       lastInteraction: history.length > 0 ? new Date().toISOString() : null,
     });
   })

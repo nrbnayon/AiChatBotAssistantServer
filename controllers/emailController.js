@@ -207,13 +207,30 @@ const summarizeEmail = catchAsync(async (req, res) => {
 });
 
 const chatWithBot = catchAsync(async (req, res) => {
-  const { message, history = [] } = req.body;
+  const { message, history = [], modelId = null } = req.body;
   if (!message)
     throw new ApiError(StatusCodes.BAD_REQUEST, "Message is required");
 
   const emailService = await createEmailService(req);
   const mcpServer = new MCPServer(emailService);
-  const response = await mcpServer.chatWithBot(req, message, history);
+
+  // Fetch email counts for context
+  const emails = await emailService.fetchEmails({ filter: "all" });
+  const emailCount = emails.messages.length;
+  const unreadCount = emails.messages.filter((e) => e.unread).length;
+  const context = {
+    timeContext: new Date().toLocaleTimeString(),
+    emailCount,
+    unreadCount,
+  };
+
+  const response = await mcpServer.chatWithBot(
+    req,
+    message,
+    history,
+    context,
+    modelId
+  );
 
   res.json({ success: true, response });
 });
