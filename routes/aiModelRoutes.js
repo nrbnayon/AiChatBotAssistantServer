@@ -10,8 +10,8 @@ import AiModel from "../models/AiModel.js";
 // Models configuration
 const availableModels = [
   {
-    id: "gpt-4o-mini", // gpt 4o mini
-    name: "GPT-4.o Mini", // gpt 4.o mini
+    id: "gpt-4o-mini", 
+    name: "GPT-4.o Mini", 
     developer: "OpenAI",
     provider: "openai",
     contextWindow: 100000000,

@@ -148,6 +148,7 @@ class EmailService {
           messages: [{ role: "user", content: prompt }],
           model: "llama-3.3-70b-versatile",
           temperature: 0.5,
+          response_format: { type: "json_object" }, // optional
         });
 
         const responseText = response.choices[0]?.message?.content || "";

@@ -64,7 +64,7 @@ class ModelProvider {
     const requestOptions = {
       ...options,
       model: model.id,
-      response_format: { type: "json_object" }, // Enforce JSON output
+      // response_format: { type: "json_object" }, // Enforce JSON output
     };
 
     let attemptCount = 0;
@@ -643,7 +643,7 @@ class MCPServer {
               },
             ],
             temperature: 0.7,
-            max_tokens: 100,
+            max_tokens: 1000,
           };
 
           const defaultModel = await getDefaultModel();
@@ -717,7 +717,7 @@ class MCPServer {
               },
             ],
             temperature: 0.7,
-            max_tokens: 300,
+            max_tokens: 3000,
           },
           ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
         );
@@ -1041,7 +1041,11 @@ class MCPServer {
       primaryModelId = defaultModel.id;
     }
     const fallbackChain = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
-    const options = { messages, temperature: 0.7 };
+    const options = {
+      messages,
+      temperature: 0.7,
+      response_format: { type: "json_object" },
+    };
 
     const { result, modelUsed, fallbackUsed } =
       await this.modelProvider.callWithFallbackChain(
