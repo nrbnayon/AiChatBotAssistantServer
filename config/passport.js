@@ -6,7 +6,7 @@ import dotenv from "dotenv";
 import User, { DEFAULT_IMPORTANT_KEYWORDS } from "../models/User.js";
 import { generateTokens } from "../controllers/authController.js";
 import WaitingList from "../models/WaitingList.js";
-import { encrypt } from "../utils/encryptionUtils.js"; // Import encryption utility
+import { encrypt } from "../utils/encryptionUtils.js"; 
 
 dotenv.config();
 
@@ -72,19 +72,22 @@ const oauthCallback = async (
         null
       );
     }
-    // const waitingListEntry = await WaitingList.findOne({
-    //   email,
-    //   status: "approved",
-    // });
+    // ----- waitingListEntry check email ------
+    const waitingListEntry = await WaitingList.findOne({
+      email,
+      status: "approved",
+    });
 
-    // console.log(`[INFO] Waiting list entry for ${email}:`, waitingListEntry);
-    // if (!waitingListEntry) {
-    //   return done(null, false, {
-    //     message: "Email not approved in waiting list",
-    //   });
-    // }
+    console.log(`[INFO] Waiting list entry for ${email}:`, waitingListEntry);
+    if (!waitingListEntry) {
+      return done(null, false, {
+        message: "Email not approved in waiting list",
+      });
+    }
 
     console.log(`[INFO] ${provider} OAuth login attempt for: ${email}`);
+
+    // ----- waitingListEntry check email ------
 
     const providerFields = {
       google: {
