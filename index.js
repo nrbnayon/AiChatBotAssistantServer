@@ -42,6 +42,7 @@ const allowedOrigins = [
   "https://email-aichatbot.netlify.app",
   process.env.FRONTEND_URL,
   process.env.FRONTEND_LIVE_URL,
+  "http://192.168.10.33:3000",
   `http://192.168.10.206:3000`,
   `http://172.16.0.2:3000`,
   `http://${localIpAddress}:3000`,
