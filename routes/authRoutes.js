@@ -23,46 +23,52 @@ const router = express.Router();
  * @access Public
  * @param {string} provider - Authentication provider (google, microsoft)
  */
-router.get("/oauth/:provider",
+router.get(
+  "/oauth/:provider",
   // authRateLimit(),
   (req, res, next) => {
-  const { provider } = req.params;
-  const providers = {
-    google: {
-      strategy: "google",
-      scope: [
-        "profile",
-        "email",
-        "https://www.googleapis.com/auth/gmail.readonly",
-        "https://www.googleapis.com/auth/gmail.modify",
-        "https://www.googleapis.com/auth/gmail.send",
-        "https://www.googleapis.com/auth/gmail.compose",
-      ],
-      options: { accessType: "offline", prompt: "consent" },
-    },
-    microsoft: {
-      strategy: "microsoft",
-      scope: [
-        "offline_access",
-        "User.Read",
-        "Mail.Read",
-        "Mail.ReadWrite",
-        "Mail.Send",
-      ],
-      options: { prompt: "select_account" },
-    },
-  };
+    const { provider } = req.params;
+    const providers = {
+      google: {
+        strategy: "google",
+        scope: [
+          "profile",
+          "email",
+          "https://www.googleapis.com/auth/gmail.readonly",
+          "https://www.googleapis.com/auth/gmail.modify",
+          "https://www.googleapis.com/auth/gmail.send",
+          "https://www.googleapis.com/auth/gmail.compose",
+        ],
+        options: { accessType: "offline", prompt: "consent" },
+      },
+      microsoft: {
+        strategy: "microsoft",
+        scope: [
+          "offline_access",
+          "User.Read",
+          "Mail.Read",
+          "Mail.ReadWrite",
+          "Mail.Send",
+        ],
+        options: { prompt: "select_account" },
+      },
+    };
 
-  if (!providers[provider]) {
-    return res.status(400).json({ message: "Invalid provider" });
+    if (!providers[provider]) {
+      return res.status(400).json({ message: "Invalid provider" });
+    }
+    const { strategy, scope, options = {} } = providers[provider];
+    const state = Buffer.from(
+      JSON.stringify({ redirect: req.query.redirect || "/dashboard" })
+    ).toString("base64");
+
+    passport.authenticate(strategy, { scope, state, ...options })(
+      req,
+      res,
+      next
+    );
   }
-  const { strategy, scope, options = {} } = providers[provider];
-  const state = Buffer.from(
-    JSON.stringify({ redirect: req.query.redirect || "/dashboard" })
-  ).toString("base64");
-
-  passport.authenticate(strategy, { scope, state, ...options })(req, res, next);
-});
+);
 
 /**
  * ╔═══════════════════════════════════════╗
@@ -75,13 +81,21 @@ router.get("/oauth/:provider",
  */
 router.get(
   "/:provider/callback",
-  // authRateLimit(),
   (req, res, next) => {
     const { provider } = req.params;
-    passport.authenticate(provider, {
-      failureRedirect: "/api/v1/auth/error",
-      session: true,
-      failureMessage: true,
+    passport.authenticate(provider, { session: true }, (err, user, info) => {
+      if (err) {
+        return next(err);
+      }
+      if (!user) {
+        const errorMessage =
+          info && info.message ? info.message : "Authentication failed";
+        return res.redirect(
+          `/api/v1/auth/error?message=${encodeURIComponent(errorMessage)}`
+        );
+      }
+      req.authInfo = info;
+      next();
     })(req, res, next);
   },
   oauthCallback
@@ -105,9 +119,11 @@ router.get("/error", authError);
  * @access Public/Authenticated
  */
 // Local user login
-router.post("/login",
+router.post(
+  "/login",
   // authRateLimit(),
-   localLogin);
+  localLogin
+);
 
 // User registration
 router.post("/register", authRateLimit(), register);

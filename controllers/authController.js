@@ -41,7 +41,11 @@ const generateTokens = (user) => {
 };
 
 const authError = (req, res) => {
-  const message = req.query.message || "Authentication failed";
+  let message = req.query.message || "Authentication failed";
+  if (req.session && req.session.messages && req.session.messages.length > 0) {
+    message = req.session.messages[req.session.messages.length - 1];
+    req.session.messages = [];
+  }
   res.redirect(`${getFrontendUrl}/login?error=${encodeURIComponent(message)}`);
 };
 
@@ -51,9 +55,12 @@ const oauthCallback = catchAsync(async (req, res) => {
     ? JSON.parse(Buffer.from(req.query.state, "base64").toString())
     : {};
 
-  const errorMsg = req.query.message;
-  
+  const errorMsg =
+    req.query.message ||
+    (req.session && req.session.messages && req.session.messages[0]);
+
   if (errorMsg) {
+    console.log("OAuth callback error:", errorMsg);
     return res.redirect(
       `${getFrontendUrl}/login?error=${encodeURIComponent(errorMsg)}`
     );
@@ -63,7 +70,7 @@ const oauthCallback = catchAsync(async (req, res) => {
     return res.redirect(
       `${getFrontendUrl}/login?error=${encodeURIComponent(
         "Authentication failed: No access token received"
-      )}` 
+      )}`
     );
   }
 
