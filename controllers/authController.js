@@ -74,22 +74,24 @@ const oauthCallback = catchAsync(async (req, res) => {
     );
   }
 
-  safeCookie.set(res, "accessToken", accessToken, {
+  const cookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     maxAge: 24 * 60 * 60 * 1000,
-  });
+  };
+
+  if (process.env.NODE_ENV === "production" && process.env.COOKIE_DOMAIN) {
+    cookieOptions.domain = process.env.COOKIE_DOMAIN;
+  }
+
+  safeCookie.set(res, "accessToken", accessToken, cookieOptions);
   safeCookie.set(res, "refreshToken", refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    ...cookieOptions,
     maxAge: 30 * 24 * 60 * 60 * 1000,
   });
 
-  const redirectUrl = `${getFrontendUrl}/auth-callback?accessToken=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(
-    state.redirect || "/dashboard"
-  )}`;
+  const redirectUrl = `${getFrontendUrl}${state.redirect || "/dashboard"}`;
   res.redirect(redirectUrl);
 });
 
@@ -106,16 +108,20 @@ const localLogin = catchAsync(async (req, res, next) => {
     user.refreshToken = refreshToken;
     await user.save();
 
-    safeCookie.set(res, "accessToken", accessToken, {
+    const cookieOptions = {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 24 * 60 * 60 * 1000,
-    });
+    };
+
+    if (process.env.NODE_ENV === "production" && process.env.COOKIE_DOMAIN) {
+      cookieOptions.domain = process.env.COOKIE_DOMAIN;
+    }
+
+    safeCookie.set(res, "accessToken", accessToken, cookieOptions);
     safeCookie.set(res, "refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      ...cookieOptions,
       maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
@@ -163,16 +169,20 @@ const register = catchAsync(async (req, res, next) => {
   user.refreshToken = refreshToken;
   await user.save();
 
-  safeCookie.set(res, "accessToken", accessToken, {
+  const cookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     maxAge: 24 * 60 * 60 * 1000,
-  });
+  };
+
+  if (process.env.NODE_ENV === "production" && process.env.COOKIE_DOMAIN) {
+    cookieOptions.domain = process.env.COOKIE_DOMAIN;
+  }
+
+  safeCookie.set(res, "accessToken", accessToken, cookieOptions);
   safeCookie.set(res, "refreshToken", refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    ...cookieOptions,
     maxAge: 30 * 24 * 60 * 60 * 1000,
   });
 
@@ -208,16 +218,20 @@ const refresh = catchAsync(async (req, res, next) => {
   user.refreshToken = newRefreshToken;
   await user.save();
 
-  safeCookie.set(res, "accessToken", accessToken, {
+  const cookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     maxAge: 24 * 60 * 60 * 1000,
-  });
+  };
+
+  if (process.env.NODE_ENV === "production" && process.env.COOKIE_DOMAIN) {
+    cookieOptions.domain = process.env.COOKIE_DOMAIN;
+  }
+
+  safeCookie.set(res, "accessToken", accessToken, cookieOptions);
   safeCookie.set(res, "refreshToken", newRefreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    ...cookieOptions,
     maxAge: 30 * 24 * 60 * 60 * 1000,
   });
 
@@ -237,16 +251,18 @@ const logout = catchAsync(async (req, res, next) => {
     if (err) return next(new AppError("Failed to clear session", 500));
   });
 
-  safeCookie.clear(res, "accessToken", {
+  const cookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-  });
-  safeCookie.clear(res, "refreshToken", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-  });
+  };
+
+  if (process.env.NODE_ENV === "production" && process.env.COOKIE_DOMAIN) {
+    cookieOptions.domain = process.env.COOKIE_DOMAIN;
+  }
+
+  safeCookie.clear(res, "accessToken", cookieOptions);
+  safeCookie.clear(res, "refreshToken", cookieOptions);
 
   res.json({ success: true, message: "Logged out successfully" });
 });
