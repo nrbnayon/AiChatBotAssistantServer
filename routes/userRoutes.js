@@ -54,7 +54,6 @@ router.post("/add-to-waiting-list", async (req, res) => {
 router.get("/waiting-list-status", async (req, res) => {
   const { email } = req.query;
 
-  console.log("waiting list status check for email:", email);
   if (!email) {
     return res.status(400).json({ message: "Email is required" });
   }
@@ -69,8 +68,10 @@ router.get("/waiting-list-status", async (req, res) => {
     }
 
     return res.status(200).json({
-      message: `Your status is: ${entry.status}`,
+      success: true,
+      data: entry,
       status: entry.status,
+      message: `Your status is: ${entry.status}`,
     });
   } catch (error) {
     console.error("Error checking waiting list status:", error);

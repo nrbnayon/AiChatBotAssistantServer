@@ -51,11 +51,19 @@ const oauthCallback = catchAsync(async (req, res) => {
     ? JSON.parse(Buffer.from(req.query.state, "base64").toString())
     : {};
 
+  const errorMsg = req.query.message;
+  
+  if (errorMsg) {
+    return res.redirect(
+      `${getFrontendUrl}/login?error=${encodeURIComponent(errorMsg)}`
+    );
+  }
+
   if (!accessToken) {
     return res.redirect(
       `${getFrontendUrl}/login?error=${encodeURIComponent(
-        "Authentication failed: No access token"
-      )}`
+        "Authentication failed: No access token received"
+      )}` 
     );
   }
 

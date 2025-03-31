@@ -81,7 +81,7 @@ const oauthCallback = async (
     console.log(`[INFO] Waiting list entry for ${email}:`, waitingListEntry);
     if (!waitingListEntry) {
       return done(null, false, {
-        message: "Email not approved in waiting list",
+        message: `Access denied: The email ${email} is not approved yet. Please wait for admin approval.`,
       });
     }
 
