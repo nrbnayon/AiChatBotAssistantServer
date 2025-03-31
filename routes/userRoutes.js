@@ -51,6 +51,33 @@ router.post("/add-to-waiting-list", async (req, res) => {
   }
 });
 
+router.get("/waiting-list-status", async (req, res) => {
+  const { email } = req.query;
+
+  console.log("waiting list status check for email:", email);
+  if (!email) {
+    return res.status(400).json({ message: "Email is required" });
+  }
+
+  try {
+    const entry = await WaitingList.findOne({ email });
+    if (!entry) {
+      return res.status(404).json({
+        message: "Not found in waiting list",
+        status: "not_found",
+      });
+    }
+
+    return res.status(200).json({
+      message: `Your status is: ${entry.status}`,
+      status: entry.status,
+    });
+  } catch (error) {
+    console.error("Error checking waiting list status:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 /**
  * ╔═══════════════════════════════════════╗
  * ║    Authenticated User Endpoints       ║
