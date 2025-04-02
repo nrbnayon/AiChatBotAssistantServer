@@ -77,44 +77,16 @@ const getMe = catchAsync(async (req, res, next) => {
 });
 
 const updateProfile = catchAsync(async (req, res) => {
-  const { name, phone, address, country, gender, dateOfBirth } = req.body;
-  const user = await User.findById(req.user.id);
-
-  if (!user) {
-    return res.status(404).json({ success: false, message: "User not found" });
-  }
-
-  // Update text fields
-  user.name = name || user.name;
-  user.phone = phone || user.phone;
-  user.address = address || user.address;
-  user.country = country || user.country;
-  user.gender = gender || user.gender;
-  user.dateOfBirth = dateOfBirth || user.dateOfBirth;
-
-  // Handle profile picture upload
- if (req.file) {
-   // Store just the filename in the database
-   const fileExt = path.extname(req.file.originalname).toLowerCase();
-   updateData.profilePicture = `${req.user.id}${fileExt}`;
- }
-
-  await user.save();
+   const user = await userService.updateProfile(
+     req.user.id,
+     req.body,
+     req.file
+   );
 
   res.json({
     success: true,
     message: "Profile updated successfully",
-    user: {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      address: user.address,
-      country: user.country,
-      gender: user.gender,
-      dateOfBirth: user.dateOfBirth,
-      profilePicture: user.profilePicture,
-    },
+    user: user,
   });
 });
 

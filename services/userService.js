@@ -1,6 +1,7 @@
 // services\userService.js
 import User from "../models/User.js";
 import { ApiError } from "../utils/errorHandler.js";
+import path from "path";
 
 const handleLocalLogin = async (email, password) => {
   try {
@@ -48,26 +49,36 @@ const handleLocalLogin = async (email, password) => {
   }
 };
 
-const updateProfile = async (userId, profileData) => {
+const updateProfile = async (userId, profileData, file) => {
   const allowedFields = [
     "name",
-    "profilePicture",
     "phone",
     "address",
     "country",
     "gender",
     "dateOfBirth",
+    "profilePicture",
   ];
+
   const updates = Object.keys(profileData)
     .filter((key) => allowedFields.includes(key))
     .reduce((obj, key) => ({ ...obj, [key]: profileData[key] }), {});
+
+  // Handle profile picture file if provided
+  if (file) {
+    const fileExt = path.extname(file.originalname).toLowerCase();
+    updates.profilePicture = `${userId}${fileExt}`;
+  }
+
   if (Object.keys(updates).length === 0)
     throw new ApiError("No valid fields to update", 400);
+
   const updatedUser = await User.findByIdAndUpdate(
     userId,
     { ...updates, lastSync: new Date() },
     { new: true }
   );
+
   if (!updatedUser) throw new ApiError("User not found or update failed", 404);
   return updatedUser;
 };
