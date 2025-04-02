@@ -5,6 +5,8 @@ import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import session from "express-session";
 import passport from "passport";
+import fs from "fs";
+import path from "path";
 import connectDB from "./config/database.js";
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
@@ -19,7 +21,12 @@ import os from "os";
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 4000;
-
+// Ensure uploads/images directory exists
+const uploadDir = path.join(process.cwd(), "uploads/images");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+app.use("/uploads", express.static("uploads"));
 // Get local IP address
 const getLocalIpAddress = () => {
   const networkInterfaces = os.networkInterfaces();

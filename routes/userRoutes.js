@@ -29,6 +29,7 @@ import {
 import auth, { setRefreshedTokenCookie } from "../middleware/authMiddleware.js";
 import { rateLimitMiddleware } from "../middleware/rateLimit.js";
 import WaitingList from "../models/WaitingList.js";
+import upload from "../middleware/multerConfig.js";
 
 const router = express.Router();
 
@@ -100,6 +101,7 @@ router.put(
   auth(),
   setRefreshedTokenCookie,
   rateLimitMiddleware(),
+  upload.single("profilePicture"),
   updateProfile
 );
 

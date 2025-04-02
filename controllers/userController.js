@@ -77,8 +77,43 @@ const getMe = catchAsync(async (req, res, next) => {
 });
 
 const updateProfile = catchAsync(async (req, res) => {
-  const user = await userService.updateProfile(req.user.id, req.body);
-  res.json({ success: true, user });
+  const { name, phone, address, country, gender, dateOfBirth } = req.body;
+  const user = await User.findById(req.user.id);
+
+  if (!user) {
+    return res.status(404).json({ success: false, message: "User not found" });
+  }
+
+  // Update text fields
+  user.name = name || user.name;
+  user.phone = phone || user.phone;
+  user.address = address || user.address;
+  user.country = country || user.country;
+  user.gender = gender || user.gender;
+  user.dateOfBirth = dateOfBirth || user.dateOfBirth;
+
+  // Handle profile picture upload
+  if (req.file) {
+    user.profilePicture = `/uploads/images/${req.file.filename}`;
+  }
+
+  await user.save();
+
+  res.json({
+    success: true,
+    message: "Profile updated successfully",
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      address: user.address,
+      country: user.country,
+      gender: user.gender,
+      dateOfBirth: user.dateOfBirth,
+      profilePicture: user.profilePicture,
+    },
+  });
 });
 
 const updateSubscription = catchAsync(async (req, res) => {
