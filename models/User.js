@@ -72,6 +72,7 @@ const userSchema = new mongoose.Schema({
   subscription: { type: subscriptionSchema, default: () => ({}) },
   refreshToken: { type: String },
   phone: { type: String },
+  image: { type: String },
   address: { type: String },
   country: { type: String },
   gender: { type: String },

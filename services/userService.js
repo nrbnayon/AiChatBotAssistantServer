@@ -57,7 +57,7 @@ const updateProfile = async (userId, profileData, file) => {
     "country",
     "gender",
     "dateOfBirth",
-    "profilePicture",
+    "image",
   ];
 
   const updates = Object.keys(profileData)
@@ -67,7 +67,7 @@ const updateProfile = async (userId, profileData, file) => {
   // Handle profile picture file if provided
   if (file) {
     const fileExt = path.extname(file.originalname).toLowerCase();
-    updates.profilePicture = `${userId}${fileExt}`;
+    updates.image = `${userId}${fileExt}`;
   }
 
   if (Object.keys(updates).length === 0)
