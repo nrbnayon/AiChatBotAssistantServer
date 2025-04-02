@@ -51,6 +51,7 @@ const handleLocalLogin = async (email, password) => {
 const updateProfile = async (userId, profileData) => {
   const allowedFields = [
     "name",
+    "profilePicture",
     "phone",
     "address",
     "country",

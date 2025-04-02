@@ -93,9 +93,11 @@ const updateProfile = catchAsync(async (req, res) => {
   user.dateOfBirth = dateOfBirth || user.dateOfBirth;
 
   // Handle profile picture upload
-  if (req.file) {
-    user.profilePicture = `/uploads/images/${req.file.filename}`;
-  }
+ if (req.file) {
+   // Store just the filename in the database
+   const fileExt = path.extname(req.file.originalname).toLowerCase();
+   updateData.profilePicture = `${req.user.id}${fileExt}`;
+ }
 
   await user.save();
 
