@@ -6,7 +6,6 @@ import {
   logErrorWithStyle,
 } from "../utils/errorHandler.js";
 import AiModel from "../models/AiModel.js";
-
 // Models configuration
 const availableModels = [
   {
