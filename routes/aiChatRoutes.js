@@ -1,5 +1,4 @@
 // routes\aiChatRoutes.js
-// routes\aiChatRoutes.js
 import express from "express";
 import auth from "../middleware/authMiddleware.js";
 import { createEmailService } from "../services/emailService.js";
