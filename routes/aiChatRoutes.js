@@ -1,4 +1,3 @@
-// routes\aiChatRoutes.js
 import express from "express";
 import auth from "../middleware/authMiddleware.js";
 import { createEmailService } from "../services/emailService.js";
@@ -15,6 +14,18 @@ import { dirname } from "path";
 // Fix for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Polyfill for Promise.withResolvers to support older Node.js versions
+if (!Promise.withResolvers) {
+  Promise.withResolvers = function () {
+    let resolve, reject;
+    const promise = new Promise((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
+}
 
 const router = express.Router();
 
@@ -62,10 +73,10 @@ async function extractTextFromFile(filePath, mimeType) {
       // Fixed PDF processing code that doesn't use Promise.withResolvers
       const data = new Uint8Array(fs.readFileSync(filePath));
       const loadingTask = pdfjsLib.getDocument({ data });
-      
+
       // Use standard Promise approach
       const pdf = await loadingTask.promise;
-      
+
       let text = "";
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
@@ -103,7 +114,12 @@ router.post(
       history: providedHistory,
     } = req.body;
 
-    console.log("Get body data::", { message, maxResults, modelId });
+    console.log("Get body data::", {
+      message,
+      maxResults,
+      modelId,
+      providedHistory,
+    });
     const userId = req.user.id;
 
     if (!message && !req.file) {
@@ -116,9 +132,10 @@ router.post(
     let history;
     if (providedHistory) {
       try {
-        history = typeof providedHistory === 'string' 
-          ? JSON.parse(providedHistory)
-          : providedHistory;
+        history =
+          typeof providedHistory === "string"
+            ? JSON.parse(providedHistory)
+            : providedHistory;
       } catch (error) {
         console.error("Error parsing history:", error);
         history = getConversationHistory(userId);
