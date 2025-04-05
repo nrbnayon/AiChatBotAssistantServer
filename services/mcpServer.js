@@ -962,6 +962,8 @@ class MCPServer {
   async chatWithBot(req, message, history = [], context = {}, modelId = null) {
     const userId = req.user.id;
     const userName = req.user.name || "User";
+    console.log("User name:", req.user);
+    console.log("User ID:", userId);
     const userEmail = req.user.email;
     const { timeContext = "", emailCount = 0, unreadCount = 0 } = context;
 

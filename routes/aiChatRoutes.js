@@ -96,6 +96,8 @@ router.post(
       modelId,
       history: providedHistory,
     } = req.body;
+
+    console.log("Get body data::", { message, maxResults, modelId });
     const userId = req.user.id;
 
     if (!message && !req.file) {
@@ -107,15 +109,18 @@ router.post(
     const history = providedHistory || getConversationHistory(userId);
 
     let userMessage = message || "";
-    
+
     // Process uploaded file if present
     if (req.file) {
       try {
-        const fileText = await extractTextFromFile(req.file.path, req.file.mimetype);
-        userMessage = userMessage ? 
-          `${userMessage}\n\nContent from file ${req.file.originalname}:\n${fileText}` : 
-          `Analyze this file (${req.file.originalname}):\n${fileText}`;
-        
+        const fileText = await extractTextFromFile(
+          req.file.path,
+          req.file.mimetype
+        );
+        userMessage = userMessage
+          ? `${userMessage}\n\nContent from file ${req.file.originalname}:\n${fileText}`
+          : `Analyze this file (${req.file.originalname}):\n${fileText}`;
+
         // Clean up file after processing
         fs.unlink(req.file.path, (err) => {
           if (err) console.error(`Error deleting file: ${err}`);
@@ -163,7 +168,8 @@ router.post(
       res.status(500).json({
         success: false,
         message: "I'm having trouble processing your request right now.",
-        error: process.env.NODE_ENV === "development" ? error.message : undefined,
+        error:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
       });
     }
   })

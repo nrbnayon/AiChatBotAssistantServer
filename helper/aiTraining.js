@@ -60,7 +60,7 @@ Inbox status: {{EMAIL_COUNT}} emails, {{UNREAD_COUNT}} unread
    - Example: {"message": "Here are the car offers I found in your emails:", "data": {"table": [{"Car Model": "Toyota Camry", "Year": "2022", "Price": "$25,000"}]}}
 3. **For casual conversation or when no specific action or data is needed:** {"chat": "<your_response>"}
    - Use this for general conversation, greetings, or when no action or data is required.
-   - Example: {"chat": "Hey there, {{USER_NAME}}! How can I assist you today?"}
+   - Example: {"chat": "Hey {{USER_NAME}}, How can I assist you today?"}
 
 **Important:** Always ensure your response is a valid JSON object. Do not include any text outside of the JSON structure.
 
