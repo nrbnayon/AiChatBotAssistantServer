@@ -59,8 +59,13 @@ async function extractTextFromFile(filePath, mimeType) {
     if (mimeType === "text/plain") {
       return fs.readFileSync(filePath, "utf-8");
     } else if (mimeType === "application/pdf") {
+      // Fixed PDF processing code that doesn't use Promise.withResolvers
       const data = new Uint8Array(fs.readFileSync(filePath));
-      const pdf = await pdfjsLib.getDocument({ data }).promise;
+      const loadingTask = pdfjsLib.getDocument({ data });
+      
+      // Use standard Promise approach
+      const pdf = await loadingTask.promise;
+      
       let text = "";
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
@@ -78,6 +83,7 @@ async function extractTextFromFile(filePath, mimeType) {
       throw new Error("Unsupported file type");
     }
   } catch (error) {
+    console.error("File extraction error:", error);
     throw new Error(`Failed to extract text: ${error.message}`);
   }
 }
@@ -106,7 +112,20 @@ router.post(
         .json({ success: false, message: "Message or file is required" });
     }
 
-    const history = providedHistory || getConversationHistory(userId);
+    // Parse history if it's provided as a string
+    let history;
+    if (providedHistory) {
+      try {
+        history = typeof providedHistory === 'string' 
+          ? JSON.parse(providedHistory)
+          : providedHistory;
+      } catch (error) {
+        console.error("Error parsing history:", error);
+        history = getConversationHistory(userId);
+      }
+    } else {
+      history = getConversationHistory(userId);
+    }
 
     let userMessage = message || "";
 
@@ -161,6 +180,7 @@ router.post(
         message: chatResponse.text,
         modelUsed: chatResponse.modelUsed,
         fallbackUsed: chatResponse.fallbackUsed,
+        tokenCount: chatResponse.tokenCount || 0,
         data: chatResponse.artifact?.data || null,
       });
     } catch (error) {
