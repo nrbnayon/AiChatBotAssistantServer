@@ -128,12 +128,12 @@ const oauthCallback = async (
       user.verified = true;
       user.lastSync = new Date();
 
-      // if (
-      //   !user.inboxList.includes(waitingListEntry.inbox) &&
-      //   !user.inboxList.includes(email)
-      // ) {
-      //   user.inboxList.push(waitingListEntry.inbox || email);
-      // }
+      if (
+        !user.inboxList.includes(waitingListEntry.inbox) &&
+        !user.inboxList.includes(email)
+      ) {
+        user.inboxList.push(waitingListEntry.inbox || email);
+      }
 
       if (profilePicture) user.profilePicture = profilePicture;
 
