@@ -147,7 +147,7 @@ class EmailService {
         const response = await this.grok.chat.completions.create({
           messages: [{ role: "user", content: prompt }],
           model: "llama-3.3-70b-versatile",
-          temperature: 0.5,
+          temperature: 1.0,
           response_format: { type: "json_object" }, // optional
         });
 

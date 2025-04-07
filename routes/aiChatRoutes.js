@@ -157,7 +157,7 @@ router.post(
         );
         userMessage = userMessage
           ? `${userMessage}\n\nContent from file ${req.file.originalname}:\n${fileText}`
-          : `Analyze this file (${req.file.originalname}):\n${fileText}`;
+          : `I have uploaded a file named '${req.file.originalname}'. Please analyze its content and provide a summary or key points based on the text extracted from it:\n${fileText}`;
 
         // Clean up file after processing
         fs.unlink(req.file.path, (err) => {
@@ -193,7 +193,9 @@ router.post(
       );
 
       updateConversationHistory(userId, userMessage, chatResponse.text);
-
+      console.log(
+        chatResponse.text,
+      );
       res.json({
         success: true,
         message: chatResponse.text,

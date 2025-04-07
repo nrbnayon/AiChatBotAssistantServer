@@ -1,6 +1,6 @@
 // services/gmailService.js
 import { google } from "googleapis";
-import fs from "fs/promises"; 
+import fs from "fs/promises";
 import { ApiError } from "../utils/errorHandler.js";
 import { StatusCodes } from "http-status-codes";
 import EmailService from "./emailService.js";
@@ -25,7 +25,7 @@ class GmailService extends EmailService {
 
     const refreshToken = decrypt(encryptedRefreshToken);
     const encryptedAccessToken = this.user.googleAccessToken;
-    let accessToken = encryptedAccessToken 
+    let accessToken = encryptedAccessToken
       ? decrypt(encryptedAccessToken)
       : null;
 
@@ -54,7 +54,7 @@ class GmailService extends EmailService {
         }
         throw new ApiError(
           StatusCodes.UNAUTHORIZED,
-          `Failed to refresh Google token: ${error.message || 'Unknown error'}`
+          `Failed to refresh Google token: ${error.message || "Unknown error"}`
         );
       }
     }
@@ -73,15 +73,15 @@ class GmailService extends EmailService {
     filter = "all",
   }) {
     const client = await this.getClient();
-    
+
     // Base params
-    const params = { 
-      userId: "me", 
-      maxResults, 
+    const params = {
+      userId: "me",
+      maxResults,
       q: query,
-      pageToken 
+      pageToken,
     };
-    
+
     // Apply filters
     const filterMap = {
       all: (params) => params,
@@ -116,17 +116,21 @@ class GmailService extends EmailService {
       trash: (params) => {
         params.labelIds = ["TRASH"];
         return params;
-      }
+      },
     };
-    
+
     const appliedFilter = filterMap[filter.toLowerCase()];
+    if (!appliedFilter) {
+      return filterMap["all"](params);
+    }
+
     if (!appliedFilter) {
       throw new ApiError(
         StatusCodes.BAD_REQUEST,
         `Unsupported filter: ${filter}`
       );
     }
-    
+
     const filteredParams = appliedFilter(params);
 
     try {
@@ -157,7 +161,7 @@ class GmailService extends EmailService {
       console.error("[ERROR] Failed to fetch emails:", error);
       throw new ApiError(
         StatusCodes.INTERNAL_SERVER_ERROR,
-        `Failed to fetch emails: ${error.message || 'Unknown error'}`
+        `Failed to fetch emails: ${error.message || "Unknown error"}`
       );
     }
   }
@@ -165,21 +169,21 @@ class GmailService extends EmailService {
   formatEmail(email) {
     const headers = email.payload.headers || [];
     return {
-      id: email.id || '',
-      threadId: email.threadId || '',
+      id: email.id || "",
+      threadId: email.threadId || "",
       subject: headers.find((h) => h.name === "Subject")?.value || "",
       from: headers.find((h) => h.name === "From")?.value || "",
       to: headers.find((h) => h.name === "To")?.value || "",
       date: headers.find((h) => h.name === "Date")?.value || "",
-      snippet: email.snippet || '',
+      snippet: email.snippet || "",
       body: this.getEmailBody(email.payload),
       isRead: !(email.labelIds || []).includes("UNREAD"),
     };
   }
 
   getEmailBody(payload) {
-    if (!payload) return '';
-    
+    if (!payload) return "";
+
     let body = "";
     if (payload.parts) {
       for (const part of payload.parts) {
@@ -194,9 +198,14 @@ class GmailService extends EmailService {
           // Handle nested multipart messages
           for (const nestedPart of part.parts) {
             if (nestedPart.mimeType === "text/plain" && nestedPart.body?.data) {
-              body = Buffer.from(nestedPart.body.data, "base64").toString("utf-8");
+              body = Buffer.from(nestedPart.body.data, "base64").toString(
+                "utf-8"
+              );
               break;
-            } else if (nestedPart.mimeType === "text/html" && nestedPart.body?.data) {
+            } else if (
+              nestedPart.mimeType === "text/html" &&
+              nestedPart.body?.data
+            ) {
               body = convert(
                 Buffer.from(nestedPart.body.data, "base64").toString("utf-8")
               );
@@ -225,7 +234,7 @@ class GmailService extends EmailService {
       console.error("[ERROR] Failed to send email:", error);
       throw new ApiError(
         StatusCodes.INTERNAL_SERVER_ERROR,
-        `Failed to send email: ${error.message || 'Unknown error'}`
+        `Failed to send email: ${error.message || "Unknown error"}`
       );
     }
   }
@@ -243,7 +252,7 @@ class GmailService extends EmailService {
       console.error("[ERROR] Failed to get email:", error);
       throw new ApiError(
         StatusCodes.INTERNAL_SERVER_ERROR,
-        `Failed to get email: ${error.message || 'Unknown error'}`
+        `Failed to get email: ${error.message || "Unknown error"}`
       );
     }
   }
@@ -259,7 +268,7 @@ class GmailService extends EmailService {
         body,
         attachments,
       });
-      
+
       await client.users.messages.send({
         userId: "me",
         requestBody: { raw, threadId: email.threadId },
@@ -268,7 +277,7 @@ class GmailService extends EmailService {
       console.error("[ERROR] Failed to reply to email:", error);
       throw new ApiError(
         StatusCodes.INTERNAL_SERVER_ERROR,
-        `Failed to reply to email: ${error.message || 'Unknown error'}`
+        `Failed to reply to email: ${error.message || "Unknown error"}`
       );
     }
   }
@@ -281,7 +290,7 @@ class GmailService extends EmailService {
       console.error("[ERROR] Failed to trash email:", error);
       throw new ApiError(
         StatusCodes.INTERNAL_SERVER_ERROR,
-        `Failed to trash email: ${error.message || 'Unknown error'}`
+        `Failed to trash email: ${error.message || "Unknown error"}`
       );
     }
   }
@@ -301,7 +310,7 @@ class GmailService extends EmailService {
       console.error("[ERROR] Failed to mark email as read:", error);
       throw new ApiError(
         StatusCodes.INTERNAL_SERVER_ERROR,
-        `Failed to mark email as read: ${error.message || 'Unknown error'}`
+        `Failed to mark email as read: ${error.message || "Unknown error"}`
       );
     }
   }
@@ -310,7 +319,7 @@ class GmailService extends EmailService {
     const client = await this.getClient();
     try {
       const raw = await this.createRawEmail({ to, subject, body, attachments });
-      
+
       const draft = await client.users.drafts.create({
         userId: "me",
         requestBody: { message: { raw } },
@@ -320,7 +329,7 @@ class GmailService extends EmailService {
       console.error("[ERROR] Failed to create draft:", error);
       throw new ApiError(
         StatusCodes.INTERNAL_SERVER_ERROR,
-        `Failed to create draft: ${error.message || 'Unknown error'}`
+        `Failed to create draft: ${error.message || "Unknown error"}`
       );
     }
   }
@@ -337,13 +346,13 @@ class GmailService extends EmailService {
       "",
       body,
     ];
-    
+
     for (const attachment of attachments) {
       try {
         const fileContent = await fs.readFile(attachment.path, {
           encoding: "base64",
         });
-        
+
         email.push(
           `--${boundary}`,
           `Content-Type: ${attachment.mimetype}`,
@@ -356,18 +365,18 @@ class GmailService extends EmailService {
         console.error(`Failed to read attachment ${attachment.path}:`, error);
         throw new ApiError(
           StatusCodes.INTERNAL_SERVER_ERROR,
-          `Failed to read attachment: ${error.message || 'Unknown error'}`
+          `Failed to read attachment: ${error.message || "Unknown error"}`
         );
       }
     }
-    
+
     email.push(`--${boundary}--`);
-    
+
     return Buffer.from(email.join("\r\n"))
       .toString("base64")
       .replace(/\+/g, "-")
       .replace(/\//g, "_")
-      .replace(/=+$/, ""); // Remove trailing equals
+      .replace(/=+$/, "");
   }
 }
 
