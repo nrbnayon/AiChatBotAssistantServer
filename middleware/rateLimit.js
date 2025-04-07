@@ -4,8 +4,8 @@ import User from "../models/User.js";
 // Generic rate limiter with user validation
 const rateLimitMiddleware = (options = {}) => {
   const {
-    windowMs = 15 * 60 * 1000, 
-    max = 100, 
+    windowMs = 15 * 60 * 1000,
+    max = 100,
     message = "Too many requests, please try again later.",
     skipFailedRequests = false,
     keyGenerator = (req) => req.ip,
@@ -29,8 +29,8 @@ const rateLimitMiddleware = (options = {}) => {
         message,
         skipFailedRequests,
         keyGenerator,
-        standardHeaders: true, 
-        legacyHeaders: false, 
+        standardHeaders: true,
+        legacyHeaders: false,
         handler: (req, res) => {
           res.status(429).json({
             success: false,
@@ -50,8 +50,8 @@ const rateLimitMiddleware = (options = {}) => {
 // Specific authentication rate limiter
 const authRateLimit = (options = {}) => {
   const {
-    windowMs = 15 * 60 * 1000, 
-    max = 5, 
+    windowMs = 15 * 60 * 1000,
+    max = 5,
     message = "Too many authentication attempts. Please try again later.",
   } = options;
 
@@ -89,10 +89,7 @@ const authRateLimit = (options = {}) => {
 };
 
 const chatRateLimit = (options = {}) => {
-  const {
-    windowMs = 24 * 60 * 60 * 1000, 
-    max = 100, 
-  } = options;
+  const { windowMs = 24 * 60 * 60 * 1000, max = 100 } = options;
 
   return async (req, res, next) => {
     try {
@@ -109,7 +106,6 @@ const chatRateLimit = (options = {}) => {
         !["basic", "premium", "enterprise"].includes(user.subscription.plan) ||
         (user.subscription.endDate && user.subscription.endDate < now)
       ) {
-        user.subscription.status = "canceled"; 
         await user.save();
         return res.status(403).json({
           success: false,
@@ -129,6 +125,7 @@ const chatRateLimit = (options = {}) => {
         lastRequest.getFullYear() !== now.getFullYear()
       ) {
         user.subscription.dailyQueries = 0;
+        user.subscription.dailyTokens = 0;
         user.subscription.lastRequestDate = now;
       }
 
@@ -138,7 +135,15 @@ const chatRateLimit = (options = {}) => {
         premium: 100,
         enterprise: Infinity,
       };
+
+      const tokenLimits = {
+        basic: 10000,
+        premium: 50000,
+        enterprise: Infinity,
+      };
+
       const maxQueries = planLimits[user.subscription.plan] || max;
+      const maxTokens = tokenLimits[user.subscription.plan] || 10000;
 
       // Check daily limit
       if (user.subscription.dailyQueries >= maxQueries) {
@@ -151,6 +156,8 @@ const chatRateLimit = (options = {}) => {
       // Increment and save query count
       user.subscription.dailyQueries += 1;
       user.subscription.lastRequestDate = now;
+       req.maxTokens = maxTokens;
+       req.currentTokens = user.subscription.dailyTokens || 0;
       await user.save();
 
       next();

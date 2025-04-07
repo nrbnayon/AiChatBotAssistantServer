@@ -95,6 +95,7 @@ const updateSubscription = async (userId, { plan, autoRenew }) => {
     user.subscription.plan = plan;
     user.subscription.startDate = new Date();
     user.subscription.dailyQueries = 0;
+    user.subscription.dailyTokens = 0;
     user.subscription.status = "active";
     if (user.inboxList.length > subscriptionPlans[plan].maxInboxes) {
       user.inboxList = user.inboxList.slice(

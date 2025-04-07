@@ -111,7 +111,7 @@ export const getModelById = async (id) => {
 class ModelProvider {
   constructor() {
     this.retryCount = 3;
-    this.retryDelay = 1000;
+    this.retryDelay = 500;
   }
 
   async callWithFallbackChain(modelId, requestData, fallbackChain = []) {

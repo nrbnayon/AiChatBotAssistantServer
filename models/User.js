@@ -28,6 +28,7 @@ const subscriptionSchema = new mongoose.Schema({
     default: "pending",
   },
   dailyQueries: { type: Number, default: 0 },
+  dailyTokens: { type: Number, default: 0 },
   autoRenew: { type: Boolean, default: true },
   startDate: { type: Date, default: Date.now },
   endDate: { type: Date },

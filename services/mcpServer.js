@@ -34,10 +34,14 @@ class ModelProvider {
           continue;
         }
         console.log(`Attempting to use model: ${model.name}`);
-        const result = await this.callModelWithRetry(model, options);
+        const { result, tokenCount } = await this.callModelWithRetry(
+          model,
+          options
+        );
         console.log(`Successfully used model: ${model.name}`);
         return {
           result,
+          tokenCount,
           modelUsed: model,
           fallbackUsed: currentModelId !== primaryModelId,
         };
@@ -64,7 +68,6 @@ class ModelProvider {
     const requestOptions = {
       ...options,
       model: model.id,
-      // response_format: { type: "json_object" }, // Enforce JSON output
     };
 
     let attemptCount = 0;
@@ -81,7 +84,12 @@ class ModelProvider {
         } else {
           throw new ApiError(400, `Unsupported provider: ${model.provider}`);
         }
-        return result;
+        // Extract token usage (specific to provider response structure)
+        const tokenCount =
+          model.provider === "groq"
+            ? result.usage?.total_tokens || 0 // Groq might differ; adjust based on actual response
+            : result.usage?.total_tokens || 0; // OpenAI standard
+        return { result, tokenCount };
       } catch (error) {
         lastError = error;
         attemptCount++;
@@ -624,7 +632,7 @@ class MCPServer {
           const cleanedText = plainTextBody.replace(/\n\s*\n/g, "\n").trim();
 
           const MAX_TEXT_LENGTH = 3000;
-          let summaryText = leftText;
+          let summaryText = cleanedText;
           if (cleanedText.length > MAX_TEXT_LENGTH) {
             summaryText =
               cleanedText.substring(0, MAX_TEXT_LENGTH) + "... (truncated)";
@@ -961,378 +969,6 @@ class MCPServer {
       .join(" | ")} |\n${rows.map((row) => `| ${row} |`).join("\n")}`;
   }
 
-  // async chatWithBot(req, message, history = [], context = {}, modelId = null) {
-  //   const userId = req.user.id;
-  //   const userName = req.user.name || "User";
-  //   console.log("User name:", req.user);
-  //   console.log("User ID:", userId);
-  //   const userEmail = req.user.email;
-  //   const { timeContext = "", emailCount = 0, unreadCount = 0 } = context;
-
-  //   const systemPrompt = await this.getDefaultSystemMessage();
-
-  //   const personalizedSystemPrompt =
-  //     systemPrompt
-  //       .replace(/{{USER_NAME}}/g, userName)
-  //       .replace(/{{USER_EMAIL}}/g, userEmail)
-  //       .replace(/{{TIME_CONTEXT}}/g, timeContext)
-  //       .replace(/{{EMAIL_COUNT}}/g, emailCount.toString())
-  //       .replace(/{{UNREAD_COUNT}}/g, unreadCount.toString()) +
-  //     "\n\nWhen there’s a pending email draft, interpret affirmative responses like 'confirm sent', 'yes', or 'send it' as a command to send the email, returning {\"action\": \"send-email\", \"params\": {...}}. If the user says 'send draft 1' or 'send draft 2' after a list of drafts, select the corresponding draft (1 for the most recent, 2 for the second most recent) and return the same action." +
-  //     "\n\nIf the user says 'send it now' or 'go ahead', send the most recent draft email. If the user says 'send draft 1' or 'send draft 2', select the corresponding draft and send it." +
-  //     +"\n'\nWhen the user uploads a file, the file content is included in the message. Analyze it directly and provide responses based on its text. Do not attempt to fetch emails or use undefined tools unless explicitly requested.";
-
-  //   if (
-  //     (message.toLowerCase().includes("confirm") &&
-  //       (message.toLowerCase().includes("send") ||
-  //         message.toLowerCase().includes("sent"))) ||
-  //     message.toLowerCase().includes("yes send it") ||
-  //     message.toLowerCase().includes("go ahead") ||
-  //     message.toLowerCase().includes("proceed") ||
-  //     message.toLowerCase().includes("send it now") ||
-  //     message.toLowerCase().includes("send draft 1") ||
-  //     message.toLowerCase().includes("send draft 2")
-  //   ) {
-  //     let pendingDraft = null;
-  //     let recentDraft = null;
-
-  //     // Step 1: Try to extract draft from history (first priority)
-  //     const lastAssistantMessage = history
-  //       .slice()
-  //       .reverse()
-  //       .find((msg) => msg.role === "assistant")?.content;
-  //     if (
-  //       lastAssistantMessage &&
-  //       (lastAssistantMessage.includes("Drafted something for") ||
-  //         lastAssistantMessage.includes("I’ve put together an email") ||
-  //         lastAssistantMessage.includes("Here’s a draft for"))
-  //     ) {
-  //       const lines = lastAssistantMessage.split("\n");
-  //       let to = null;
-  //       let subject = null;
-  //       let messageStartIndex = -1;
-
-  //       for (let i = 0; i < lines.length; i++) {
-  //         if (lines[i].startsWith("**To:**")) {
-  //           to = lines[i].replace("**To:**", "").trim();
-  //         } else if (lines[i].startsWith("**Subject:**")) {
-  //           subject = lines[i].replace("**Subject:**", "").trim();
-  //           messageStartIndex = i + 2;
-  //         }
-  //       }
-
-  //       if (to && subject && messageStartIndex !== -1) {
-  //         let messageLines = [];
-  //         for (let i = messageStartIndex; i < lines.length; i++) {
-  //           if (
-  //             lines[i].includes("Looks good?") ||
-  //             lines[i].includes("What do you think—") ||
-  //             lines[i].includes("Happy with it?") ||
-  //             lines[i].includes("Let me know if this works")
-  //           ) {
-  //             break;
-  //           }
-  //           messageLines.push(lines[i]);
-  //         }
-  //         const message = messageLines.join("\n").trim();
-  //         if (message) {
-  //           pendingDraft = {
-  //             recipient_id: to,
-  //             subject: subject,
-  //             message: message,
-  //           };
-  //         }
-  //       }
-  //     }
-
-  //     const drafts = await EmailDraft.find({ userId }).sort({ createdAt: -1 });
-  //     if (drafts.length > 1 && !pendingDraft) {
-  //       // If user said "send draft 1" or "send draft 2", select the draft
-  //       if (message.toLowerCase().includes("send draft 1")) {
-  //         pendingDraft = {
-  //           recipient_id: drafts[0].recipientId,
-  //           subject: drafts[0].subject,
-  //           message: drafts[0].message,
-  //         };
-  //       } else if (message.toLowerCase().includes("send draft 2")) {
-  //         pendingDraft = {
-  //           recipient_id: drafts[1].recipientId,
-  //           subject: drafts[1].subject,
-  //           message: drafts[1].message,
-  //         };
-  //       } else {
-  //         return {
-  //           type: "text",
-  //           text: `I found ${drafts.length} drafts:\n1. To: ${drafts[0].recipientId}, Subject: ${drafts[0].subject}\n2. To: ${drafts[1].recipientId}, Subject: ${drafts[1].subject}\nWhich one? Say "send draft 1" or "send draft 2".`,
-  //           modelUsed: "N/A",
-  //           fallbackUsed: false,
-  //         };
-  //       }
-  //     }
-
-  //     // Step 2: Fallback to database if history didn’t provide a draft
-  //     if (!pendingDraft) {
-  //       const recentDraft = await EmailDraft.findOne({ userId }).sort({
-  //         createdAt: -1,
-  //       });
-  //       if (recentDraft) {
-  //         pendingDraft = {
-  //           recipient_id: recentDraft.recipientId,
-  //           subject: recentDraft.subject,
-  //           message: recentDraft.message,
-  //         };
-  //       }
-  //     }
-
-  //     const affirmativeResponses = [
-  //       "yes",
-  //       "ok",
-  //       "sure",
-  //       "confirm",
-  //       "send",
-  //       "sent",
-  //       "go ahead",
-  //       "proceed",
-  //     ];
-  //     if (
-  //       pendingDraft &&
-  //       affirmativeResponses.some((word) =>
-  //         message.toLowerCase().includes(word)
-  //       )
-  //     ) {
-  //       try {
-  //         const toolResponse = await this.callTool(
-  //           "send-email",
-  //           pendingDraft,
-  //           userId
-  //         );
-  //         await EmailDraft.deleteMany({ userId: userId });
-  //         return {
-  //           ...toolResponse[0],
-  //           modelUsed: modelId ? (await getModelById(modelId)).name : "N/A",
-  //           fallbackUsed: false,
-  //         };
-  //       } catch (error) {
-  //         console.error("Failed to send email:", error);
-  //         return {
-  //           type: "text",
-  //           text: "Oops, something went wrong while sending the email. Please try again later.",
-  //           modelUsed: "N/A",
-  //           fallbackUsed: false,
-  //         };
-  //       }
-  //     } else {
-  //       const noDraftResponses = [
-  //         "Hmm, no draft email’s ready to send yet. Want to start one?",
-  //         "Looks like there’s no email queued up. Shall we draft a new one?",
-  //         "I don’t see a draft to send. How about we create one now?",
-  //       ];
-  //       return {
-  //         type: "text",
-  //         text: noDraftResponses[
-  //           Math.floor(Math.random() * noDraftResponses.length)
-  //         ],
-  //         modelUsed: "N/A",
-  //         fallbackUsed: false,
-  //       };
-  //     }
-  //   }
-
-  //   // Rest of the function remains unchanged
-  //   let processedMessage = this.preprocessMessage(message, userId);
-  //   const messages = [
-  //     { role: "system", content: personalizedSystemPrompt },
-  //     ...history,
-  //     { role: "user", content: processedMessage },
-  //   ];
-
-  //   const hour = new Date().getHours();
-  //   let timeGreeting = "";
-  //   if (hour >= 5 && hour < 12) timeGreeting = "It’s morning, ";
-  //   else if (hour >= 12 && hour < 18) timeGreeting = "It’s afternoon, ";
-  //   else timeGreeting = "It’s evening, ";
-  //   messages.push({
-  //     role: "system",
-  //     content: `${timeGreeting}the user might appreciate a response that acknowledges their busy schedule.`,
-  //   });
-
-  //   let primaryModelId;
-  //   if (modelId) {
-  //     const selectedModel = await getModelById(modelId);
-  //     if (!selectedModel) {
-  //       throw new ApiError(400, `Selected model ${modelId} not found`);
-  //     }
-  //     primaryModelId = selectedModel.id;
-  //   } else {
-  //     const defaultModel = await getDefaultModel();
-  //     primaryModelId = defaultModel.id;
-  //   }
-  //   const fallbackChain = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
-  //   const options = {
-  //     messages,
-  //     temperature: 1.0,
-  //     response_format: { type: "json_object" },
-  //   };
-
-  //   const { result, modelUsed, fallbackUsed } =
-  //     await this.modelProvider.callWithFallbackChain(
-  //       primaryModelId,
-  //       options,
-  //       fallbackChain
-  //     );
-  //   const responseContent = result.choices[0]?.message?.content || "{}";
-
-  //   let actionData;
-  //   try {
-  //     actionData = JSON.parse(responseContent);
-  //     if (!actionData.action && !actionData.message && !actionData.chat) {
-  //       const clarificationRequests = [
-  //         "I’m not quite catching you—could you say that another way?",
-  //         "Hmm, I’m a bit lost. Mind rephrasing that?",
-  //         "Not sure I follow. Can you give me more to go on?",
-  //       ];
-  //       return {
-  //         type: "text",
-  //         text: clarificationRequests[
-  //           Math.floor(Math.random() * clarificationRequests.length)
-  //         ],
-  //         modelUsed: modelUsed.name || "N/A",
-  //         fallbackUsed: fallbackUsed,
-  //       };
-  //     }
-  //   } catch (error) {
-  //     console.error(
-  //       "[ERROR] Failed to parse model response as JSON:",
-  //       error.message,
-  //       "Response:",
-  //       responseContent
-  //     );
-  //     const errorResponses = [
-  //       "Oops! Hit a snag there—mind trying that again?",
-  //       "Something went wonky on my end. Could you repeat it?",
-  //       "Sorry, I tripped up! Can you give it another shot?",
-  //     ];
-  //     return {
-  //       type: "text",
-  //       text: errorResponses[Math.floor(Math.random() * errorResponses.length)],
-  //       modelUsed: modelUsed.name || "N/A",
-  //       fallbackUsed: fallbackUsed,
-  //     };
-  //   }
-
-  //   if (actionData.action) {
-  //     if (actionData.action === "send-email") {
-  //       this.pendingEmails.set(userId, actionData.params);
-  //       const recipientName = actionData.params.recipient_id.split("@")[0];
-  //       const draftResponses = [
-  //         `I’ve put together an email for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nLooks okay? Say **"confirm send"** to send it, or let me know what to tweak!`,
-  //         `Here’s an email draft for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nGood to go? Just say **"confirm send"**, or tell me what’s off!`,
-  //         `Drafted something for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nHappy with it? Say **"confirm send"** or suggest changes!`,
-  //       ];
-  //       return {
-  //         type: "text",
-  //         text: draftResponses[
-  //           Math.floor(Math.random() * draftResponses.length)
-  //         ],
-  //         modelUsed: modelUsed.name || "N/A",
-  //         fallbackUsed: fallbackUsed,
-  //       };
-  //     }
-  //     const toolResponse = await this.callTool(
-  //       actionData.action,
-  //       actionData.params,
-  //       userId
-  //     );
-  //     return {
-  //       ...toolResponse[0],
-  //       modelUsed: modelUsed.name || "N/A",
-  //       fallbackUsed: fallbackUsed,
-  //     };
-  //   } else if (actionData.message && actionData.data) {
-  //     const formattedTable = actionData.data.table
-  //       ? this.formatTable(actionData.data.table)
-  //       : "";
-  //     const followUps = [
-  //       "What’s your next step with this?",
-  //       "Anything here you want to dive into?",
-  //       "Does this cover what you needed?",
-  //       "Need me to expand on anything?",
-  //     ];
-  //     const randomFollowUp =
-  //       followUps[Math.floor(Math.random() * followUps.length)];
-  //     let text = `${actionData.message}\n\n${formattedTable}\n\n${randomFollowUp}`;
-  //     return {
-  //       type: "text",
-  //       text: fallbackUsed
-  //         ? `⚠️ The selected model is unavailable due to quota limits. Using fallback instead.\n\n${text}`
-  //         : text,
-  //       modelUsed: modelUsed.name || "N/A",
-  //       fallbackUsed: fallbackUsed,
-  //     };
-  //   } else if (actionData.chat) {
-  //     return {
-  //       type: "text",
-  //       text: fallbackUsed
-  //         ? `⚠️ The selected model is unavailable due to quota limits. Using fallback instead.\n\n${actionData.chat}`
-  //         : actionData.chat,
-  //       modelUsed: modelUsed.name || "N/A",
-  //       fallbackUsed: fallbackUsed,
-  //     };
-  //   } else if (actionData.message) {
-  //     return {
-  //       type: "text",
-  //       text: fallbackUsed
-  //         ? `⚠️ The selected model is unavailable due to quota limits. Using fallback instead.\n\n${actionData.message}`
-  //         : actionData.message,
-  //       modelUsed: modelUsed.name || "N/A",
-  //       fallbackUsed: fallbackUsed,
-  //     };
-  //   } else if (error) {
-  //     if (error.message.includes("Unknown tool")) {
-  //       const summaryPrompt = `Please summarize the following text:\n\n${processedMessage}`;
-  //       const summaryResponse = await this.modelProvider.callWithFallbackChain(
-  //         primaryModelId,
-  //         {
-  //           messages: [
-  //             {
-  //               role: "system",
-  //               content: "You are a helpful assistant that summarizes text.",
-  //             },
-  //             { role: "user", content: summaryPrompt },
-  //           ],
-  //           temperature: 0.7,
-  //           max_tokens: 1000,
-  //         },
-  //         fallbackChain
-  //       );
-  //       const summary =
-  //         summaryResponse.result.choices[0]?.message?.content ||
-  //         "Unable to summarize the content.";
-  //       return {
-  //         type: "text",
-  //         text: `I couldn’t use the specified tool, but here’s a summary of the provided content: ${summary}`,
-  //         modelUsed: modelUsed.name || "N/A",
-  //         fallbackUsed: fallbackUsed,
-  //       };
-  //     }
-  //   }
-  //   else {
-  //     const clarificationRequests = [
-  //       "Not sure what you’re after—can you fill me in more?",
-  //       "I’m a tad confused—could you clarify that?",
-  //       "Hmm, what do you mean? Give me a nudge!",
-  //     ];
-  //     return {
-  //       type: "text",
-  //       text: clarificationRequests[
-  //         Math.floor(Math.random() * clarificationRequests.length)
-  //       ],
-  //       modelUsed: modelUsed.name || "N/A",
-  //       fallbackUsed: fallbackUsed,
-  //     };
-  //   }
-  // }
-
   async chatWithBot(req, message, history = [], context = {}, modelId = null) {
     const userId = req.user.id;
     const userName = req.user.name || "User";
@@ -1545,7 +1181,7 @@ class MCPServer {
       response_format: { type: "json_object" },
     };
 
-    let result, modelUsed, fallbackUsed;
+    let result, modelUsed, fallbackUsed, tokenCount;
     try {
       const response = await this.modelProvider.callWithFallbackChain(
         primaryModelId,
@@ -1555,6 +1191,7 @@ class MCPServer {
       result = response.result;
       modelUsed = response.modelUsed;
       fallbackUsed = response.fallbackUsed;
+      tokenCount = response.tokenCount; // Capture token count
     } catch (error) {
       console.error("Model call failed completely:", error);
       return {
@@ -1562,6 +1199,7 @@ class MCPServer {
         text: "I'm having trouble connecting right now. Could you try again in a moment?",
         modelUsed: "N/A",
         fallbackUsed: false,
+        tokenCount: 0,
       };
     }
 
@@ -1704,6 +1342,7 @@ class MCPServer {
           : text,
         modelUsed: modelUsed.name || "N/A",
         fallbackUsed: fallbackUsed,
+        tokenCount: tokenCount || 0,
       };
     } else if (actionData.chat) {
       return {
@@ -1713,6 +1352,7 @@ class MCPServer {
           : actionData.chat,
         modelUsed: modelUsed.name || "N/A",
         fallbackUsed: fallbackUsed,
+        tokenCount: tokenCount || 0, // Include token count
       };
     } else if (actionData.message) {
       return {
@@ -1722,6 +1362,7 @@ class MCPServer {
           : actionData.message,
         modelUsed: modelUsed.name || "N/A",
         fallbackUsed: fallbackUsed,
+        tokenCount: tokenCount || 0,
       };
     } else {
       // Default fallback if no recognized response format

@@ -10,6 +10,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import mammoth from "mammoth";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
+import { chatRateLimit } from "../middleware/rateLimit.js";
 
 // Fix for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -105,13 +106,14 @@ async function extractTextFromFile(filePath, mimeType) {
 router.post(
   "/",
   auth(),
+  chatRateLimit(),
   upload.single("file"),
   catchAsync(async (req, res) => {
     const emailService = await createEmailService(req);
     const mcpServer = new MCPServer(emailService);
     const {
       message,
-      maxResults = 5000,
+      maxResults,
       modelId,
       history: providedHistory,
     } = req.body;
@@ -160,9 +162,11 @@ router.post(
           : `I have uploaded a file named '${req.file.originalname}'. Please analyze its content and provide a summary or key points based on the text extracted from it:\n${fileText}`;
 
         // Clean up file after processing
-        fs.unlink(req.file.path, (err) => {
-          if (err) console.error(`Error deleting file: ${err}`);
-        });
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (err) {
+          console.error(`Error deleting file: ${err}`);
+        }
       } catch (error) {
         console.error("File processing error:", error);
         return res.status(400).json({
@@ -191,6 +195,20 @@ router.post(
         },
         modelId
       );
+
+
+      const user = await User.findById(req.user.id);
+      const newTokenCount =
+        (user.subscription.dailyTokens || 0) + (chatResponse.tokenCount || 0);
+      if (newTokenCount > req.maxTokens) {
+        return res.status(429).json({
+          success: false,
+          message: "Daily token limit exceeded for your plan",
+        });
+      }
+      user.subscription.dailyTokens = newTokenCount;
+      await user.save();
+
 
       updateConversationHistory(userId, userMessage, chatResponse.text);
       console.log(
