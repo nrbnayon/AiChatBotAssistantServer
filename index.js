@@ -22,6 +22,8 @@ import os from "os";
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 4000;
+const IP_ADDRESS = process.env.IP_ADDRESS || "127.0.0.1";
+
 // Ensure uploads/images directory exists
 const uploadDir = path.join(process.cwd(), "uploads/images");
 if (!fs.existsSync(uploadDir)) {
@@ -54,6 +56,7 @@ const allowedOrigins = [
   `http://192.168.10.206:3000`,
   `http://172.16.0.2:3000`,
   `http://${localIpAddress}:3000`,
+  `http://${IP_ADDRESS}:3000`,
 ].filter(Boolean);
 
 app.use(cookieParser());
@@ -99,11 +102,11 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(requestLogger);
 
+
+// **Routes** //
 app.get("/", (req, res) => {
   res.send("Welcome to the you mail ai assistant!");
 });
-
-// **Routes** //
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/ai-models", aiModelRoutes);
@@ -122,11 +125,11 @@ app.use((req, res) => {
 app.use(globalErrorHandler);
 
 connectDB().then(() => {
-  app.listen(PORT, localIpAddress, () => {
+  app.listen(PORT, IP_ADDRESS, () => {
     console.log(`
     ╔═════════════════════════════════════╗
     ║  🚀 Server launched successfully!   ║
-    ║  🌐 Running on IP: ${localIpAddress}:${PORT.toString().padEnd(10, " ")} ║
+    ║  🌐 Running on IP: ${IP_ADDRESS}:${PORT.toString().padEnd(10, " ")} ║
     ╚═════════════════════════════════════╝
     `);
   });

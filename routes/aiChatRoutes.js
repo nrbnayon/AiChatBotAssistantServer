@@ -1,4 +1,3 @@
-// routes\aiChatRoutes.js
 import express from "express";
 import auth from "../middleware/authMiddleware.js";
 import { createEmailService } from "../services/emailService.js";
@@ -15,6 +14,18 @@ import { dirname } from "path";
 // Fix for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Polyfill for Promise.withResolvers to support older Node.js versions
+if (!Promise.withResolvers) {
+  Promise.withResolvers = function () {
+    let resolve, reject;
+    const promise = new Promise((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
+}
 
 const router = express.Router();
 
@@ -59,8 +70,13 @@ async function extractTextFromFile(filePath, mimeType) {
     if (mimeType === "text/plain") {
       return fs.readFileSync(filePath, "utf-8");
     } else if (mimeType === "application/pdf") {
+      // Fixed PDF processing code that doesn't use Promise.withResolvers
       const data = new Uint8Array(fs.readFileSync(filePath));
-      const pdf = await pdfjsLib.getDocument({ data }).promise;
+      const loadingTask = pdfjsLib.getDocument({ data });
+
+      // Use standard Promise approach
+      const pdf = await loadingTask.promise;
+
       let text = "";
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
@@ -78,6 +94,7 @@ async function extractTextFromFile(filePath, mimeType) {
       throw new Error("Unsupported file type");
     }
   } catch (error) {
+    console.error("File extraction error:", error);
     throw new Error(`Failed to extract text: ${error.message}`);
   }
 }
@@ -96,6 +113,13 @@ router.post(
       modelId,
       history: providedHistory,
     } = req.body;
+
+    console.log("Get body data::", {
+      message,
+      maxResults,
+      modelId,
+      providedHistory,
+    });
     const userId = req.user.id;
 
     if (!message && !req.file) {
@@ -104,18 +128,35 @@ router.post(
         .json({ success: false, message: "Message or file is required" });
     }
 
-    const history = providedHistory || getConversationHistory(userId);
+    // Parse history if it's provided as a string
+    let history;
+    if (providedHistory) {
+      try {
+        history =
+          typeof providedHistory === "string"
+            ? JSON.parse(providedHistory)
+            : providedHistory;
+      } catch (error) {
+        console.error("Error parsing history:", error);
+        history = getConversationHistory(userId);
+      }
+    } else {
+      history = getConversationHistory(userId);
+    }
 
     let userMessage = message || "";
-    
+
     // Process uploaded file if present
     if (req.file) {
       try {
-        const fileText = await extractTextFromFile(req.file.path, req.file.mimetype);
-        userMessage = userMessage ? 
-          `${userMessage}\n\nContent from file ${req.file.originalname}:\n${fileText}` : 
-          `Analyze this file (${req.file.originalname}):\n${fileText}`;
-        
+        const fileText = await extractTextFromFile(
+          req.file.path,
+          req.file.mimetype
+        );
+        userMessage = userMessage
+          ? `${userMessage}\n\nContent from file ${req.file.originalname}:\n${fileText}`
+          : `Analyze this file (${req.file.originalname}):\n${fileText}`;
+
         // Clean up file after processing
         fs.unlink(req.file.path, (err) => {
           if (err) console.error(`Error deleting file: ${err}`);
@@ -156,6 +197,7 @@ router.post(
         message: chatResponse.text,
         modelUsed: chatResponse.modelUsed,
         fallbackUsed: chatResponse.fallbackUsed,
+        tokenCount: chatResponse.tokenCount || 0,
         data: chatResponse.artifact?.data || null,
       });
     } catch (error) {
@@ -163,7 +205,8 @@ router.post(
       res.status(500).json({
         success: false,
         message: "I'm having trouble processing your request right now.",
-        error: process.env.NODE_ENV === "development" ? error.message : undefined,
+        error:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
       });
     }
   })

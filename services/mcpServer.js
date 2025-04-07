@@ -244,7 +244,7 @@ class MCPServer {
           )}\n\n${followUp}`;
         } else {
           const count = emails.messages.length;
-          const previewCount = Math.min(count, 3);
+          const previewCount = Math.min(count, 10);
           if (count === 0) {
             const noEmailResponses = [
               "Couldn’t find any emails that match. Want to try another search?",
@@ -445,7 +445,7 @@ class MCPServer {
           try {
             const recentEmails = await this.emailService.fetchEmails({
               query: "meeting OR event OR calendar",
-              limit: 1,
+              limit: 10,
             });
 
             if (recentEmails.messages.length === 0) {
@@ -745,17 +745,19 @@ class MCPServer {
           status: "draft",
         });
 
-        const draftResponses = [
-          `I’ve whipped up an email for **${recipient}**:\n\n**To:** ${
-            recipient_email || recipient
-          }\n**Subject:** ${subject}\n\n${body}\n\nLooks good? Tell me if you want tweaks or if I should send it!`,
-          `Here’s a draft for **${recipient}**:\n\n**To:** ${
-            recipient_email || recipient
-          }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think—ready to go or need changes?`,
-          `Drafted something for **${recipient}**:\n\n**To:** ${
-            recipient_email || recipient
-          }\n**Subject:** ${subject}\n\n${body}\n\nLet me know if this works or if we should adjust it!`,
-        ];
+      const draftResponses = [
+        `I've prepared an email for **${recipient}**:\n\n**To:** ${
+          recipient_email || recipient
+        }\n**Subject:** ${subject}\n\n${body}\n\nDoes this look good? Let me know if you'd like any changes before sending. Or do you want to send it now? just say confirm send it`,
+
+        `Here's a draft email for **${recipient}**:\n\n**To:** ${
+          recipient_email || recipient
+        }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think? Is it ready to send or would you like to make adjustments?. Or do you want to send it now? just say confirm send it`,
+
+        `I've drafted an email for **${recipient}**:\n\n**To:** ${
+          recipient_email || recipient
+        }\n**Subject:** ${subject}\n\n${body}\n\nPlease review and let me know if this works for you or if any changes are needed. Just confirm me when you're ready to send.`,
+      ];
         return [
           {
             type: "text",
@@ -962,6 +964,8 @@ class MCPServer {
   async chatWithBot(req, message, history = [], context = {}, modelId = null) {
     const userId = req.user.id;
     const userName = req.user.name || "User";
+    console.log("User name:", req.user);
+    console.log("User ID:", userId);
     const userEmail = req.user.email;
     const { timeContext = "", emailCount = 0, unreadCount = 0 } = context;
 
