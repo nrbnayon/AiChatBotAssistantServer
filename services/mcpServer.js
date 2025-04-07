@@ -15,8 +15,8 @@ class ModelProvider {
       apiKey: process.env.OPENAI_API_KEY,
     });
     this.retryCount = 3;
-    this.retryDelay = 1000;
-    this.maxRetryDelay = 10000;
+    this.retryDelay = 500;
+    this.maxRetryDelay = 1000;
   }
 
   async callWithFallbackChain(primaryModelId, options, fallbackChain = []) {
