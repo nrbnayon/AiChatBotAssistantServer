@@ -37,7 +37,7 @@ const auth = (...roles) =>
 
       req.user = {
         id: user._id,
-        name: user.name,
+        name: user?.name || "User",
         role: user.role,
         email: user.email,
         authProvider: user.authProvider,
@@ -72,7 +72,7 @@ const auth = (...roles) =>
           {
             id: user._id,
             role: user.role,
-            name: user.name,
+            name: user?.name || "User",
             email: user.email,
             authProvider: user.authProvider,
           },
@@ -83,7 +83,7 @@ const auth = (...roles) =>
         req.user = {
           id: user._id,
           role: user.role,
-          name: user.name,
+          name: user?.name || "User",
           email: user.email,
           authProvider: user.authProvider,
         };

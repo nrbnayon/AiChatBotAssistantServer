@@ -17,6 +17,7 @@ const generateTokens = (user) => {
   const payload = {
     id: user._id,
     email: user.email,
+    name: user.name || "User",
     role: user.role || "user",
     authProvider: user.authProvider,
     hasGoogleAuth: !!user.googleAccessToken,
