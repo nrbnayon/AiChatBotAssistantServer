@@ -1,4 +1,4 @@
-// index.js
+// index.js  okay
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -101,7 +101,6 @@ process.on("unhandledRejection", (reason, promise) => {
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(requestLogger);
-
 
 // **Routes** //
 app.get("/", (req, res) => {
