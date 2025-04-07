@@ -130,7 +130,7 @@ router.post(
         .json({ success: false, message: "Message or file is required" });
     }
 
-    // Parse history if it's provided as a string
+    // Parse history if it is provided as a string
     let history;
     if (providedHistory) {
       try {
