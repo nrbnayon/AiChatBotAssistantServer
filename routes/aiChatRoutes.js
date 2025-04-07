@@ -30,9 +30,11 @@ if (!Promise.withResolvers) {
 const router = express.Router();
 
 // **File Upload Configuration**
+const isLambda = !!process.env.LAMBDA_TASK_ROOT; // Detect if running in AWS Lambda
+const baseUploadDir = isLambda ? "/tmp" : __dirname;
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, "../uploads");
+    const uploadDir = path.join(baseUploadDir, "../uploads");
     if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
     cb(null, uploadDir);
   },

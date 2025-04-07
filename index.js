@@ -24,12 +24,16 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const IP_ADDRESS = process.env.IP_ADDRESS || "127.0.0.1";
 
-// Ensure uploads/images directory exists
-const uploadDir = path.join(process.cwd(), "uploads/images");
+// Determine the upload directory based on the environment
+const isLambda = !!process.env.LAMBDA_TASK_ROOT; // Detect if running in AWS Lambda
+const baseUploadDir = isLambda ? "/tmp" : process.cwd();
+const uploadDir = path.join(baseUploadDir, "uploads/images");
+
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
-app.use("/uploads", express.static("uploads"));
+app.use("/uploads", express.static(path.join(baseUploadDir, "uploads")));
+
 // Get local IP address
 const getLocalIpAddress = () => {
   const networkInterfaces = os.networkInterfaces();
