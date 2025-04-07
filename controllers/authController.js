@@ -5,6 +5,7 @@ import User from "../models/User.js";
 import userService from "../services/userService.js";
 import { safeCookie } from "../helper/cookieHelper.js";
 import { AppError, catchAsync } from "../utils/errorHandler.js";
+import { jwtHelper } from './../helper/jwtHelper.js';
 
 dotenv.config();
 
@@ -14,7 +15,7 @@ const getFrontendUrl =
     : process.env.FRONTEND_URL;
 
 const generateTokens = (user) => {
-  const payload = {
+  const accessPayload = {
     id: user._id,
     email: user.email,
     name: user.name || "User",
@@ -23,21 +24,10 @@ const generateTokens = (user) => {
     hasGoogleAuth: !!user.googleAccessToken,
     hasMicrosoftAuth: !!user.microsoftAccessToken,
   };
+  const refreshPayload = { id: user._id };
 
-  if (!process.env.JWT_SECRET || !process.env.REFRESH_TOKEN_SECRET) {
-    throw new AppError("JWT secrets not defined in environment variables", 500);
-  }
-
-  const accessToken = jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: "1d",
-  });
-  const refreshToken = jwt.sign(
-    { id: payload.id },
-    process.env.REFRESH_TOKEN_SECRET,
-    {
-      expiresIn: "30d",
-    }
-  );
+  const accessToken = jwtHelper.createAccessToken(accessPayload);
+  const refreshToken = jwtHelper.createRefreshToken(refreshPayload);
   return { accessToken, refreshToken };
 };
 

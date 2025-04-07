@@ -71,10 +71,12 @@ const auth = (...roles) =>
         const newAccessToken = jwt.sign(
           {
             id: user._id,
-            role: user.role,
-            name: user?.name || "User",
             email: user.email,
+            name: user.name || "User",
+            role: user.role,
             authProvider: user.authProvider,
+            hasGoogleAuth: !!user.googleAccessToken,
+            hasMicrosoftAuth: !!user.microsoftAccessToken,
           },
           process.env.JWT_SECRET,
           { expiresIn: "1d" }
