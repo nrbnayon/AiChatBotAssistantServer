@@ -86,7 +86,7 @@ app.use(passport.session());
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin or from allowed origins
+      // Allow requests with no origin or from allowed origin
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
