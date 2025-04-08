@@ -108,7 +108,7 @@ router.post(
   "/",
   auth(),
   // chatRateLimit(),
-  upload.single("file"),
+  // upload.single("file"), // vercel upload issue
   catchAsync(async (req, res) => {
     const emailService = await createEmailService(req);
     const mcpServer = new MCPServer(emailService);
