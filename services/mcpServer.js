@@ -776,15 +776,18 @@ class MCPServer {
         const draftResponses = [
           `I've prepared an email for **${recipient}**:\n\n**To:** ${
             recipient_email || recipient
-          }\n**Subject:** ${subject}\n\n${body}\n\nDoes this look good? Let me know if you'd like any changes before sending. Or do you want to send it now? just say confirm send it`,
+          }\n**Subject:** ${subject}\n\n${body}\n\nDoes this look good? Let me know if you'd like any changes before sending. Or do you want to send it now? just say **"confirm send"** it`,
 
           `Here's a draft email for **${recipient}**:\n\n**To:** ${
             recipient_email || recipient
-          }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think? Is it ready to send or would you like to make adjustments?. Or do you want to send it now? just say confirm send it`,
+          }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think? Is it ready to send or would you like to make adjustments?. Or do you want to send it now? just say **"confirm send"** it`,
 
           `I've drafted an email for **${recipient}**:\n\n**To:** ${
             recipient_email || recipient
-          }\n**Subject:** ${subject}\n\n${body}\n\nPlease review and let me know if this works for you or if any changes are needed. Just confirm me when you're ready to send.`,
+          }\n**Subject:** ${subject}\n\n${body}\n\nPlease review and let me know if this works for you or if any changes are needed. Just confirm me when you're ready to send. write **"confirm send"** to send it`,
+          `Here's a draft email for **${recipient}**:\n\n**To:** ${
+            recipient_email || recipient
+          }\n**Subject:** ${subject}\n\n${body}\n\nLet me know if you want to send it as is or if you need to tweak anything. Or do you want to send it now? just say **"confirm sent"** it`,
         ];
         return [
           {

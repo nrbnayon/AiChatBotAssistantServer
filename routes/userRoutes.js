@@ -37,20 +37,20 @@ const router = express.Router();
  * ╔═══════════════════════════════════════╗
  * ║    Public Waiting List Endpoint       ║
  * ╚═══════════════════════════════════════╝
- * @description Allows users to join the waiting list
- * @route POST /add-to-waiting-list
- * @access Public
  */
 router.post("/add-to-waiting-list", async (req, res) => {
+  console.log("New waiting list entry:", req.body);
   const { email, name, inbox, description } = req.body;
+
   try {
     const entry = new WaitingList({ email, name, inbox, description });
     await entry.save();
-    res.status(201).json({ message: "Added to waiting list" });
+    res.status(201).json({ message: "Added to waiting list", entry });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
 });
+
 
 router.get("/waiting-list-status", async (req, res) => {
   const { email } = req.query;
