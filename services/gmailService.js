@@ -74,15 +74,21 @@ class GmailService extends EmailService {
   }) {
     const client = await this.getClient();
 
+    // Ensure maxResults is a number
+    const maxResultsNum = Number(maxResults);
+    if (isNaN(maxResultsNum)) {
+      throw new ApiError(StatusCodes.BAD_REQUEST, "Invalid maxResults value");
+    }
+
     const params = {
       userId: "me",
-      maxResults,
+      maxResults: maxResultsNum,
       q: query,
       pageToken,
     };
 
     const filterMap = {
-      all: (params) => params,
+      all: (params) => params, // Default to INBOX as per Gmail API behavior
       read: (params) => {
         params.q = params.q ? `${params.q} is:read` : "is:read";
         return params;

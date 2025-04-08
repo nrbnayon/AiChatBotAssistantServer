@@ -217,6 +217,7 @@ class MCPServer {
           },
         ];
       }
+
       case "fetch-emails": {
         const {
           filter = "all",
@@ -271,10 +272,11 @@ class MCPServer {
           const count = emails.messages.length;
           const previewCount = Math.min(count, 10);
           if (count === 0) {
+            // Updated response messages
             const noEmailResponses = [
-              "Couldn’t find any emails that match. Want to try another search?",
-              "No luck finding emails for that. How about a different filter?",
-              "Looks like your inbox is empty for this one. What else can I look for?",
+              "Your INBOX seems empty. Want to check Sent or Archived emails instead?",
+              "No emails found in your INBOX. How about trying Sent, Drafts, or another folder?",
+              "Looks like your INBOX is clear. Should I fetch from All Mail or another label?",
             ];
             text =
               noEmailResponses[
@@ -347,6 +349,7 @@ class MCPServer {
           { type: "text", text, artifact: { type: "json", data: emails } },
         ];
       }
+
       case "count-emails": {
         const { filter } = args;
         if (!filter) throw new Error("Missing filter parameter");
