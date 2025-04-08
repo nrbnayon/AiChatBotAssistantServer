@@ -11,6 +11,7 @@ import mammoth from "mammoth";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 import { chatRateLimit } from "../middleware/rateLimit.js";
+import User from "../models/User.js";
 
 // Fix for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
