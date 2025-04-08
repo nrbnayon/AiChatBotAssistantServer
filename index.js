@@ -133,7 +133,7 @@ connectDB().then(() => {
   app.listen(PORT, IP_ADDRESS, () => {
     console.log(`
     ╔═════════════════════════════════════╗
-    ║  🚀 Server launched successfully!   ║
+    ║  🚀 Server launched successfully!!   ║
     ║  🌐 Running on IP: ${IP_ADDRESS}:${PORT.toString().padEnd(10, " ")} ║
     ╚═════════════════════════════════════╝
     `);
