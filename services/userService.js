@@ -57,7 +57,7 @@ const updateProfile = async (userId, profileData, file) => {
     "country",
     "gender",
     "dateOfBirth",
-    "image",
+    "profilePicture",
   ];
 
   const updates = Object.keys(profileData)
@@ -67,7 +67,7 @@ const updateProfile = async (userId, profileData, file) => {
   // Handle profile picture file if provided
   if (file) {
     const fileExt = path.extname(file.originalname).toLowerCase();
-    updates.image = `${userId}${fileExt}`;
+    updates.profilePicture = `http://${process.env.IP_ADDRESS}:${process.env.PORT}/uploads/images/${userId}${fileExt}`;
   }
 
   if (Object.keys(updates).length === 0)
@@ -127,7 +127,7 @@ const createUser = async ({ name, email, password, role }) => {
     name,
     email,
     password,
-    role: role || "user", 
+    role: role || "user",
     authProvider: "local",
     subscription: {
       plan: "basic",

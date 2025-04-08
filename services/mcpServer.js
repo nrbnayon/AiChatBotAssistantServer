@@ -1016,6 +1016,8 @@ class MCPServer {
       (message.toLowerCase().includes("confirm") &&
         (message.toLowerCase().includes("send") ||
           message.toLowerCase().includes("sent"))) ||
+      message.toLowerCase().includes("confirm") ||
+      message.toLowerCase().includes("confirmed") ||
       message.toLowerCase().includes("yes send it") ||
       message.toLowerCase().includes("go ahead") ||
       message.toLowerCase().includes("proceed") ||
