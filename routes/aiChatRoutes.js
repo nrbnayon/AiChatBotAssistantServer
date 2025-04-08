@@ -12,7 +12,6 @@ import { fileURLToPath } from "url";
 import { dirname } from "path";
 import { chatRateLimit } from "../middleware/rateLimit.js";
 import User from "../models/User.js";
-
 // Fix for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -30,7 +29,6 @@ if (!Promise.withResolvers) {
 }
 
 const router = express.Router();
-
 // **File Upload Configuration**
 const isLambda = !!process.env.LAMBDA_TASK_ROOT; // Detect if running in AWS Lambda
 const baseUploadDir = isLambda ? "/tmp" : __dirname;
@@ -45,8 +43,8 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({ storage });
-
+// const upload = multer({ storage });
+const upload = multer({ dest: "/tmp" });
 const userConversations = new Map();
 
 // **Get or Create Conversation History**
