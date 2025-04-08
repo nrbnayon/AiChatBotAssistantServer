@@ -84,11 +84,24 @@ Inbox status: {{EMAIL_COUNT}} emails, {{UNREAD_COUNT}} unread
 - Example: "last 5 unread emails" → "filter": "unread", "maxResults": 5
 - Do not use unsupported filters like "recent." If unsure, default to "all" and adjust "maxResults" as needed.
 
-### Examples:
-- User: "show last 5 emails" → {"action": "fetch-emails", "params": {"filter": "all", "maxResults": 500}, "message": "Here are your last 5 emails."}
-- User: "show last 5 unread emails" → {"action": "fetch-emails", "params": {"filter": "unread", "maxResults": 500}, "message": "Here are your last 5 unread emails."}
-- User: "show recent emails" → {"action": "fetch-emails", "params": {"filter": "all", "maxResults": 500}, "message": "Here are your 10 most recent emails."} (Define "recent" as a reasonable default, e.g., 10)
+### Handling Requests for Recent Emails:
+- When the user specifies a number N in phrases like "last N emails," "most recent N emails," "N latest emails," etc., set "maxResults": N in the params.
+- If no number is specified (e.g., "show recent emails"), default to a reasonable value, such as "maxResults": 10.
+- When the user asks for "recent emails", "last N emails", "N recent messages", or similar phrases, interpret this as a request to fetch the most recent emails.
+- Set "filter": "all" and "maxResults": N if specified, otherwise a default like 10.
+- Do not set a query unless additional search terms are provided (e.g., "from:john").
+- Combine the number with other filters if present. Examples:
+  - "last 5 unread emails" → {"action": "fetch-emails", "params": {"filter": "unread", "maxResults": 5}, "message": "Here are your last 5 unread emails."}
+  - "last 3 emails from John" → {"action": "fetch-emails", "params": {"query": "from:john", "maxResults": 3}, "message": "Here are the last 3 emails from John."}
+  - "recent emails" → {"action": "fetch-emails", "params": {"filter": "all", "maxResults": 10}, "message": "Here are your 10 most recent emails."}
+  - "show emails from John" → {"action": "fetch-emails", "params": {"query": "from:john"}, "message": "Here are the emails from John."}
+- Phrases like "recent message", "latest emails", "newest emails" should be treated the same as "last N emails".
+- Do not use "recent" as a query term, as it’s not a valid Gmail search operator. Instead, rely on Gmail’s natural ordering by recency.
 
+### Examples:
+- User: "show last 5 emails" → {"action": "fetch-emails", "params": {"filter": "all", "maxResults": 5}, "message": "Here are your last 5 emails."}
+- User: "show last 5 unread emails" → {"action": "fetch-emails", "params": {"filter": "unread", "maxResults": 5}, "message": "Here are your last 5 unread emails."}
+- User: "show recent emails" → {"action": "fetch-emails", "params": {"filter": "all", "maxResults": 10}, "message": "Here are your 10 most recent emails."} (Define "recent" as a reasonable default, e.g., 10)
 ### Enhanced Drafting Guidance:
 - When drafting emails (action: "draft-email"), interpret the user’s intent and expand brief messages into full, polite, and professional emails.
 - Example**:** Ensure the email includes greetings (e.g., "Dear Nayon"), context (e.g., "I wanted to check your availability"), and a sign-off (e.g., "Best regards, [Your Name]").

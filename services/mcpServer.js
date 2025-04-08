@@ -218,12 +218,29 @@ class MCPServer {
         ];
       }
       case "fetch-emails": {
-        const { filter, query, summarize = false } = args;
+        const {
+          filter = "all",
+          query = "",
+          maxResults = 500,
+          summarize = false,
+        } = args;
         let processedQuery = query ? this.processQuery(query) : "";
         const emails = await this.emailService.fetchEmails({
           filter,
           query: processedQuery,
+          maxResults,
         });
+
+        if (!emails || !Array.isArray(emails.messages)) {
+          console.error("[ERROR] fetchEmails returned invalid data:", emails);
+          return [
+            {
+              type: "text",
+              text: "Sorry, I couldn’t fetch your emails right now. Want to try again?",
+            },
+          ];
+        }
+
         const analyzedData = this.analyzeEmails(
           emails,
           processedQuery || filter || ""
@@ -781,6 +798,23 @@ class MCPServer {
   }
 
   analyzeEmails(emails, query) {
+    // Defensive check for undefined or missing messages
+    if (!emails || !emails.messages) {
+      console.error(
+        "[ERROR] analyzeEmails: emails or emails.messages is undefined",
+        emails
+      );
+      return {
+        emails: [],
+        summary: {
+          totalCount: 0,
+          unreadCount: 0,
+          senderBreakdown: [],
+          timeDistribution: {},
+        },
+      };
+    }
+
     const queryLower = query.toLowerCase();
 
     if (
@@ -789,7 +823,9 @@ class MCPServer {
     ) {
       const offers = emails.messages
         .filter((email) => {
-          const content = (email.subject + " " + email.body).toLowerCase();
+          const content = `${email?.subject || ""} ${
+            email?.body || ""
+          }`.toLowerCase();
           return (
             content.includes("car") &&
             (content.includes("offer") ||
@@ -799,39 +835,26 @@ class MCPServer {
           );
         })
         .map((email) => {
-          const modelMatch = email.body.match(
+          const modelMatch = email?.body?.match(
             /(?:car|model|vehicle):?\s*(\w+\s*\w*)/i
-          ) ||
-            email.subject.match(/(\w+\s*\w*)\s*(?:car|model|vehicle)/i) || [
-              "",
-              "N/A",
-            ];
-          const yearMatch = email.body.match(
+          ) || ["", "N/A"];
+          const yearMatch = email?.body?.match(
             /(?:year|model year):?\s*(\d{4})/i
-          ) ||
-            email.body.match(/(\d{4})\s*(?:car|model|vehicle)/i) || ["", "N/A"];
-          const priceMatch = email.body.match(
+          ) || ["", "N/A"];
+          const priceMatch = email?.body?.match(
             /(?:price|cost|value):?\s*\$?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i
-          ) ||
-            email.body.match(/\$(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i) || [
-              "",
-              "N/A",
-            ];
+          ) || ["", "N/A"];
           return {
             "Car Model": modelMatch[1],
             Year: yearMatch[1],
             Price: priceMatch[1] === "N/A" ? "N/A" : `$${priceMatch[1]}`,
-            From: email.from,
-            Date: new Date(email.date).toLocaleDateString(),
-            "Email ID": email.id,
+            From: email?.from || "N/A",
+            Date: email?.date
+              ? new Date(email.date).toLocaleDateString()
+              : "N/A",
+            "Email ID": email?.id || "N/A",
           };
-        })
-        .filter(
-          (offer) =>
-            offer["Car Model"] !== "N/A" ||
-            offer["Year"] !== "N/A" ||
-            offer["Price"] !== "N/A"
-        );
+        });
       return { table: offers };
     } else if (
       queryLower.includes("package") ||
@@ -840,7 +863,9 @@ class MCPServer {
     ) {
       const packages = emails.messages
         .filter((email) => {
-          const content = (email.subject + " " + email.body).toLowerCase();
+          const content = `${email?.subject || ""} ${
+            email?.body || ""
+          }`.toLowerCase();
           return (
             content.includes("package") ||
             content.includes("delivery") ||
@@ -849,31 +874,24 @@ class MCPServer {
           );
         })
         .map((email) => {
-          const trackingMatch = email.body.match(
+          const trackingMatch = email?.body?.match(
             /(?:tracking|track):?\s*#?\s*([A-Z0-9]{8,})/i
-          ) ||
-            email.body.match(/([A-Z0-9]{8,})/i) || ["", "N/A"];
-          const statusMatch = email.body.match(
+          ) || ["", "N/A"];
+          const statusMatch = email?.body?.match(
             /(?:status|delivery status):?\s*(\w+\s*\w*)/i
           ) || ["", "N/A"];
-          const dateMatch = email.body.match(
+          const dateMatch = email?.body?.match(
             /(?:delivery|arrival|expected):?\s*(?:date|by)?:?\s*(\w+\s*\d{1,2},?\s*\d{4})/i
           ) || ["", "N/A"];
           return {
-            Sender: email.from,
-            Subject: email.subject,
+            Sender: email?.from || "N/A",
+            Subject: email?.subject || "N/A",
             "Tracking Number": trackingMatch[1],
             Status: statusMatch[1],
             "Delivery Date": dateMatch[1],
-            "Email ID": email.id,
+            "Email ID": email?.id || "N/A",
           };
-        })
-        .filter(
-          (pkg) =>
-            pkg["Tracking Number"] !== "N/A" ||
-            pkg["Status"] !== "N/A" ||
-            pkg["Delivery Date"] !== "N/A"
-        );
+        });
       return { table: packages };
     } else if (
       queryLower.includes("event") ||
@@ -882,7 +900,9 @@ class MCPServer {
     ) {
       const events = emails.messages
         .filter((email) => {
-          const content = (email.subject + " " + email.body).toLowerCase();
+          const content = `${email?.subject || ""} ${
+            email?.body || ""
+          }`.toLowerCase();
           return (
             content.includes("event") ||
             content.includes("meeting") ||
@@ -891,14 +911,14 @@ class MCPServer {
           );
         })
         .map((email) => {
-          const titleMatch = email.subject.match(/(.+)/) || ["", "N/A"];
-          const dateMatch = email.body.match(
+          const titleMatch = email?.subject?.match(/(.+)/) || ["", "N/A"];
+          const dateMatch = email?.body?.match(
             /(?:date|scheduled|when):?\s*(\w+\s*\d{1,2},?\s*\d{4})/i
           ) || ["", "N/A"];
-          const timeMatch = email.body.match(
+          const timeMatch = email?.body?.match(
             /(?:time|at):?\s*(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i
           ) || ["", "N/A"];
-          const locationMatch = email.body.match(
+          const locationMatch = email?.body?.match(
             /(?:location|place|venue):?\s*(.+?)(?:\.|,|\n|$)/i
           ) || ["", "N/A"];
           return {
@@ -906,28 +926,28 @@ class MCPServer {
             Date: dateMatch[1],
             Time: timeMatch[1],
             Location: locationMatch[1],
-            Organizer: email.from,
-            "Email ID": email.id,
+            Organizer: email?.from || "N/A",
+            "Email ID": email?.id || "N/A",
           };
-        })
-        .filter((event) => event["Date"] !== "N/A" || event["Time"] !== "N/A");
+        });
       return { table: events };
+    } else {
+      return {
+        emails: emails.messages.map((email) => ({
+          id: email?.id || "N/A",
+          subject: email?.subject || "No subject",
+          from: email?.from || "N/A",
+          date: email?.date ? new Date(email.date).toLocaleDateString() : "N/A",
+          snippet: email?.snippet || "No preview available",
+        })),
+        summary: {
+          totalCount: emails.messages.length,
+          unreadCount: emails.messages.filter((e) => e?.unread).length,
+          senderBreakdown: this.getSenderBreakdown(emails.messages),
+          timeDistribution: this.getTimeDistribution(emails.messages),
+        },
+      };
     }
-    return {
-      emails: emails.messages.map((email) => ({
-        id: email.id,
-        subject: email.subject || "No subject",
-        from: email.from,
-        date: new Date(email.date).toLocaleDateString(),
-        snippet: email.snippet || "No preview available",
-      })),
-      summary: {
-        totalCount: emails.messages.length,
-        unreadCount: emails.messages.filter((e) => e.unread).length,
-        senderBreakdown: this.getSenderBreakdown(emails.messages),
-        timeDistribution: this.getTimeDistribution(emails.messages),
-      },
-    };
   }
 
   getSenderBreakdown(emails) {

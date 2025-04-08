@@ -74,7 +74,6 @@ class GmailService extends EmailService {
   }) {
     const client = await this.getClient();
 
-    // Base params
     const params = {
       userId: "me",
       maxResults,
@@ -82,7 +81,6 @@ class GmailService extends EmailService {
       pageToken,
     };
 
-    // Apply filters
     const filterMap = {
       all: (params) => params,
       read: (params) => {
@@ -119,50 +117,43 @@ class GmailService extends EmailService {
       },
     };
 
-    const appliedFilter = filterMap[filter.toLowerCase()];
-    if (!appliedFilter) {
-      return filterMap["all"](params);
-    }
-
-    if (!appliedFilter) {
-      throw new ApiError(
-        StatusCodes.BAD_REQUEST,
-        `Unsupported filter: ${filter}`
-      );
-    }
-
+    const appliedFilter = filterMap[filter.toLowerCase()] || filterMap["all"];
     const filteredParams = appliedFilter(params);
 
     try {
       const response = await client.users.messages.list(filteredParams);
-      if (!response.data.messages || response.data.messages.length === 0) {
-        return {
-          messages: [],
-          nextPageToken: response.data.nextPageToken || null,
-        };
+      // Check if response status is not 200 or data is invalid
+      if (response.status !== 200 || !response.data) {
+        console.error(
+          `[ERROR] Gmail API returned status ${response.status}: ${response.statusText}`
+        );
+        return { messages: [], nextPageToken: null };
       }
 
+      const messages = response.data.messages || [];
       const emails = await Promise.all(
-        response.data.messages.map(async (msg) => {
-          const email = await client.users.messages.get({
-            userId: "me",
-            id: msg.id,
-            format: "full",
-          });
-          return this.formatEmail(email.data);
+        messages.map(async (msg) => {
+          try {
+            const email = await client.users.messages.get({
+              userId: "me",
+              id: msg.id,
+              format: "full",
+            });
+            return this.formatEmail(email.data);
+          } catch (error) {
+            console.error(`[ERROR] Failed to fetch email ${msg.id}:`, error);
+            return null; // Skip failed emails
+          }
         })
       );
 
       return {
-        messages: emails,
+        messages: emails.filter(Boolean), // Remove null entries
         nextPageToken: response.data.nextPageToken || null,
       };
     } catch (error) {
       console.error("[ERROR] Failed to fetch emails:", error);
-      throw new ApiError(
-        StatusCodes.INTERNAL_SERVER_ERROR,
-        `Failed to fetch emails: ${error.message || "Unknown error"}`
-      );
+      return { messages: [], nextPageToken: null }; // Return empty result on error
     }
   }
 

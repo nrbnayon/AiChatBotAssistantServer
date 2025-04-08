@@ -107,7 +107,7 @@ async function extractTextFromFile(filePath, mimeType) {
 router.post(
   "/",
   auth(),
-  chatRateLimit(),
+  // chatRateLimit(),
   upload.single("file"),
   catchAsync(async (req, res) => {
     const emailService = await createEmailService(req);
