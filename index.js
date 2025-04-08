@@ -59,6 +59,7 @@ const allowedOrigins = [
   "http://192.168.10.33:3000",
   `http://192.168.10.206:3000`,
   `http://172.16.0.2:3000`,
+  "https://inbox-buddy-ai-ynx6.vercel.app",
   "http://192.168.10.206:3000",
   `http://${localIpAddress}:3000`,
   `http://${IP_ADDRESS}:3000`,

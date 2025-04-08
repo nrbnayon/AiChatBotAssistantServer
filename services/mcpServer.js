@@ -727,33 +727,79 @@ class MCPServer {
           ];
         }
       }
+        
       case "draft-email": {
         const { recipient, content, recipient_email } = args;
         if (!recipient || !content)
           throw new Error("Missing required parameters");
 
-        const userName = this.emailService.user.name || "Your Name"; // Fallback to "User" if name is missing
-        const prompt = `Draft a polite and professional email from ${userName} to ${recipient} based on the following message: "${content}". Include a suitable subject line starting with 'Subject:'. If the message is brief, expand it into a complete email body with appropriate greetings, context, and a sign-off using the sender's name "${userName}". Ensure the email is clear, courteous, and professional.`;
+        let draftText;
+        const pendingDraft = this.pendingEmails.get(userId);
 
-        const defaultModel = await getDefaultModel();
-        const draftResponse = await this.modelProvider.callWithFallbackChain(
-          defaultModel.id,
-          {
-            messages: [
+        // *** CHANGE START: Handle modifications while preserving format ***
+        if (pendingDraft && message.toLowerCase().includes("change")) {
+          // Use the existing draft as the base and apply modifications cleanly
+          
+          const defaultModel = await getDefaultModel();
+          const modificationPrompt = `Modify the following email draft based on the user's request: "${message}". Keep the original structure intact, including line breaks and formatting, and only update the requested parts.\n\nOriginal Draft:\nTo: ${pendingDraft.recipient_id}\nSubject: ${pendingDraft.subject}\n\n${pendingDraft.message}\n\nProvide the updated draft in the same format with "To:", "Subject:", and the body separated by newlines.`;
+          const modificationResponse =
+            await this.modelProvider.callWithFallbackChain(
+              defaultModel.id,
               {
-                role: "user",
-                content: prompt,
+                messages: [
+                  {
+                    role: "user",
+                    content: modificationPrompt,
+                  },
+                ],
+                temperature: 1.0,
+                max_tokens: 3000,
               },
-            ],
-            temperature: 1.0,
-            max_tokens: 3000,
-          },
-          ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
-        );
-
-        const draftText =
-          draftResponse.result.choices[0]?.message?.content ||
-          "Draft not generated";
+              ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+            );
+          draftText =
+            modificationResponse.result.choices[0]?.message?.content ||
+            "Draft not generated";
+          // Ensure the modified draft retains proper structure
+          const lines = draftText.split("\n");
+          const toIndex = lines.findIndex((line) => line.startsWith("To:"));
+          const subjectIndex = lines.findIndex((line) =>
+            line.startsWith("Subject:")
+          );
+          if (toIndex !== -1 && subjectIndex !== -1 && subjectIndex > toIndex) {
+            const subject = lines[subjectIndex].replace("Subject:", "").trim();
+            const body = lines
+              .slice(subjectIndex + 1)
+              .join("\n")
+              .trim();
+            draftText = `To: ${lines[toIndex]
+              .replace("To:", "")
+              .trim()}\nSubject: ${subject}\n\n${body}`;
+          }
+          // *** CHANGE END ***
+        } else {
+          // Create new draft (unchanged from original)
+          const defaultModel = await getDefaultModel();
+          const userName = this.emailService.user.name || "Your Name";
+          const prompt = `Draft a polite and professional email from ${userName} to ${recipient} based on the following message: "${content}". Include a suitable subject line starting with 'Subject:'. If the message is brief, expand it into a complete email body with appropriate greetings, context, and a sign-off using the sender's name "${userName}". Ensure the email is clear, courteous, and professional.`;
+          const draftResponse = await this.modelProvider.callWithFallbackChain(
+            defaultModel.id,
+            {
+              messages: [
+                {
+                  role: "user",
+                  content: prompt,
+                },
+              ],
+              temperature: 1.0,
+              max_tokens: 3000,
+            },
+            ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+          );
+          draftText =
+            draftResponse.result.choices[0]?.message?.content ||
+            "Draft not generated";
+        }
 
         const subjectMatch = draftText.match(/Subject:\s*(.+?)(?=\n|$)/);
         const subject = subjectMatch ? subjectMatch[1].trim() : "No subject";
@@ -798,10 +844,90 @@ class MCPServer {
           },
         ];
       }
+        
+  //       case "draft-email": {
+  //       const { recipient, content, recipient_email } = args;
+  //       if (!recipient || !content)
+  //         throw new Error("Missing required parameters");
+
+  //       const userName = this.emailService.user.name || "Your Name"; // Fallback to "User" if name is missing
+  //       const prompt = `Draft a polite and professional email from ${userName} to ${recipient} based on the following message: "${content}". Include a suitable subject line starting with 'Subject:'. If the message is brief, expand it into a complete email body with appropriate greetings, context, and a sign-off using the sender's name "${userName}". Ensure the email is clear, courteous, and professional.`;
+
+  //       const defaultModel = await getDefaultModel();
+  //       const draftResponse = await this.modelProvider.callWithFallbackChain(
+  //         defaultModel.id,
+  //         {
+  //           messages: [
+  //             {
+  //               role: "user",
+  //               content: prompt,
+  //             },
+  //           ],
+  //           temperature: 1.0,
+  //           max_tokens: 3000,
+  //         },
+  //         ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+  //       );
+
+  //       const draftText =
+  //         draftResponse.result.choices[0]?.message?.content ||
+  //         "Draft not generated";
+
+  //       const subjectMatch = draftText.match(/Subject:\s*(.+?)(?=\n|$)/);
+  //       const subject = subjectMatch ? subjectMatch[1].trim() : "No subject";
+  //       const body = draftText.split("\n").slice(1).join("\n").trim();
+
+  //       this.pendingEmails.set(userId, {
+  //         recipient_id: recipient_email || recipient,
+  //         subject,
+  //         message: body,
+  //       });
+
+  //       await EmailDraft.create({
+  //         userId,
+  //         recipientId: recipient_email || recipient,
+  //         subject,
+  //         message: body,
+  //         status: "draft",
+  //       });
+
+  //       const draftResponses = [
+  //         `I've prepared an email for **${recipient}**:\n\n**To:** ${
+  //           recipient_email || recipient
+  //         }\n**Subject:** ${subject}\n\n${body}\n\nDoes this look good? Let me know if you'd like any changes before sending. Or do you want to send it now? just say **"confirm send"** it`,
+
+  //         `Here's a draft email for **${recipient}**:\n\n**To:** ${
+  //           recipient_email || recipient
+  //         }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think? Is it ready to send or would you like to make adjustments?. Or do you want to send it now? just say **"confirm send"** it`,
+
+  //         `I've drafted an email for **${recipient}**:\n\n**To:** ${
+  //           recipient_email || recipient
+  //         }\n**Subject:** ${subject}\n\n${body}\n\nPlease review and let me know if this works for you or if any changes are needed. Just confirm me when you're ready to send. write **"confirm send"** to send it`,
+  //         `Here's a draft email for **${recipient}**:\n\n**To:** ${
+  //           recipient_email || recipient
+  //         }\n**Subject:** ${subject}\n\n${body}\n\nLet me know if you want to send it as is or if you need to tweak anything. Or do you want to send it now? just say **"confirm sent"** it`,
+  //       ];
+  //       return [
+  //         {
+  //           type: "text",
+  //           text: draftResponses[
+  //             Math.floor(Math.random() * draftResponses.length)
+  //           ],
+  //         },
+  //       ];
+  //     }
+  //     default:
+  //       throw new Error(`Unknown tool: ${name}`);
+  //   }
+  // }
+        
+        
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
   }
+
+   
 
   analyzeEmails(emails, query) {
     // Defensive check for undefined or missing messages
@@ -1012,7 +1138,7 @@ class MCPServer {
         .replace(/{{TIME_CONTEXT}}/g, timeContext)
         .replace(/{{EMAIL_COUNT}}/g, emailCount.toString())
         .replace(/{{UNREAD_COUNT}}/g, unreadCount.toString()) +
-      "\n\nWhen there's a pending email draft, interpret affirmative responses like 'confirm sent', 'yes', or 'send it' as a command to send the email, returning {\"action\": \"send-email\", \"params\": {...}}. If the user says 'send draft 1' or 'send draft 2' after a list of drafts, select the corresponding draft (1 for the most recent, 2 for the second most recent) and return the same action." +
+      "\n\nWhen there's a pending email draft, interpret affirmative responses like 'confirm sent', 'yes', or 'send it' as a command to send the email, returning {\"action\": \"send-email\", \"params\": {...}}. If the user says  'send draft 1' or 'send draft 2' after a list of drafts, select the corresponding draft (1 for the most recent, 2 for the second most recent) and return the same action." +
       "\n\nWhen the user uploads a file, the file content is included in the message. Analyze it directly and provide responses based on its text. Do not attempt to fetch emails or use undefined tools unless explicitly requested.";
 
     if (
@@ -1098,7 +1224,7 @@ class MCPServer {
         } else {
           return {
             type: "text",
-            text: `I found ${drafts.length} drafts:\n1. To: ${drafts[0].recipientId}, Subject: ${drafts[0].subject}\n2. To: ${drafts[1].recipientId}, Subject: ${drafts[1].subject}\nWhich one? Say "send draft 1" or "send draft 2".`,
+            text: `I found ${drafts.length} drafts:\n1. To: ${drafts[0].recipientId}, Subject: ${drafts[0].subject}\n2. To: ${drafts[1].recipientId}, Subject: ${drafts[1].subject}\nWhich one? Say **"send draft 1"** or **"send draft 2"**.`,
             modelUsed: "N/A",
             fallbackUsed: false,
           };
