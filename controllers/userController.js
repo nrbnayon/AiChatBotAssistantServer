@@ -9,7 +9,7 @@ import AiModel from "../models/AiModel.js";
 import SystemMessage from "../models/SystemMessage.js";
 import { safeCookie } from "../helper/cookieHelper.js";
 import { generateTokens } from "./authController.js";
-
+import { sendApprovalConfirmation, sendFirstLoginConfirmation } from "../helper/notifyByEmail.js";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const getIncome = catchAsync(async (req, res, next) => {
@@ -51,6 +51,8 @@ const approveWaitingList = catchAsync(async (req, res, next) => {
   );
   if (!entry)
     return next(new ApiError("Entry not found or already processed", 404));
+  const loginLink = `${process.env.FRONTEND_URL}/login`;
+  await sendApprovalConfirmation(entry, loginLink); // Send approval email
   res.json({ message: "User approved", entry });
 });
 
@@ -153,6 +155,11 @@ const createUser = catchAsync(async (req, res, next) => {
   const newUser = await userService.createUser({ name, email, password, role });
   const { accessToken, refreshToken } = generateTokens(newUser);
   newUser.refreshToken = refreshToken;
+  await newUser.save();
+
+  // Send first login email for locally created users
+  await sendFirstLoginConfirmation(newUser);
+  newUser.firstLogin = false; // Set to false after sending email
   await newUser.save();
 
   safeCookie.set(res, "accessToken", accessToken, {

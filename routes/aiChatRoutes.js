@@ -1,3 +1,4 @@
+// routes\aiChatRoutes.js
 import express from "express";
 import auth from "../middleware/authMiddleware.js";
 import { createEmailService } from "../services/emailService.js";
@@ -105,7 +106,7 @@ async function extractTextFromFile(filePath, mimeType) {
 router.post(
   "/",
   auth(),
-  // chatRateLimit(),
+  chatRateLimit(),
   upload.single("file"), // vercel upload issue
   catchAsync(async (req, res) => {
     const emailService = await createEmailService(req);

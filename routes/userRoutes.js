@@ -1,4 +1,5 @@
 // routes\userRoutes.js
+// routes/userRoutes.js
 import express from "express";
 import {
   getMe,
@@ -9,7 +10,7 @@ import {
   updateKeywords,
   createUser,
   deleteUser,
-  updateUser, 
+  updateUser,
   addInbox,
   getIncome,
   getUserStats,
@@ -30,6 +31,11 @@ import auth, { setRefreshedTokenCookie } from "../middleware/authMiddleware.js";
 import { rateLimitMiddleware } from "../middleware/rateLimit.js";
 import WaitingList from "../models/WaitingList.js";
 import upload from "../middleware/multerConfig.js";
+import {
+  sendAdminNotification,
+  sendWaitingListConfirmation,
+} from "../helper/notifyByEmail.js";
+import User from "../models/User.js";
 
 const router = express.Router();
 
@@ -43,14 +49,58 @@ router.post("/add-to-waiting-list", async (req, res) => {
   const { email, name, inbox, description } = req.body;
 
   try {
-    const entry = new WaitingList({ email, name, inbox, description });
+    // Normalize email to match schema's pre-save hook
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Step 1: Check if the email exists in the User collection
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    if (existingUser) {
+      return res.status(200).json({ message: "You are already registered." });
+    }
+
+    // Step 2: Check if the email exists in the WaitingList collection
+    const existingWaiting = await WaitingList.findOne({
+      email: normalizedEmail,
+    });
+    if (existingWaiting) {
+      if (existingWaiting.status === "waiting") {
+        return res
+          .status(200)
+          .json({ message: "You are already on the waiting list." });
+      } else if (existingWaiting.status === "approved") {
+        return res.status(200).json({
+          message:
+            "Your application has been approved. Please proceed to register.",
+        });
+      } else if (existingWaiting.status === "rejected") {
+        return res
+          .status(200)
+          .json({ message: "Your application was rejected." });
+      }
+    }
+
+    // Step 3: If not in User or WaitingList, add to WaitingList
+    const entry = new WaitingList({
+      email: normalizedEmail,
+      name,
+      inbox,
+      description,
+    });
     await entry.save();
-    res.status(201).json({ message: "Added to waiting list", entry });
+
+    // Send confirmation emails
+    await sendWaitingListConfirmation(entry);
+    await sendAdminNotification(entry);
+
+    res.status(201).json({
+      message:
+        "Added to waiting list. We will notify you when approved by admin.",
+      entry,
+    });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
 });
-
 
 router.get("/waiting-list-status", async (req, res) => {
   const { email } = req.query;

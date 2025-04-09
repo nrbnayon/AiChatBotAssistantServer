@@ -7,6 +7,7 @@ import User, { DEFAULT_IMPORTANT_KEYWORDS } from "../models/User.js";
 import { generateTokens } from "../controllers/authController.js";
 import WaitingList from "../models/WaitingList.js";
 import { encrypt } from "../utils/encryptionUtils.js";
+import { sendFirstLoginConfirmation } from "../helper/notifyByEmail.js";
 
 dotenv.config();
 
@@ -151,6 +152,12 @@ const oauthCallback = async (
       }
 
       await user.save();
+
+      if (user.firstLogin) {
+        await sendFirstLoginConfirmation(user); 
+        user.firstLogin = false;
+        await user.save();
+      }
       console.log(
         `[INFO] Updated existing user for ${email} with ${provider} credentials`
       );
@@ -180,10 +187,18 @@ const oauthCallback = async (
     user.refreshToken = jwtRefreshToken;
     await user.save();
 
+    if (user.firstLogin) {
+      await sendFirstLoginConfirmation(user); 
+      user.firstLogin = false;
+      await user.save();
+    }
+
     return done(null, user, {
       accessToken: jwtAccessToken,
       refreshToken: jwtRefreshToken,
     });
+
+    
   } catch (error) {
     console.error(`[ERROR] ${provider} OAuth callback failed:`, error.message);
     return done(error, null);

@@ -1,4 +1,4 @@
-// models\User.js and models
+// models/User.js (updated)
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 
@@ -84,6 +84,7 @@ const userSchema = new mongoose.Schema({
     type: [String],
     default: DEFAULT_IMPORTANT_KEYWORDS,
   },
+  firstLogin: { type: Boolean, default: true }, 
 });
 
 userSchema.pre("save", async function (next) {
