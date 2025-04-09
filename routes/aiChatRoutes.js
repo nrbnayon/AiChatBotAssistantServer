@@ -43,8 +43,8 @@ const storage = multer.diskStorage({
   },
 });
 
-// const upload = multer({ storage });
-const upload = multer({ dest: "/tmp" });
+const upload = multer({ storage });
+// const upload = multer({ dest: "/tmp" });
 const userConversations = new Map();
 
 // **Get or Create Conversation History**
@@ -106,7 +106,7 @@ router.post(
   "/",
   auth(),
   // chatRateLimit(),
-  // upload.single("file"), // vercel upload issue
+  upload.single("file"), // vercel upload issue
   catchAsync(async (req, res) => {
     const emailService = await createEmailService(req);
     const mcpServer = new MCPServer(emailService);
@@ -150,30 +150,30 @@ router.post(
     let userMessage = message || "";
 
     // Process uploaded file if present
-    // if (req.file) {
-    //   try {
-    //     const fileText = await extractTextFromFile(
-    //       req.file.path,
-    //       req.file.mimetype
-    //     );
-    //     userMessage = userMessage
-    //       ? `${userMessage}\n\nContent from file ${req.file.originalname}:\n${fileText}`
-    //       : `I have uploaded a file named '${req.file.originalname}'. Please analyze its content and provide a summary or key points based on the text extracted from it:\n${fileText}`;
+    if (req.file) {
+      try {
+        const fileText = await extractTextFromFile(
+          req.file.path,
+          req.file.mimetype
+        );
+        userMessage = userMessage
+          ? `${userMessage}\n\nContent from file ${req.file.originalname}:\n${fileText}`
+          : `I have uploaded a file named '${req.file.originalname}'. Please analyze its content and provide a summary or key points based on the text extracted from it:\n${fileText}`;
 
-    //     // Clean up file after processing
-    //     try {
-    //       fs.unlinkSync(req.file.path);
-    //     } catch (err) {
-    //       console.error(`Error deleting file: ${err}`);
-    //     }
-    //   } catch (error) {
-    //     console.error("File processing error:", error);
-    //     return res.status(400).json({
-    //       success: false,
-    //       message: `Error processing uploaded file: ${error.message}`,
-    //     });
-    //   }
-    // }
+        // Clean up file after processing
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (err) {
+          console.error(`Error deleting file: ${err}`);
+        }
+      } catch (error) {
+        console.error("File processing error:", error);
+        return res.status(400).json({
+          success: false,
+          message: `Error processing uploaded file: ${error.message}`,
+        });
+      }
+    }
 
     try {
       const emails = (await emailService.fetchEmails({ maxResults })).messages;
