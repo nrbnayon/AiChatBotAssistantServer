@@ -6,7 +6,7 @@ import dotenv from "dotenv";
 import User, { DEFAULT_IMPORTANT_KEYWORDS } from "../models/User.js";
 import { generateTokens } from "../controllers/authController.js";
 import WaitingList from "../models/WaitingList.js";
-import { encrypt } from "../utils/encryptionUtils.js"; 
+import { encrypt } from "../utils/encryptionUtils.js";
 
 dotenv.config();
 
@@ -75,13 +75,19 @@ const oauthCallback = async (
     // ----- waitingListEntry check email ------
     const waitingListEntry = await WaitingList.findOne({
       email,
-      status: "approved",
     });
 
     console.log(`[INFO] Waiting list entry for ${email}:`, waitingListEntry);
+
     if (!waitingListEntry) {
       return done(null, false, {
-        message: `Access denied: The email ${email} is not approved yet. Please wait for admin approval.`,
+        message: `Access denied: The email ${email} is not found in our waiting list. Please join the waiting list first to proceed.`,
+      });
+    }
+
+    if (waitingListEntry.status !== "approved") {
+      return done(null, false, {
+        message: `Access denied: The email ${email} is registered but not yet approved. Please wait for admin approval.`,
       });
     }
 
