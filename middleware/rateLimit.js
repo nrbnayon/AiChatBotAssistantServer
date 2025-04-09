@@ -98,13 +98,46 @@ const chatRateLimit = (options = {}) => {
       // Find user
       const user = await User.findById(req.user.id);
       if (!user) {
-        return res.status(401).json({ message: "User not found" });
+        return res.status(401).json({
+          success: false,
+          message: "User not found",
+        });
       }
 
       const now = new Date();
       const lastRequest = user.subscription.lastRequestDate
         ? new Date(user.subscription.lastRequestDate)
         : null;
+
+      // Check subscription status first
+      if (user.subscription.status !== "active") {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Your subscription is not active. Please activate your subscription to continue.",
+          code: "SUBSCRIPTION_INACTIVE",
+        });
+      }
+
+      if (
+        !["basic", "premium", "enterprise"].includes(user.subscription.plan)
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Invalid subscription plan. Please update your subscription.",
+          code: "INVALID_PLAN",
+        });
+      }
+
+      if (user.subscription.endDate && user.subscription.endDate < now) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Your subscription has expired. Please renew your subscription to continue.",
+          code: "SUBSCRIPTION_EXPIRED",
+        });
+      }
 
       // Plan-specific query limits
       const planLimits = {
@@ -114,12 +147,13 @@ const chatRateLimit = (options = {}) => {
       };
 
       const tokenLimits = {
-        basic: 10000, //10000
-        premium: Infinity,
+        basic: 10000,
+        premium: 50000,
         enterprise: Infinity,
       };
 
-      const maxQueries = planLimits[user.subscription.plan] || max;
+      // Get the daily query limit based on plan
+      const dailyQueryLimit = planLimits[user.subscription.plan] || max;
       const maxTokens = tokenLimits[user.subscription.plan] || 10000;
 
       // Reset daily counters if it's a new day
@@ -129,8 +163,8 @@ const chatRateLimit = (options = {}) => {
         lastRequest.getMonth() !== now.getMonth() ||
         lastRequest.getFullYear() !== now.getFullYear()
       ) {
-        // Reset to max allowed for the day instead of 0
-        user.subscription.remainingQueries = maxQueries;
+        // Reset to max allowed for the day
+        user.subscription.remainingQueries = dailyQueryLimit;
         user.subscription.dailyTokens = 0;
         user.subscription.lastRequestDate = now;
       }
@@ -141,45 +175,41 @@ const chatRateLimit = (options = {}) => {
         if (user.subscription.dailyQueries !== undefined) {
           user.subscription.remainingQueries = Math.max(
             0,
-            maxQueries - user.subscription.dailyQueries
+            dailyQueryLimit - user.subscription.dailyQueries
           );
           // Remove the old field to avoid confusion
           delete user.subscription.dailyQueries;
         } else {
-          user.subscription.remainingQueries = maxQueries;
+          user.subscription.remainingQueries = dailyQueryLimit;
         }
-      }
-
-      // Check subscription status
-      if (
-        user.subscription.status !== "active" ||
-        !["basic", "premium", "enterprise"].includes(user.subscription.plan) ||
-        (user.subscription.endDate && user.subscription.endDate < now)
-      ) {
-        return res.status(403).json({
-          success: false,
-          message: "An active subscription (at least basic) is required",
-        });
       }
 
       // Check remaining queries
       if (user.subscription.remainingQueries <= 0) {
         return res.status(429).json({
           success: false,
-          message:
-            "Daily query limit reached for your plan. Please try again tomorrow.",
+          message: `You've reached your daily limit of ${dailyQueryLimit} queries for your ${user.subscription.plan} plan. Your limit will reset tomorrow.`,
+          code: "DAILY_LIMIT_REACHED",
+          plan: user.subscription.plan,
+          limit: dailyQueryLimit,
         });
       }
 
       // Decrement remaining queries
       user.subscription.remainingQueries -= 1;
       user.subscription.lastRequestDate = now;
+
+      // Set token info for the request
       req.maxTokens = maxTokens;
       req.currentTokens = user.subscription.dailyTokens || 0;
+      req.remainingQueries = user.subscription.remainingQueries;
+      req.totalQueries = dailyQueryLimit;
+
       await user.save();
 
       next();
     } catch (error) {
+      console.error("Rate limit middleware error:", error);
       next(error);
     }
   };
