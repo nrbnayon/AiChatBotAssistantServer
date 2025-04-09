@@ -1,4 +1,4 @@
-// index.js  okay
+// index.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -14,6 +14,7 @@ import stripeRoutes from "./routes/stripeRoutes.js";
 import emailRoutes from "./routes/emailRoutes.js";
 import aiChatRoutes from "./routes/aiChatRoutes.js";
 import aiModelRoutes from "./routes/aiModelRoutes.js";
+import chatRoutes from "./routes/chatRoutes.js"; // New import
 import { globalErrorHandler } from "./utils/errorHandler.js";
 import requestLogger from "./utils/requestLogger.js";
 import "./config/passport.js";
@@ -25,7 +26,7 @@ const PORT = process.env.PORT || 4000;
 const IP_ADDRESS = process.env.IP_ADDRESS || "127.0.0.1";
 
 // Determine the upload directory based on the environment
-const isLambda = !!process.env.LAMBDA_TASK_ROOT; // Detect if running in AWS Lambda
+const isLambda = !!process.env.LAMBDA_TASK_ROOT;
 const baseUploadDir = isLambda ? "/tmp" : process.cwd();
 const uploadDir = path.join(baseUploadDir, "uploads/images");
 
@@ -86,7 +87,6 @@ app.use(passport.session());
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin or from allowed origin
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -108,7 +108,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(requestLogger);
 
-// **Routes** //
+// Routes
 app.get("/", (req, res) => {
   res.send("Welcome to the you mail ai assistant!");
 });
@@ -118,6 +118,7 @@ app.use("/api/v1/ai-models", aiModelRoutes);
 app.use("/api/v1/stripe", stripeRoutes);
 app.use("/api/v1/emails", emailRoutes);
 app.use("/api/v1/ai-assistant", aiChatRoutes);
+app.use("/api/v1/chats", chatRoutes); 
 
 app.use((req, res) => {
   res.status(404).json({
