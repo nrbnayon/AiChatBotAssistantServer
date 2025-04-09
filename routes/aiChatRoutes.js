@@ -200,19 +200,32 @@ router.post(
         .json({ success: false, message: "Message or file is required" });
     }
 
-    const chatName = message
-      ? `Chat with - ${message.substring(0, 20)}`
-      : "Chat with AI";
-    const newChat = new Chat({ userId, name: chatName });
-    await newChat.save();
+    // Build the full user message
+    let userMessage = message || "";
+    if (req.file) {
+      try {
+        const fileText = await extractTextFromFile(
+          req.file.path,
+          req.file.mimetype
+        );
+        userMessage = userMessage
+          ? `${userMessage}\n\nContent from file ${req.file.originalname}:\n${fileText}`
+          : `Analyze this file '${req.file.originalname}':\n${fileText}`;
+        await fs.promises.unlink(req.file.path);
+      } catch (error) {
+        console.error("File processing error:", error);
+        return res.status(400).json({
+          success: false,
+          message: `Error processing uploaded file: ${error.message}`,
+        });
+      }
+    }
 
-    // Add your message to the chat
-    newChat.messages.push({
-      role: "user",
-      content: message,
-      timestamp: new Date(),
-    });
-    await newChat.save();
+    const chatName = message
+      ? `Chat with Assistant- ${message.substring(0, 10)}...`
+      : "Chat with AI";
+
+    const newChat = new Chat({ userId, name: chatName });
 
     let history = [];
     if (providedHistory) {
@@ -226,31 +239,11 @@ router.post(
       }
     }
 
-    let userMessage = message || "";
-
-    if (req.file) {
-      try {
-        const fileText = await extractTextFromFile(
-          req.file.path,
-          req.file.mimetype
-        );
-        userMessage = userMessage
-          ? `${userMessage}\n\nContent from file ${req.file.originalname}:\n${fileText}`
-          : `Analyze this file '${req.file.originalname}':\n${fileText}`;
-        fs.unlinkSync(req.file.path);
-      } catch (error) {
-        console.error("File processing error:", error);
-        return res.status(400).json({
-          success: false,
-          message: `Error processing uploaded file: ${error.message}`,
-        });
-      }
-    }
-
     try {
       const emails = (await emailService.fetchEmails({ maxResults })).messages;
+
       const hour = new Date().getHours();
-      let timeContext =
+      const timeContext =
         hour >= 5 && hour < 12
           ? "morning"
           : hour >= 12 && hour < 18
@@ -269,30 +262,34 @@ router.post(
         modelId
       );
 
-      const user = await User.findById(req.user.id);
+      const user = await User.findById(userId);
       const newTokenCount =
         (user.subscription.dailyTokens || 0) + (chatResponse.tokenCount || 0);
+
       if (newTokenCount > req.maxTokens) {
         return res.status(429).json({
           success: false,
           message: "Daily token limit exceeded for your plan",
         });
       }
+
       user.subscription.dailyTokens = newTokenCount;
       await user.save();
 
-      // Store messages in the new chat
-      newChat.messages.push({
-        role: "user",
-        content: userMessage,
-        timestamp: new Date(),
-      });
-      newChat.messages.push({
-        role: "assistant",
-        content: chatResponse.text,
-        timestamp: new Date(),
-        model: chatResponse.modelUsed,
-      });
+      newChat.messages.push(
+        {
+          role: "user",
+          content: userMessage,
+          timestamp: new Date(),
+        },
+        {
+          role: "assistant",
+          content: chatResponse.text,
+          timestamp: new Date(),
+          model: chatResponse.modelUsed,
+        }
+      );
+
       await newChat.save();
 
       res.json({
@@ -315,6 +312,7 @@ router.post(
     }
   })
 );
+
 
 // Extract Text from Uploaded File
 async function extractTextFromFile(filePath, mimeType) {
