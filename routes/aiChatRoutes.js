@@ -142,7 +142,8 @@ router.post(
       if (newTokenCount > req.maxTokens) {
         return res.status(429).json({
           success: false,
-          message: "Daily token limit exceeded for your plan",
+          message:
+            "Daily token limit reached for your plan. Please try again tomorrow.",
         });
       }
       user.subscription.dailyTokens = newTokenCount;
@@ -223,7 +224,7 @@ router.post(
 
     const chatName = message
       ? `Chat with Assistant- ${message.substring(0, 10)}...`
-      : "Chat with AI";
+      : "Untitled Chat";
 
     const newChat = new Chat({ userId, name: chatName });
 
@@ -312,7 +313,6 @@ router.post(
     }
   })
 );
-
 
 // Extract Text from Uploaded File
 async function extractTextFromFile(filePath, mimeType) {

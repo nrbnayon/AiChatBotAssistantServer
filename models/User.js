@@ -27,6 +27,10 @@ const subscriptionSchema = new mongoose.Schema({
     enum: ["active", "pending", "canceled"],
     default: "pending",
   },
+  remainingQueries: {
+    type: Number,
+    default: 15,
+  },
   dailyQueries: { type: Number, default: 0 },
   dailyTokens: { type: Number, default: 0 },
   autoRenew: { type: Boolean, default: true },
@@ -84,7 +88,7 @@ const userSchema = new mongoose.Schema({
     type: [String],
     default: DEFAULT_IMPORTANT_KEYWORDS,
   },
-  firstLogin: { type: Boolean, default: true }, 
+  firstLogin: { type: Boolean, default: true },
 });
 
 userSchema.pre("save", async function (next) {

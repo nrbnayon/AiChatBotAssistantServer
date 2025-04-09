@@ -101,33 +101,10 @@ const chatRateLimit = (options = {}) => {
         return res.status(401).json({ message: "User not found" });
       }
 
-      if (
-        user.subscription.status !== "active" ||
-        !["basic", "premium", "enterprise"].includes(user.subscription.plan) ||
-        (user.subscription.endDate && user.subscription.endDate < now)
-      ) {
-        await user.save();
-        return res.status(403).json({
-          success: false,
-          message: "An active subscription (at least basic) is required",
-        });
-      }
-
       const now = new Date();
       const lastRequest = user.subscription.lastRequestDate
         ? new Date(user.subscription.lastRequestDate)
         : null;
-
-      if (
-        !lastRequest ||
-        lastRequest.getDate() !== now.getDate() ||
-        lastRequest.getMonth() !== now.getMonth() ||
-        lastRequest.getFullYear() !== now.getFullYear()
-      ) {
-        user.subscription.dailyQueries = 0;
-        user.subscription.dailyTokens = 0;
-        user.subscription.lastRequestDate = now;
-      }
 
       // Plan-specific query limits
       const planLimits = {
@@ -137,27 +114,68 @@ const chatRateLimit = (options = {}) => {
       };
 
       const tokenLimits = {
-        basic: 10000,
-        premium: 50000,
+        basic: 10000, //10000
+        premium: Infinity,
         enterprise: Infinity,
       };
 
       const maxQueries = planLimits[user.subscription.plan] || max;
       const maxTokens = tokenLimits[user.subscription.plan] || 10000;
 
-      // Check daily limit
-      if (user.subscription.dailyQueries >= maxQueries) {
-        return res.status(429).json({
+      // Reset daily counters if it's a new day
+      if (
+        !lastRequest ||
+        lastRequest.getDate() !== now.getDate() ||
+        lastRequest.getMonth() !== now.getMonth() ||
+        lastRequest.getFullYear() !== now.getFullYear()
+      ) {
+        // Reset to max allowed for the day instead of 0
+        user.subscription.remainingQueries = maxQueries;
+        user.subscription.dailyTokens = 0;
+        user.subscription.lastRequestDate = now;
+      }
+
+      // Initialize remainingQueries if it doesn't exist yet (for existing users)
+      if (user.subscription.remainingQueries === undefined) {
+        // If dailyQueries exists but not remainingQueries, calculate remaining
+        if (user.subscription.dailyQueries !== undefined) {
+          user.subscription.remainingQueries = Math.max(
+            0,
+            maxQueries - user.subscription.dailyQueries
+          );
+          // Remove the old field to avoid confusion
+          delete user.subscription.dailyQueries;
+        } else {
+          user.subscription.remainingQueries = maxQueries;
+        }
+      }
+
+      // Check subscription status
+      if (
+        user.subscription.status !== "active" ||
+        !["basic", "premium", "enterprise"].includes(user.subscription.plan) ||
+        (user.subscription.endDate && user.subscription.endDate < now)
+      ) {
+        return res.status(403).json({
           success: false,
-          message: "Daily query limit exceeded for your plan",
+          message: "An active subscription (at least basic) is required",
         });
       }
 
-      // Increment and save query count
-      user.subscription.dailyQueries += 1;
+      // Check remaining queries
+      if (user.subscription.remainingQueries <= 0) {
+        return res.status(429).json({
+          success: false,
+          message:
+            "Daily query limit reached for your plan. Please try again tomorrow.",
+        });
+      }
+
+      // Decrement remaining queries
+      user.subscription.remainingQueries -= 1;
       user.subscription.lastRequestDate = now;
-       req.maxTokens = maxTokens;
-       req.currentTokens = user.subscription.dailyTokens || 0;
+      req.maxTokens = maxTokens;
+      req.currentTokens = user.subscription.dailyTokens || 0;
       await user.save();
 
       next();

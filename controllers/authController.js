@@ -147,7 +147,7 @@ const register = catchAsync(async (req, res, next) => {
     password,
     name,
     authProvider: "local",
-    subscription: { plan: "basic", dailyQueries: 15 },
+    subscription: { plan: "basic", dailyQueries: 1500, status: "active" },
   });
 
   const { accessToken, refreshToken } = generateTokens(user);
