@@ -147,8 +147,8 @@ const chatRateLimit = (options = {}) => {
       };
 
       const tokenLimits = {
-        basic: 10000,
-        premium: 50000,
+        basic: Infinity,
+        premium: Infinity,
         enterprise: Infinity,
       };
 
