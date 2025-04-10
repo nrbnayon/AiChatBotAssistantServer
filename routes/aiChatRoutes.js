@@ -253,17 +253,19 @@ router.post(
           ? "afternoon"
           : "evening";
 
-      const chatResponse = await mcpServer.chatWithBot(
-        req,
-        userMessage,
-        history,
-        {
-          timeContext,
-          emailCount: emails.length,
-          unreadCount: emails.filter((e) => e.unread).length,
-        },
-        modelId
-      );
+       const emailService = await createEmailService(req);
+       const inboxStats = await emailService.getInboxStats();
+       const chatResponse = await mcpServer.chatWithBot(
+         req,
+         userMessage,
+         history,
+         {
+           timeContext,
+           emailCount: inboxStats.totalEmails,
+           unreadCount: inboxStats.unreadEmails,
+         },
+         modelId
+       );
 
       const user = await User.findById(userId);
       const newTokenCount =

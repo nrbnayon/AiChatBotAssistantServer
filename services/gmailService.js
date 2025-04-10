@@ -334,13 +334,18 @@ class GmailService extends EmailService {
   async getInboxStats() {
     const client = await this.getClient();
     try {
-      const response = await client.users.labels.get({
+      const inboxResponse = await client.users.labels.get({
         userId: "me",
         id: "INBOX",
       });
+      const totalUnreadResponse = await client.users.messages.list({
+        userId: "me",
+        q: "is:unread",
+        maxResults: 0, 
+      });
       return {
-        totalEmails: response.data.messagesTotal || 0,
-        unreadEmails: response.data.messagesUnread || 0,
+        totalEmails: inboxResponse.data.messagesTotal || 0, 
+        unreadEmails: totalUnreadResponse.data.resultSizeEstimate || 0, 
       };
     } catch (error) {
       console.error("[ERROR] Failed to get Gmail inbox stats:", error);
