@@ -13,7 +13,7 @@ import { fileURLToPath } from "url";
 import { dirname } from "path";
 import { chatRateLimit } from "../middleware/rateLimit.js";
 import User from "../models/User.js";
-import Chat from "../models/Chat.js"; // New import
+import Chat from "../models/Chat.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -102,8 +102,8 @@ router.post(
           req.file.mimetype
         );
         userMessage = userMessage
-          ? `${userMessage}\n\nContent from file ${req.file.originalname}:\n${fileText}`
-          : `Analyze this file '${req.file.originalname}':\n${fileText}`;
+          ? `Analyze this given file ${userMessage}\n\nContent from file ${req.file.originalname}:\n${fileText}`
+          : `Analyze this file and summarize and provide corrected information'${req.file.originalname}':\n${fileText}`;
         fs.unlinkSync(req.file.path);
       } catch (error) {
         console.error("File processing error:", error);
@@ -211,8 +211,8 @@ router.post(
           req.file.mimetype
         );
         userMessage = userMessage
-          ? `${userMessage}\n\nContent from file ${req.file.originalname}:\n${fileText}`
-          : `Analyze this file '${req.file.originalname}':\n${fileText}`;
+          ? `Analyze this given file ${userMessage}\n\nContent from file ${req.file.originalname}:\n${fileText}`
+          : `Analyze this file and summarize and provide corrected information'${req.file.originalname}':\n${fileText}`;
         await fs.promises.unlink(req.file.path);
       } catch (error) {
         console.error("File processing error:", error);
@@ -244,6 +244,8 @@ router.post(
     try {
       const emails = (await emailService.fetchEmails({ maxResults })).messages;
 
+      console.log("Get emails:::", emails.length);
+
       const hour = new Date().getHours();
       const timeContext =
         hour >= 5 && hour < 12
@@ -252,18 +254,18 @@ router.post(
           ? "afternoon"
           : "evening";
 
-       const inboxStats = await emailService.getInboxStats();
-       const chatResponse = await mcpServer.chatWithBot(
-         req,
-         userMessage,
-         history,
-         {
-           timeContext,
-           emailCount: inboxStats.totalEmails,
-           unreadCount: inboxStats.unreadEmails,
-         },
-         modelId
-       );
+      const inboxStats = await emailService.getInboxStats();
+      const chatResponse = await mcpServer.chatWithBot(
+        req,
+        userMessage,
+        history,
+        {
+          timeContext,
+          emailCount: inboxStats.totalEmails,
+          unreadCount: inboxStats.unreadEmails,
+        },
+        modelId
+      );
 
       const user = await User.findById(userId);
       const newTokenCount =
