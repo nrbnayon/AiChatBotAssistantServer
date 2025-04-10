@@ -124,7 +124,6 @@ router.post(
           ? "afternoon"
           : "evening";
 
-      const emailService = await createEmailService(req);
       const inboxStats = await emailService.getInboxStats();
       const chatResponse = await mcpServer.chatWithBot(
         req,
@@ -253,7 +252,6 @@ router.post(
           ? "afternoon"
           : "evening";
 
-       const emailService = await createEmailService(req);
        const inboxStats = await emailService.getInboxStats();
        const chatResponse = await mcpServer.chatWithBot(
          req,
