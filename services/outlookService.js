@@ -39,7 +39,7 @@ class OutlookService extends EmailService {
             body: new URLSearchParams({
               client_id: process.env.MICROSOFT_CLIENT_ID,
               client_secret: process.env.MICROSOFT_CLIENT_SECRET,
-              refresh_token: refreshToken, 
+              refresh_token: refreshToken,
               grant_type: "refresh_token",
               scope:
                 "offline_access User.Read Mail.Read Mail.ReadWrite Mail.Send",
@@ -343,6 +343,50 @@ class OutlookService extends EmailService {
         StatusCodes.BAD_REQUEST,
         `Failed to mark Microsoft email as read: ${errorMessage}`
       );
+    }
+  }
+
+  async getInboxStats() {
+    const client = await this.getClient();
+    try {
+      const unreadResponse = await fetch(
+        `${client.baseUrl}/messages?$filter=isRead eq false&$count=true`,
+        { headers: { Authorization: `Bearer ${client.accessToken}` } }
+      );
+      const unreadData = await unreadResponse.json();
+      const unreadCount = unreadData["@odata.count"] || 0;
+
+      const totalResponse = await fetch(
+        `${client.baseUrl}/messages?$count=true`,
+        { headers: { Authorization: `Bearer ${client.accessToken}` } }
+      );
+      const totalData = await totalResponse.json();
+      const totalCount = totalData["@odata.count"] || 0;
+
+      return {
+        totalEmails: totalCount,
+        unreadEmails: unreadCount,
+      };
+    } catch (error) {
+      console.error("[ERROR] Failed to get Outlook inbox stats:", error);
+      return { totalEmails: 0, unreadEmails: 0 };
+    }
+  }
+
+  async getEmailCount({ filter = "all", query = "" }) {
+    const client = await this.getClient();
+    let url = `${client.baseUrl}/messages?$count=true`;
+    if (filter === "unread") url += `&$filter=isRead eq false`;
+    if (query) url += `&$search="${encodeURIComponent(query)}"`;
+    try {
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${client.accessToken}` },
+      });
+      const data = await response.json();
+      return data["@odata.count"] || 0;
+    } catch (error) {
+      console.error("[ERROR] Failed to count Outlook emails:", error);
+      return 0;
     }
   }
 

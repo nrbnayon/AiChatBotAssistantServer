@@ -331,6 +331,41 @@ class GmailService extends EmailService {
     }
   }
 
+  async getInboxStats() {
+    const client = await this.getClient();
+    try {
+      const response = await client.users.labels.get({
+        userId: "me",
+        id: "INBOX",
+      });
+      return {
+        totalEmails: response.data.messagesTotal || 0,
+        unreadEmails: response.data.messagesUnread || 0,
+      };
+    } catch (error) {
+      console.error("[ERROR] Failed to get Gmail inbox stats:", error);
+      return { totalEmails: 0, unreadEmails: 0 };
+    }
+  }
+
+  async getEmailCount({ filter = "all", query = "" }) {
+    const client = await this.getClient();
+    let q = query;
+    if (filter === "unread") q += " is:unread";
+    // Add other filters as needed (e.g., "read", "starred")
+    try {
+      const response = await client.users.messages.list({
+        userId: "me",
+        q,
+        maxResults: 0, // Just get the count
+      });
+      return response.data.resultSizeEstimate || 0;
+    } catch (error) {
+      console.error("[ERROR] Failed to count Gmail emails:", error);
+      return 0;
+    }
+  }
+
   async createRawEmail({ to, subject, body, attachments = [] }) {
     const boundary = `boundary_${Date.now().toString(16)}`;
     let email = [

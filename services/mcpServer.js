@@ -727,7 +727,17 @@ class MCPServer {
           ];
         }
       }
-        
+
+      case "count-emails": {
+        const { filter = "all", query = "" } = args;
+        const count = await this.emailService.getEmailCount({ filter, query });
+        let text = `You have **${count}** emails`;
+        if (filter !== "all") text += ` that are ${filter}`;
+        if (query) text += ` matching "${query}"`;
+        text += ". What’s next?";
+        return [{ type: "text", text }];
+      }
+
       case "draft-email": {
         const { recipient, content, recipient_email } = args;
         if (!recipient || !content)
@@ -739,7 +749,7 @@ class MCPServer {
         // *** CHANGE START: Handle modifications while preserving format ***
         if (pendingDraft && message.toLowerCase().includes("change")) {
           // Use the existing draft as the base and apply modifications cleanly
-          
+
           const defaultModel = await getDefaultModel();
           const modificationPrompt = `Modify the following email draft based on the user's request: "${message}". Keep the original structure intact, including line breaks and formatting, and only update the requested parts.\n\nOriginal Draft:\nTo: ${pendingDraft.recipient_id}\nSubject: ${pendingDraft.subject}\n\n${pendingDraft.message}\n\nProvide the updated draft in the same format with "To:", "Subject:", and the body separated by newlines.`;
           const modificationResponse =
@@ -844,90 +854,87 @@ class MCPServer {
           },
         ];
       }
-        
-  //       case "draft-email": {
-  //       const { recipient, content, recipient_email } = args;
-  //       if (!recipient || !content)
-  //         throw new Error("Missing required parameters");
 
-  //       const userName = this.emailService.user.name || "Your Name"; // Fallback to "User" if name is missing
-  //       const prompt = `Draft a polite and professional email from ${userName} to ${recipient} based on the following message: "${content}". Include a suitable subject line starting with 'Subject:'. If the message is brief, expand it into a complete email body with appropriate greetings, context, and a sign-off using the sender's name "${userName}". Ensure the email is clear, courteous, and professional.`;
+      //       case "draft-email": {
+      //       const { recipient, content, recipient_email } = args;
+      //       if (!recipient || !content)
+      //         throw new Error("Missing required parameters");
 
-  //       const defaultModel = await getDefaultModel();
-  //       const draftResponse = await this.modelProvider.callWithFallbackChain(
-  //         defaultModel.id,
-  //         {
-  //           messages: [
-  //             {
-  //               role: "user",
-  //               content: prompt,
-  //             },
-  //           ],
-  //           temperature: 1.0,
-  //           max_tokens: 3000,
-  //         },
-  //         ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
-  //       );
+      //       const userName = this.emailService.user.name || "Your Name"; // Fallback to "User" if name is missing
+      //       const prompt = `Draft a polite and professional email from ${userName} to ${recipient} based on the following message: "${content}". Include a suitable subject line starting with 'Subject:'. If the message is brief, expand it into a complete email body with appropriate greetings, context, and a sign-off using the sender's name "${userName}". Ensure the email is clear, courteous, and professional.`;
 
-  //       const draftText =
-  //         draftResponse.result.choices[0]?.message?.content ||
-  //         "Draft not generated";
+      //       const defaultModel = await getDefaultModel();
+      //       const draftResponse = await this.modelProvider.callWithFallbackChain(
+      //         defaultModel.id,
+      //         {
+      //           messages: [
+      //             {
+      //               role: "user",
+      //               content: prompt,
+      //             },
+      //           ],
+      //           temperature: 1.0,
+      //           max_tokens: 3000,
+      //         },
+      //         ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+      //       );
 
-  //       const subjectMatch = draftText.match(/Subject:\s*(.+?)(?=\n|$)/);
-  //       const subject = subjectMatch ? subjectMatch[1].trim() : "No subject";
-  //       const body = draftText.split("\n").slice(1).join("\n").trim();
+      //       const draftText =
+      //         draftResponse.result.choices[0]?.message?.content ||
+      //         "Draft not generated";
 
-  //       this.pendingEmails.set(userId, {
-  //         recipient_id: recipient_email || recipient,
-  //         subject,
-  //         message: body,
-  //       });
+      //       const subjectMatch = draftText.match(/Subject:\s*(.+?)(?=\n|$)/);
+      //       const subject = subjectMatch ? subjectMatch[1].trim() : "No subject";
+      //       const body = draftText.split("\n").slice(1).join("\n").trim();
 
-  //       await EmailDraft.create({
-  //         userId,
-  //         recipientId: recipient_email || recipient,
-  //         subject,
-  //         message: body,
-  //         status: "draft",
-  //       });
+      //       this.pendingEmails.set(userId, {
+      //         recipient_id: recipient_email || recipient,
+      //         subject,
+      //         message: body,
+      //       });
 
-  //       const draftResponses = [
-  //         `I've prepared an email for **${recipient}**:\n\n**To:** ${
-  //           recipient_email || recipient
-  //         }\n**Subject:** ${subject}\n\n${body}\n\nDoes this look good? Let me know if you'd like any changes before sending. Or do you want to send it now? just say **"confirm send"** it`,
+      //       await EmailDraft.create({
+      //         userId,
+      //         recipientId: recipient_email || recipient,
+      //         subject,
+      //         message: body,
+      //         status: "draft",
+      //       });
 
-  //         `Here's a draft email for **${recipient}**:\n\n**To:** ${
-  //           recipient_email || recipient
-  //         }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think? Is it ready to send or would you like to make adjustments?. Or do you want to send it now? just say **"confirm send"** it`,
+      //       const draftResponses = [
+      //         `I've prepared an email for **${recipient}**:\n\n**To:** ${
+      //           recipient_email || recipient
+      //         }\n**Subject:** ${subject}\n\n${body}\n\nDoes this look good? Let me know if you'd like any changes before sending. Or do you want to send it now? just say **"confirm send"** it`,
 
-  //         `I've drafted an email for **${recipient}**:\n\n**To:** ${
-  //           recipient_email || recipient
-  //         }\n**Subject:** ${subject}\n\n${body}\n\nPlease review and let me know if this works for you or if any changes are needed. Just confirm me when you're ready to send. write **"confirm send"** to send it`,
-  //         `Here's a draft email for **${recipient}**:\n\n**To:** ${
-  //           recipient_email || recipient
-  //         }\n**Subject:** ${subject}\n\n${body}\n\nLet me know if you want to send it as is or if you need to tweak anything. Or do you want to send it now? just say **"confirm sent"** it`,
-  //       ];
-  //       return [
-  //         {
-  //           type: "text",
-  //           text: draftResponses[
-  //             Math.floor(Math.random() * draftResponses.length)
-  //           ],
-  //         },
-  //       ];
-  //     }
-  //     default:
-  //       throw new Error(`Unknown tool: ${name}`);
-  //   }
-  // }
-        
-        
+      //         `Here's a draft email for **${recipient}**:\n\n**To:** ${
+      //           recipient_email || recipient
+      //         }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think? Is it ready to send or would you like to make adjustments?. Or do you want to send it now? just say **"confirm send"** it`,
+
+      //         `I've drafted an email for **${recipient}**:\n\n**To:** ${
+      //           recipient_email || recipient
+      //         }\n**Subject:** ${subject}\n\n${body}\n\nPlease review and let me know if this works for you or if any changes are needed. Just confirm me when you're ready to send. write **"confirm send"** to send it`,
+      //         `Here's a draft email for **${recipient}**:\n\n**To:** ${
+      //           recipient_email || recipient
+      //         }\n**Subject:** ${subject}\n\n${body}\n\nLet me know if you want to send it as is or if you need to tweak anything. Or do you want to send it now? just say **"confirm sent"** it`,
+      //       ];
+      //       return [
+      //         {
+      //           type: "text",
+      //           text: draftResponses[
+      //             Math.floor(Math.random() * draftResponses.length)
+      //           ],
+      //         },
+      //       ];
+      //     }
+      //     default:
+      //       throw new Error(`Unknown tool: ${name}`);
+      //   }
+      // }
+
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
   }
-
-   
 
   analyzeEmails(emails, query) {
     // Defensive check for undefined or missing messages

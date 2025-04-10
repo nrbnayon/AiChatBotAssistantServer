@@ -71,6 +71,14 @@ class EmailService {
     throw new Error("Method 'draftEmail' must be implemented");
   }
 
+  async getInboxStats() {
+    throw new Error("Method 'getInboxStats' must be implemented");
+  }
+
+  async getEmailCount({ filter, query }) {
+    throw new Error("Method 'getEmailCount' must be implemented");
+  }
+  
   // Shared AI-related method
   async filterImportantEmails(
     emails,
@@ -80,7 +88,10 @@ class EmailService {
     // Validate timeRange
     const validTimeRanges = ["daily", "weekly", "monthly"];
     if (!validTimeRanges.includes(timeRange)) {
-      throw new ApiError(StatusCodes.BAD_REQUEST, `Invalid timeRange: ${timeRange}`);
+      throw new ApiError(
+        StatusCodes.BAD_REQUEST,
+        `Invalid timeRange: ${timeRange}`
+      );
     }
 
     const userKeywords = this.user.userImportantMailKeywords || [];

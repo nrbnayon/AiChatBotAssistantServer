@@ -124,14 +124,16 @@ router.post(
           ? "afternoon"
           : "evening";
 
+      const emailService = await createEmailService(req);
+      const inboxStats = await emailService.getInboxStats();
       const chatResponse = await mcpServer.chatWithBot(
         req,
         userMessage,
         history,
         {
           timeContext,
-          emailCount: emails.length,
-          unreadCount: emails.filter((e) => e.unread).length,
+          emailCount: inboxStats.totalEmails,
+          unreadCount: inboxStats.unreadEmails,
         },
         modelId
       );
