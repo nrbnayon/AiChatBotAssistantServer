@@ -167,7 +167,7 @@ router.post(
       res.json({
         success: true,
         message: chatResponse.text,
-        modelUsed: chatResponse.modelUsed,
+        model: chatResponse.modelUsed,
         fallbackUsed: chatResponse.fallbackUsed,
         tokenCount: chatResponse.tokenCount || 0,
         data: chatResponse.artifact?.data || null,
@@ -299,7 +299,7 @@ router.post(
         success: true,
         chatId: newChat._id,
         message: chatResponse.text,
-        modelUsed: chatResponse.modelUsed,
+        model: chatResponse.modelUsed,
         fallbackUsed: chatResponse.fallbackUsed,
         tokenCount: chatResponse.tokenCount || 0,
         data: chatResponse.artifact?.data || null,
