@@ -341,7 +341,7 @@ class GmailService extends EmailService {
       const totalUnreadResponse = await client.users.messages.list({
         userId: "me",
         q: "is:unread",
-        maxResults: 0, 
+        maxResults: 5000, 
       });
       return {
         totalEmails: inboxResponse.data.messagesTotal || 0, 
@@ -362,7 +362,7 @@ class GmailService extends EmailService {
       const response = await client.users.messages.list({
         userId: "me",
         q,
-        maxResults: 0, // Just get the count
+        maxResults: 5000, // Just get the count
       });
       return response.data.resultSizeEstimate || 0;
     } catch (error) {

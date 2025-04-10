@@ -152,14 +152,14 @@ router.post(
 
       // Store messages in the chat
       chat.messages.push({
-        role: "user",
-        content: userMessage,
-        timestamp: new Date(),
+        userRole: "user",
+        message: userMessage,
+        date: new Date(),
       });
       chat.messages.push({
-        role: "assistant",
-        content: chatResponse.text,
-        timestamp: new Date(),
+        userRole: "assistant",
+        message: chatResponse.text,
+        date: new Date(),
         model: chatResponse.modelUsed,
       });
       await chat.save();
@@ -281,14 +281,14 @@ router.post(
 
       newChat.messages.push(
         {
-          role: "user",
-          content: userMessage,
-          timestamp: new Date(),
+          userRole: "user",
+          message: userMessage,
+          date: new Date(),
         },
         {
-          role: "assistant",
-          content: chatResponse.text,
-          timestamp: new Date(),
+          userRole: "assistant",
+          message: chatResponse.text,
+          date: new Date(),
           model: chatResponse.modelUsed,
         }
       );

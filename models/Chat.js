@@ -14,16 +14,16 @@ const chatSchema = new mongoose.Schema({
   },
   messages: [
     {
-      role: {
+      userRole: {
         type: String,
         enum: ["user", "assistant"],
         required: true,
       },
-      content: {
+      message: {
         type: String,
         required: true,
       },
-      timestamp: {
+      date: {
         type: Date,
         default: Date.now,
       },
