@@ -1,5 +1,4 @@
 // helper\notifyByEmail.js
-// helper\notifyByEmail.js
 import nodemailer from "nodemailer";
 import { htmlToText } from "html-to-text";
 import User from "../models/User.js";
@@ -19,7 +18,7 @@ const transporter = nodemailer.createTransport({
 const companyName = "Inbox Buddy";
 const supportEmail = "support@inboxbuddy.com";
 const year = new Date().getFullYear();
-const logoUrl = "https://inboxbuddy.com/logo.png"; // Replace with your logo URL
+const logoUrl = "https://ibb.co.com/PZd0NN3y";
 const primaryColor = "#4361EE"; // Modern blue color
 const accentColor = "#3A0CA3"; // Darker accent color
 const lightGray = "#f8f9fa";
@@ -315,4 +314,4 @@ export const sendFirstLoginConfirmation = async (user) => {
       error
     );
   }
-}; 
+};

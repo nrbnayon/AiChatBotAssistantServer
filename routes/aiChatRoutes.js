@@ -77,8 +77,8 @@ router.post(
 
     // Parse history if provided, otherwise use chat history
     let history = chat.messages.map((msg) => ({
-      role: msg.role,
-      content: msg.content,
+      role: msg.userRole,
+      content: msg.message,
     }));
 
     if (providedHistory) {
