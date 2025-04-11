@@ -6,6 +6,8 @@ import { StatusCodes } from "http-status-codes";
 import EmailService from "./emailService.js";
 import { convert } from "html-to-text";
 import { decrypt, encrypt } from "../utils/encryptionUtils.js";
+import NodeCache from "node-cache";
+const statsCache = new NodeCache({ stdTTL: 300 });
 
 class GmailService extends EmailService {
   async getClient() {
@@ -332,6 +334,10 @@ class GmailService extends EmailService {
   }
 
   async getInboxStats() {
+    const cacheKey = `inbox-stats-${this.user.email}`;
+    const cachedStats = statsCache.get(cacheKey);
+    if (cachedStats) return cachedStats;
+
     const client = await this.getClient();
     try {
       const inboxResponse = await client.users.labels.get({
@@ -340,13 +346,16 @@ class GmailService extends EmailService {
       });
       const totalUnreadResponse = await client.users.messages.list({
         userId: "me",
-        q: "is:unread",
-        maxResults: 1000, 
+        // q: "is:unread", // all unread emails
+        q: "in:inbox is:unread", // unread emails in inbox
+        maxResults: 1000,
       });
-      return {
-        totalEmails: inboxResponse.data.messagesTotal || 0, 
-        unreadEmails: totalUnreadResponse.data.resultSizeEstimate || 0, 
-      };
+
+      let totalEmails = inboxResponse.data.messagesTotal ?? 0;
+      let unreadEmails = totalUnreadResponse.data.resultSizeEstimate ?? 0;
+      const stats = { totalEmails, unreadEmails };
+      statsCache.set(cacheKey, stats);
+      return stats;
     } catch (error) {
       console.error("[ERROR] Failed to get Gmail inbox stats:", error);
       return { totalEmails: 0, unreadEmails: 0 };

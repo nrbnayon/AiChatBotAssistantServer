@@ -112,6 +112,8 @@ const getFunnyErrorMessage = (statusCode) => {
  * Global error handler middleware
  */
 const globalErrorHandler = (err, req, res, next) => {
+  err = handleMongoErrors(err);
+
   err.statusCode = err.statusCode || 500;
   err.status = err.status || "error";
 
@@ -170,10 +172,11 @@ const handleProductionError = (err, res) => {
 const handleMongoErrors = (err) => {
   if (err.name === "CastError") {
     return new AppError(
-      `Invalid ${err.path}: ${err.value}. MongoDB is judging your type choices. 🧐`,
+      `Invalid ${err.path}: ${err.value}. Please provide a valid ID. 🧐`,
       400
     );
   }
+
   if (err.code === 11000) {
     const field = Object.keys(err.keyValue)[0];
     return new AppError(

@@ -135,7 +135,7 @@ connectDB().then(() => {
     console.log(`
     ╔═════════════════════════════════════╗
     ║  🚀 Server launched successfully!   ║
-    ║  🌐 Running on IP: ${IP_ADDRESS}:${PORT.toString().padEnd(10, " ")} ║
+    ║  🌐 Running on:${IP_ADDRESS}:${PORT.toString().padEnd(10, " ")} ║
     ╚═════════════════════════════════════╝
     `);
   });

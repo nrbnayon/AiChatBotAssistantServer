@@ -1542,7 +1542,7 @@ class MCPServer {
       result = response.result;
       modelUsed = response.modelUsed;
       fallbackUsed = response.fallbackUsed;
-      tokenCount = response.tokenCount; // Capture token count
+      tokenCount = response.tokenCount; 
     } catch (error) {
       console.error("Model call failed completely:", error);
       return {

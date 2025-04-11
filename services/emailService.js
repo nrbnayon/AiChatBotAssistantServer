@@ -115,7 +115,7 @@ class EmailService {
       if (!fallbackChain || fallbackChain.length === 0) {
         // Default fallback to llama-3.3-70b-versatile if using a different model
         if (primaryModel.id !== "llama-3.3-70b-versatile") {
-          fallbackChain = ["llama-3.3-70b-versatile"];
+          fallbackChain = ["llama-3.3-70b-versatile", "gpt-4o-mini"];
         }
         // Add other fallbacks
         if (!fallbackChain.includes("llama-3.1-8b-instant")) {
