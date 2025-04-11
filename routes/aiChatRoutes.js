@@ -15,6 +15,8 @@ import { chatRateLimit } from "../middleware/rateLimit.js";
 import User from "../models/User.js";
 import Chat from "../models/Chat.js";
 
+const serviceCreationTracker = new Map();
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -49,13 +51,166 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // Chat-specific POST endpoint
+// router.post(
+//   "/:chatId",
+//   auth(),
+//   chatRateLimit(),
+//   upload.single("file"),
+//   catchAsync(async (req, res) => {
+//     const emailService = await getEmailService(req);
+//     const mcpServer = new MCPServer(emailService);
+//     const { chatId } = req.params;
+//     const { message, maxResults, modelId, history: providedHistory } = req.body;
+//     const userId = req.user.id;
+
+//     // Validate chat exists and belongs to user
+//     const chat = await Chat.findOne({ _id: chatId, userId });
+//     if (!chat) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Chat not found" });
+//     }
+
+//     if (!message && !req.file) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Message or file is required" });
+//     }
+
+//     // Parse history if provided, otherwise use chat history
+//     let history = chat.messages.map((msg) => ({
+//       role: msg.userRole,
+//       content: msg.message,
+//     }));
+
+//     if (providedHistory) {
+//       try {
+//         history =
+//           typeof providedHistory === "string"
+//             ? JSON.parse(providedHistory)
+//             : providedHistory;
+//       } catch (error) {
+//         console.error("Error parsing history:", error);
+//       }
+//     }
+
+//     let userMessage = message || "";
+
+//     // Process uploaded file if present
+//     if (req.file) {
+//       try {
+//         const fileText = await extractTextFromFile(
+//           req.file.path,
+//           req.file.mimetype
+//         );
+//         userMessage = userMessage
+//           ? `Analyze this given file ${userMessage}\n\nContent from file ${req.file.originalname}:\n${fileText}`
+//           : `Analyze this file and summarize and provide corrected information'${req.file.originalname}':\n${fileText}`;
+//         fs.unlinkSync(req.file.path);
+//       } catch (error) {
+//         console.error("File processing error:", error);
+//         return res.status(400).json({
+//           success: false,
+//           message: `Error processing uploaded file: ${error.message}`,
+//         });
+//       }
+//     }
+
+//     try {
+//       const emails = (await emailService.fetchEmails({ maxResults })).messages;
+//       const hour = new Date().getHours();
+//       let timeContext =
+//         hour >= 5 && hour < 12
+//           ? "morning"
+//           : hour >= 12 && hour < 18
+//           ? "afternoon"
+//           : "evening";
+
+//       const inboxStats = await emailService.getInboxStats();
+//       const chatResponse = await mcpServer.chatWithBot(
+//         req,
+//         userMessage,
+//         history,
+//         {
+//           timeContext,
+//           emailCount: inboxStats.totalEmails,
+//           unreadCount: inboxStats.unreadEmails,
+//         },
+//         modelId
+//       );
+
+//       const user = await User.findById(req.user.id);
+//       const newTokenCount =
+//         (user.subscription.dailyTokens || 0) + (chatResponse.tokenCount || 0);
+//       if (newTokenCount > req.maxTokens) {
+//         return res.status(429).json({
+//           success: false,
+//           message:
+//             "Daily token limit reached for your plan. Please try again tomorrow.",
+//         });
+//       }
+//       user.subscription.dailyTokens = newTokenCount;
+//       await user.save();
+
+//       // Store messages in the chat
+//       chat.messages.push({
+//         userRole: "user",
+//         message: userMessage,
+//         date: new Date(),
+//       });
+//       chat.messages.push({
+//         userRole: "assistant",
+//         message: chatResponse.text,
+//         date: new Date(),
+//         model: chatResponse.modelUsed,
+//       });
+//       await chat.save();
+
+//       res.json({
+//         success: true,
+//         message: chatResponse.text,
+//         model: chatResponse.modelUsed,
+//         fallbackUsed: chatResponse.fallbackUsed,
+//         tokenCount: chatResponse.tokenCount || 0,
+//         data: chatResponse.artifact?.data || null,
+//       });
+//     } catch (error) {
+//       console.error("Error processing request:", error);
+//       res.status(500).json({
+//         success: false,
+//         message: "I'm having trouble processing your request right now.",
+//         error:
+//           process.env.NODE_ENV === "development" ? error.message : undefined,
+//       });
+//     }
+//   })
+// );
+
+// Modify your POST "/:chatId" endpoint to include tracking
 router.post(
   "/:chatId",
   auth(),
   chatRateLimit(),
   upload.single("file"),
   catchAsync(async (req, res) => {
+    console.log(`POST /${req.params.chatId} request received for user ${req.user.id}`);
+    
+    const startTime = Date.now();
     const emailService = await getEmailService(req);
+    const serviceTime = Date.now() - startTime;
+    
+    // Track email service creation/retrieval
+    const trackingId = `${req.user.id}-${Date.now()}`;
+    serviceCreationTracker.set(trackingId, {
+      userId: req.user.id,
+      chatId: req.params.chatId,
+      time: serviceTime,
+      cached: serviceTime < 100 // Rough estimate - cached retrievals should be fast
+    });
+    
+    console.log(`Email service ${serviceCreationTracker.get(trackingId).cached ? 'retrieved from cache' : 'created'} in ${serviceTime}ms`);
+    
+    // Rest of your code remains the same...
     const mcpServer = new MCPServer(emailService);
     const { chatId } = req.params;
     const { message, maxResults, modelId, history: providedHistory } = req.body;
@@ -115,7 +270,10 @@ router.post(
     }
 
     try {
+      console.log(`Fetching emails for user ${userId}`);
       const emails = (await emailService.fetchEmails({ maxResults })).messages;
+      console.log(`Retrieved ${emails.length} emails`);
+      
       const hour = new Date().getHours();
       let timeContext =
         hour >= 5 && hour < 12
@@ -124,7 +282,28 @@ router.post(
           ? "afternoon"
           : "evening";
 
+      console.log(`Getting inbox stats for user ${userId}`);
       const inboxStats = await emailService.getInboxStats();
+      
+      // Testing email analysis caching
+      console.log("Testing email analysis caching...");
+      console.log("First call to filterImportantEmails (should analyze emails):");
+      const importantEmails1 = await emailService.filterImportantEmails(
+        emails.slice(0, 10), // Use a subset for testing
+        ["urgent", "important"], 
+        "daily"
+      );
+      
+      console.log("Second call with same parameters (should use cache):");
+      const importantEmails2 = await emailService.filterImportantEmails(
+        emails.slice(0, 10),
+        ["urgent", "important"], 
+        "daily"
+      );
+      
+      console.log(`Found ${importantEmails1.length} important emails in first call`);
+      console.log(`Found ${importantEmails2.length} important emails in second call`);
+      
       const chatResponse = await mcpServer.chatWithBot(
         req,
         userMessage,
@@ -164,6 +343,15 @@ router.post(
       });
       await chat.save();
 
+      // Add service tracking stats to response in dev mode
+      const debugInfo = process.env.NODE_ENV === "development" ? {
+        serviceTracking: Object.fromEntries(serviceCreationTracker),
+        cacheStats: {
+          emailServiceCacheSize: emailServiceCache ? emailServiceCache.size : 'unknown',
+          emailAnalysisCacheEntries: emailService.analysisCache ? emailService.analysisCache.cache.size : 'unknown'
+        }
+      } : null;
+
       res.json({
         success: true,
         message: chatResponse.text,
@@ -171,6 +359,7 @@ router.post(
         fallbackUsed: chatResponse.fallbackUsed,
         tokenCount: chatResponse.tokenCount || 0,
         data: chatResponse.artifact?.data || null,
+        debug: debugInfo
       });
     } catch (error) {
       console.error("Error processing request:", error);
@@ -183,6 +372,7 @@ router.post(
     }
   })
 );
+
 
 // Legacy endpoint (without chat ID, creates a new chat)
 router.post(
