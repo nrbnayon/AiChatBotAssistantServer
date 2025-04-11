@@ -8,6 +8,15 @@ import { convert } from "html-to-text";
 import { SYSTEM_PROMPT } from "../helper/aiTraining.js";
 import SystemMessage from "../models/SystemMessage.js";
 
+const STANDARD_FALLBACK_CHAIN = [
+  "llama-3.3-70b-versatile",
+  "llama-3.1-8b-instant",
+  "gpt-4o-mini",
+];
+
+function estimateTokens(text) {
+  return Math.ceil(text.length / 4);
+}
 class ModelProvider {
   constructor() {
     this.groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -651,7 +660,7 @@ class MCPServer {
 
           const cleanedText = plainTextBody.replace(/\n\s*\n/g, "\n").trim();
 
-          const MAX_TEXT_LENGTH = 3000;
+          const MAX_TEXT_LENGTH = 5500;
           let summaryText = cleanedText;
           if (cleanedText.length > MAX_TEXT_LENGTH) {
             summaryText =
@@ -671,15 +680,15 @@ class MCPServer {
               },
             ],
             temperature: 1.0,
-            max_tokens: 1000,
+            max_tokens: 5500,
           };
 
           const defaultModel = await getDefaultModel();
           const summaryResponse =
             await this.modelProvider.callWithFallbackChain(
-              defaultModel.id,
+              modelId || defaultModel.id,
               aiOptions,
-              ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+              STANDARD_FALLBACK_CHAIN
             );
 
           const summary =
@@ -746,28 +755,37 @@ class MCPServer {
         let draftText;
         const pendingDraft = this.pendingEmails.get(userId);
 
-        if (pendingDraft && message.toLowerCase().includes("change")) {
-          // Modify the existing draft while preserving its structure
+        // Expanded list of modification keywords
+        const modificationKeywords = [
+          "change",
+          "adjust",
+          "adjustment",
+          "modify",
+          "edit",
+          "update",
+        ];
+        if (
+          pendingDraft &&
+          modificationKeywords.some((keyword) =>
+            message.toLowerCase().includes(keyword)
+          )
+        ) {
+          // Modify the existing draft
           const defaultModel = await getDefaultModel();
-
-          // Fix the template string to avoid nested backticks issue
-          const modificationPrompt =
-            "Modify the following email draft based on the user's request: \"" +
-            message +
-            '".\n' +
-            "Keep the original structure intact, including line breaks and formatting, and only update the requested parts.\n" +
-            "Provide the updated draft clearly with To:, Subject:, and the body separated by newlines.\n" +
-            "Ensure To: and Subject: are each on their own line, and the body starts after a blank line.\n\n" +
-            "Original Draft:\n" +
-            "To: " +
-            pendingDraft.recipient_id +
-            "\n" +
-            "Subject: " +
-            pendingDraft.subject +
-            "\n\n" +
-            pendingDraft.message +
-            "\n\n" +
-            "Updated Draft:";
+          const modificationPrompt = `
+      Modify the following email draft based on the user's request: "${message}".
+      Keep the original structure intact, including line breaks and formatting, and only update the requested parts.
+      Provide the updated draft clearly with To:, Subject:, and the body separated by newlines.
+      Ensure To: and Subject: are each on their own line, and the body starts after a blank line.
+      
+      Original Draft:
+      To: ${pendingDraft.recipient_id}
+      Subject: ${pendingDraft.subject}
+      
+      ${pendingDraft.message}
+      
+      Updated Draft:
+    `;
 
           const modificationResponse =
             await this.modelProvider.callWithFallbackChain(
@@ -775,27 +793,26 @@ class MCPServer {
               {
                 messages: [{ role: "user", content: modificationPrompt }],
                 temperature: 1.0,
-                max_tokens: 3000,
+                max_tokens: 5500,
               },
-              ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+              STANDARD_FALLBACK_CHAIN 
             );
           draftText =
             modificationResponse.result.choices[0]?.message?.content ||
             "Draft not generated";
 
-          // Extract the updated draft section from the response
+          // Extract and parse the updated draft (rest of the parsing logic remains unchanged)
           const updatedDraftIndex = draftText.indexOf("To:");
           if (updatedDraftIndex !== -1) {
             draftText = draftText.substring(updatedDraftIndex).trim();
           }
 
-          // Parse the draft into components
           const lines = draftText.split("\n");
-          let recipientParsed = "";
-          let subjectParsed = "";
-          let messageParsed = "";
-          let currentSection = null;
-          let bodyStarted = false;
+          let recipientParsed = "",
+            subjectParsed = "",
+            messageParsed = "";
+          let currentSection = null,
+            bodyStarted = false;
 
           for (const line of lines) {
             if (line.startsWith("To:")) {
@@ -814,45 +831,35 @@ class MCPServer {
           }
           messageParsed = messageParsed.trim();
 
-          // Use parsed values or fallback to existing ones
           const updatedRecipient = recipientParsed || pendingDraft.recipient_id;
           const updatedSubject = subjectParsed || pendingDraft.subject;
           const updatedMessage = messageParsed || pendingDraft.message;
 
-          // Update the pending draft
           this.pendingEmails.set(userId, {
             recipient_id: updatedRecipient,
             subject: updatedSubject,
             message: updatedMessage,
           });
 
-          // Update the database
           await EmailDraft.updateOne(
             { userId, status: "draft" },
             {
               recipientId: updatedRecipient,
               subject: updatedSubject,
               message: updatedMessage,
-            }
+            },
+            { upsert: true } // Ensure a draft exists
           );
 
-          // Respond to the user
-          const draftResponses = [
-            `I've updated the email draft for **${updatedRecipient}**:\n\n**To:** ${updatedRecipient}\n**Subject:** ${updatedSubject}\n\n${updatedMessage}\n\nDoes this look better? Let me know if you'd like further changes or say **"confirm send"** to send it.`,
-            `Here's the revised draft for **${updatedRecipient}**:\n\n**To:** ${updatedRecipient}\n**Subject:** ${updatedSubject}\n\n${updatedMessage}\n\nReady to send or need tweaks? Say **"confirm send"** when set.`,
-          ];
           return [
             {
               type: "text",
-              text: draftResponses[
-                Math.floor(Math.random() * draftResponses.length)
-              ],
+              text: `I've updated the email draft for **${updatedRecipient}**:\n\n**To:** ${updatedRecipient}\n**Subject:** ${updatedSubject}\n\n${updatedMessage}\n\nDoes this look good? Say **"confirm send"** to send it, or let me know what else to tweak!`,
             },
           ];
         } else {
-          // Create a new draft
           const defaultModel = await getDefaultModel();
-          const userName = this.emailService.user?.name || "Your Name";
+          const userName = this.emailService.user?.name || "Nayon Halder";
           const prompt = `Draft a polite and professional email from ${userName} to ${recipient} based on the following message: "${content}". Include a suitable subject line starting with 'Subject:'. If the message is brief, expand it into a complete email body with appropriate greetings, context, and a sign-off using the sender's name "${userName}". Ensure the email is clear, courteous, and professional.`;
 
           const draftResponse = await this.modelProvider.callWithFallbackChain(
@@ -860,9 +867,9 @@ class MCPServer {
             {
               messages: [{ role: "user", content: prompt }],
               temperature: 1.0,
-              max_tokens: 3000,
+              max_tokens: 5500,
             },
-            ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+            STANDARD_FALLBACK_CHAIN
           );
           draftText =
             draftResponse.result.choices[0]?.message?.content ||
@@ -870,16 +877,12 @@ class MCPServer {
 
           const subjectMatch = draftText.match(/Subject:\s*(.+?)(?=\n|$)/);
           const subject = subjectMatch ? subjectMatch[1].trim() : "No subject";
-
-          // Extract body more carefully
           let body = "";
           const lines = draftText.split("\n");
           const subjectIndex = lines.findIndex((line) =>
             line.match(/Subject:/i)
           );
-
           if (subjectIndex !== -1) {
-            // Skip the subject line and any blank line after it
             let bodyStartIndex = subjectIndex + 1;
             while (
               bodyStartIndex < lines.length &&
@@ -893,7 +896,6 @@ class MCPServer {
           }
 
           const recipientId = recipient_email || recipient;
-
           this.pendingEmails.set(userId, {
             recipient_id: recipientId,
             subject,
@@ -908,207 +910,32 @@ class MCPServer {
             status: "draft",
           });
 
+          const draftResponses = [
+            `I've prepared an email for **${recipient}**:\n\n**To:** ${
+              recipient_email || recipient
+            }\n**Subject:** ${subject}\n\n${body}\n\nDoes this look good? Let me know if you'd like any changes before sending. Or do you want to send it now? just say **"confirm send"** it`,
+
+            `Here's a draft email for **${recipient}**:\n\n**To:** ${
+              recipient_email || recipient
+            }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think? Is it ready to send or would you like to make adjustments?. Or do you want to send it now? just say **"confirm send"** it`,
+
+            `I've drafted an email for **${recipient}**:\n\n**To:** ${
+              recipient_email || recipient
+            }\n**Subject:** ${subject}\n\n${body}\n\nPlease review and let me know if this works for you or if any changes are needed. Just confirm me when you're ready to send. write **"confirm send"** to send it`,
+            `Here's a draft email for **${recipient}**:\n\n**To:** ${
+              recipient_email || recipient
+            }\n**Subject:** ${subject}\n\n${body}\n\nLet me know if you want to send it as is or if you need to tweak anything. Or do you want to send it now? just say **"confirm sent"** it`,
+          ];
           return [
             {
               type: "text",
-              text: `I've prepared an email for **${recipient}**:\n\n**To:** ${recipientId}\n**Subject:** ${subject}\n\n${body}\n\nDoes this look good? Say **"confirm send"** to send it.`,
+              text: draftResponses[
+                Math.floor(Math.random() * draftResponses.length)
+              ],
             },
           ];
         }
       }
-      // ------------ Main functionality for email drafting --------------
-      // case "draft-email": {
-      //   const { recipient, content, recipient_email } = args;
-      //   if (!recipient || !content)
-      //     throw new Error("Missing required parameters");
-
-      //   let draftText;
-      //   const pendingDraft = this.pendingEmails.get(userId);
-
-      //   // *** CHANGE START: Handle modifications while preserving format ***
-      //   if (pendingDraft && message.toLowerCase().includes("change")) {
-      //     // Use the existing draft as the base and apply modifications cleanly
-
-      //     const defaultModel = await getDefaultModel();
-      //     const modificationPrompt = `Modify the following email draft based on the user's request: "${message}". Keep the original structure intact, including line breaks and formatting, and only update the requested parts.\n\nOriginal Draft:\nTo: ${pendingDraft.recipient_id}\nSubject: ${pendingDraft.subject}\n\n${pendingDraft.message}\n\nProvide the updated draft in the same format with "To:", "Subject:", and the body separated by newlines.`;
-      //     const modificationResponse =
-      //       await this.modelProvider.callWithFallbackChain(
-      //         defaultModel.id,
-      //         {
-      //           messages: [
-      //             {
-      //               role: "user",
-      //               content: modificationPrompt,
-      //             },
-      //           ],
-      //           temperature: 1.0,
-      //           max_tokens: 3000,
-      //         },
-      //         ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
-      //       );
-      //     draftText =
-      //       modificationResponse.result.choices[0]?.message?.content ||
-      //       "Draft not generated";
-      //     // Ensure the modified draft retains proper structure
-      //     const lines = draftText.split("\n");
-      //     const toIndex = lines.findIndex((line) => line.startsWith("To:"));
-      //     const subjectIndex = lines.findIndex((line) =>
-      //       line.startsWith("Subject:")
-      //     );
-      //     if (toIndex !== -1 && subjectIndex !== -1 && subjectIndex > toIndex) {
-      //       const subject = lines[subjectIndex].replace("Subject:", "").trim();
-      //       const body = lines
-      //         .slice(subjectIndex + 1)
-      //         .join("\n")
-      //         .trim();
-      //       draftText = `To: ${lines[toIndex]
-      //         .replace("To:", "")
-      //         .trim()}\nSubject: ${subject}\n\n${body}`;
-      //     }
-      //     // *** CHANGE END ***
-      //   } else {
-      //     // Create new draft (unchanged from original)
-      //     const defaultModel = await getDefaultModel();
-      //     const userName = this.emailService.user.name || "Your Name";
-      //     const prompt = `Draft a polite and professional email from ${userName} to ${recipient} based on the following message: "${content}". Include a suitable subject line starting with 'Subject:'. If the message is brief, expand it into a complete email body with appropriate greetings, context, and a sign-off using the sender's name "${userName}". Ensure the email is clear, courteous, and professional.`;
-      //     const draftResponse = await this.modelProvider.callWithFallbackChain(
-      //       defaultModel.id,
-      //       {
-      //         messages: [
-      //           {
-      //             role: "user",
-      //             content: prompt,
-      //           },
-      //         ],
-      //         temperature: 1.0,
-      //         max_tokens: 3000,
-      //       },
-      //       ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
-      //     );
-      //     draftText =
-      //       draftResponse.result.choices[0]?.message?.content ||
-      //       "Draft not generated";
-      //   }
-
-      //   const subjectMatch = draftText.match(/Subject:\s*(.+?)(?=\n|$)/);
-      //   const subject = subjectMatch ? subjectMatch[1].trim() : "No subject";
-      //   const body = draftText.split("\n").slice(1).join("\n").trim();
-
-      //   this.pendingEmails.set(userId, {
-      //     recipient_id: recipient_email || recipient,
-      //     subject,
-      //     message: body,
-      //   });
-
-      //   await EmailDraft.create({
-      //     userId,
-      //     recipientId: recipient_email || recipient,
-      //     subject,
-      //     message: body,
-      //     status: "draft",
-      //   });
-
-      //   const draftResponses = [
-      //     `I've prepared an email for **${recipient}**:\n\n**To:** ${
-      //       recipient_email || recipient
-      //     }\n**Subject:** ${subject}\n\n${body}\n\nDoes this look good? Let me know if you'd like any changes before sending. Or do you want to send it now? just say **"confirm send"** it`,
-
-      //     `Here's a draft email for **${recipient}**:\n\n**To:** ${
-      //       recipient_email || recipient
-      //     }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think? Is it ready to send or would you like to make adjustments?. Or do you want to send it now? just say **"confirm send"** it`,
-
-      //     `I've drafted an email for **${recipient}**:\n\n**To:** ${
-      //       recipient_email || recipient
-      //     }\n**Subject:** ${subject}\n\n${body}\n\nPlease review and let me know if this works for you or if any changes are needed. Just confirm me when you're ready to send. write **"confirm send"** to send it`,
-      //     `Here's a draft email for **${recipient}**:\n\n**To:** ${
-      //       recipient_email || recipient
-      //     }\n**Subject:** ${subject}\n\n${body}\n\nLet me know if you want to send it as is or if you need to tweak anything. Or do you want to send it now? just say **"confirm sent"** it`,
-      //   ];
-      //   return [
-      //     {
-      //       type: "text",
-      //       text: draftResponses[
-      //         Math.floor(Math.random() * draftResponses.length)
-      //       ],
-      //     },
-      //   ];
-      // }
-      // ------------
-      //       case "draft-email": {
-      //       const { recipient, content, recipient_email } = args;
-      //       if (!recipient || !content)
-      //         throw new Error("Missing required parameters");
-
-      //       const userName = this.emailService.user.name || "Your Name"; // Fallback to "User" if name is missing
-      //       const prompt = `Draft a polite and professional email from ${userName} to ${recipient} based on the following message: "${content}". Include a suitable subject line starting with 'Subject:'. If the message is brief, expand it into a complete email body with appropriate greetings, context, and a sign-off using the sender's name "${userName}". Ensure the email is clear, courteous, and professional.`;
-
-      //       const defaultModel = await getDefaultModel();
-      //       const draftResponse = await this.modelProvider.callWithFallbackChain(
-      //         defaultModel.id,
-      //         {
-      //           messages: [
-      //             {
-      //               role: "user",
-      //               content: prompt,
-      //             },
-      //           ],
-      //           temperature: 1.0,
-      //           max_tokens: 3000,
-      //         },
-      //         ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
-      //       );
-
-      //       const draftText =
-      //         draftResponse.result.choices[0]?.message?.content ||
-      //         "Draft not generated";
-
-      //       const subjectMatch = draftText.match(/Subject:\s*(.+?)(?=\n|$)/);
-      //       const subject = subjectMatch ? subjectMatch[1].trim() : "No subject";
-      //       const body = draftText.split("\n").slice(1).join("\n").trim();
-
-      //       this.pendingEmails.set(userId, {
-      //         recipient_id: recipient_email || recipient,
-      //         subject,
-      //         message: body,
-      //       });
-
-      //       await EmailDraft.create({
-      //         userId,
-      //         recipientId: recipient_email || recipient,
-      //         subject,
-      //         message: body,
-      //         status: "draft",
-      //       });
-
-      //       const draftResponses = [
-      //         `I've prepared an email for **${recipient}**:\n\n**To:** ${
-      //           recipient_email || recipient
-      //         }\n**Subject:** ${subject}\n\n${body}\n\nDoes this look good? Let me know if you'd like any changes before sending. Or do you want to send it now? just say **"confirm send"** it`,
-
-      //         `Here's a draft email for **${recipient}**:\n\n**To:** ${
-      //           recipient_email || recipient
-      //         }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think? Is it ready to send or would you like to make adjustments?. Or do you want to send it now? just say **"confirm send"** it`,
-
-      //         `I've drafted an email for **${recipient}**:\n\n**To:** ${
-      //           recipient_email || recipient
-      //         }\n**Subject:** ${subject}\n\n${body}\n\nPlease review and let me know if this works for you or if any changes are needed. Just confirm me when you're ready to send. write **"confirm send"** to send it`,
-      //         `Here's a draft email for **${recipient}**:\n\n**To:** ${
-      //           recipient_email || recipient
-      //         }\n**Subject:** ${subject}\n\n${body}\n\nLet me know if you want to send it as is or if you need to tweak anything. Or do you want to send it now? just say **"confirm sent"** it`,
-      //       ];
-      //       return [
-      //         {
-      //           type: "text",
-      //           text: draftResponses[
-      //             Math.floor(Math.random() * draftResponses.length)
-      //           ],
-      //         },
-      //       ];
-      //     }
-      //     default:
-      //       throw new Error(`Unknown tool: ${name}`);
-      //   }
-      // }
 
       default:
         throw new Error(`Unknown tool: ${name}`);
@@ -1316,7 +1143,6 @@ class MCPServer {
     const { timeContext = "", emailCount = 0, unreadCount = 0 } = context;
 
     const systemPrompt = await this.getDefaultSystemMessage();
-
     const personalizedSystemPrompt =
       systemPrompt
         .replace(/{{USER_NAME}}/g, userName)
@@ -1341,9 +1167,7 @@ class MCPServer {
       message.toLowerCase().includes("send draft 2")
     ) {
       let pendingDraft = null;
-      let recentDraft = null;
 
-      // Step 1: Try to extract draft from history (first priority)
       const lastAssistantMessage = history
         .slice()
         .reverse()
@@ -1394,7 +1218,6 @@ class MCPServer {
 
       const drafts = await EmailDraft.find({ userId }).sort({ createdAt: -1 });
       if (drafts.length > 1 && !pendingDraft) {
-        // If user said "send draft 1" or "send draft 2", select the draft
         if (message.toLowerCase().includes("send draft 1")) {
           pendingDraft = {
             recipient_id: drafts[0].recipientId,
@@ -1417,7 +1240,6 @@ class MCPServer {
         }
       }
 
-      // Step 2: Fallback to database if history didn't provide a draft
       if (!pendingDraft) {
         const recentDraft = await EmailDraft.findOne({ userId }).sort({
           createdAt: -1,
@@ -1485,13 +1307,40 @@ class MCPServer {
       }
     }
 
-    // Process message and limit history to last 5 messages
+    // Process message and limit history
     let processedMessage = this.preprocessMessage(message, userId);
     const maxHistory = 5;
     const limitedHistory = history.slice(-maxHistory);
+
+    // Estimate token count
+    const systemTokens = estimateTokens(personalizedSystemPrompt);
+    const userMessageTokens = estimateTokens(processedMessage);
+    let historyTokens = 0;
+    limitedHistory.forEach((msg) => {
+      historyTokens += estimateTokens(msg.content);
+    });
+    const MAX_TOKENS = 5500; // Safe threshold below 6000
+    let totalTokens = systemTokens + historyTokens + userMessageTokens + 100; 
+
+    // Truncate history if exceeding token limit
+    let adjustedHistory = [...limitedHistory];
+    while (totalTokens > MAX_TOKENS && adjustedHistory.length > 0) {
+      const removedMessage = adjustedHistory.shift();
+      historyTokens -= estimateTokens(removedMessage.content);
+      totalTokens = systemTokens + historyTokens + userMessageTokens + 100;
+    }
+
+    if (totalTokens > MAX_TOKENS) {
+      // If still over limit, truncate user message
+      const maxUserTokens = MAX_TOKENS - systemTokens - historyTokens - 100;
+      const truncatedMessage = processedMessage.substring(0, maxUserTokens * 4); // Approx 4 chars per token
+      processedMessage = `${truncatedMessage}... (message truncated due to length)`;
+      totalTokens = MAX_TOKENS;
+    }
+
     const messages = [
       { role: "system", content: personalizedSystemPrompt },
-      ...limitedHistory,
+      ...adjustedHistory,
       { role: "user", content: processedMessage },
     ];
 
@@ -1525,7 +1374,6 @@ class MCPServer {
       const defaultModel = await getDefaultModel();
       primaryModelId = defaultModel.id;
     }
-    const fallbackChain = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
     const options = {
       messages,
       temperature: 1.0,
@@ -1537,12 +1385,12 @@ class MCPServer {
       const response = await this.modelProvider.callWithFallbackChain(
         primaryModelId,
         options,
-        fallbackChain
+        STANDARD_FALLBACK_CHAIN
       );
       result = response.result;
       modelUsed = response.modelUsed;
       fallbackUsed = response.fallbackUsed;
-      tokenCount = response.tokenCount; 
+      tokenCount = response.tokenCount;
     } catch (error) {
       console.error("Model call failed completely:", error);
       return {
@@ -1624,7 +1472,6 @@ class MCPServer {
           fallbackUsed: fallbackUsed,
         };
       } catch (error) {
-        // Handle unknown tool or other errors
         if (error.message && error.message.includes("Unknown tool")) {
           const summaryPrompt = `Please summarize the following text:\n\n${processedMessage}`;
           try {
@@ -1641,7 +1488,7 @@ class MCPServer {
                     { role: "user", content: summaryPrompt },
                   ],
                   temperature: 1.0,
-                  max_tokens: 1000,
+                  max_tokens: 5500,
                 },
                 fallbackChain
               );
@@ -1703,7 +1550,7 @@ class MCPServer {
           : actionData.chat,
         modelUsed: modelUsed.name || "N/A",
         fallbackUsed: fallbackUsed,
-        tokenCount: tokenCount || 0, // Include token count
+        tokenCount: tokenCount || 0,
       };
     } else if (actionData.message) {
       return {
@@ -1716,7 +1563,6 @@ class MCPServer {
         tokenCount: tokenCount || 0,
       };
     } else {
-      // Default fallback if no recognized response format
       const clarificationRequests = [
         "Not sure what you're after—can you fill me in more?",
         "I'm a tad confused—could you clarify that?",

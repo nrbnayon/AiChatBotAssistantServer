@@ -7,7 +7,7 @@ import { getDefaultModel, getModelById } from "../routes/aiModelRoutes.js";
 
 // Simple TTL cache implementation
 class TTLCache {
-  constructor(ttl = 3600000) {
+  constructor(ttl = 7200000) {
     this.cache = new Map();
     this.ttl = ttl;
   }
@@ -35,6 +35,11 @@ const modelResponseCache = new TTLCache(300000); // 5 minute cache for model res
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
+const STANDARD_FALLBACK_CHAIN = [
+  "llama-3.3-70b-versatile",
+  "llama-3.1-8b-instant",
+  "gpt-4o-mini",
+];
 class EmailService {
   constructor(user) {
     this.user = user;
@@ -90,43 +95,24 @@ class EmailService {
     customFallbackChain = []
   ) {
     try {
-      // Get default model if no specific model is provided
       let primaryModel = modelId
         ? await getModelById(modelId)
         : await getDefaultModel();
-
       if (!primaryModel) {
         throw new ApiError(StatusCodes.BAD_REQUEST, "No valid AI model found");
       }
 
-      // Generate cache key
       const cacheKey = `${primaryModel.id}-${prompt.slice(0, 100)}`;
-
-      // Check cache first
       const cachedResponse = modelResponseCache.get(cacheKey);
       if (cachedResponse) {
         return cachedResponse;
       }
 
-      // Set up fallback chain
-      let fallbackChain = customFallbackChain;
+      const fallbackChain =
+        customFallbackChain.length > 0
+          ? customFallbackChain
+          : STANDARD_FALLBACK_CHAIN;
 
-      // If no custom fallback chain, create default fallback chain
-      if (!fallbackChain || fallbackChain.length === 0) {
-        // Default fallback to llama-3.3-70b-versatile if using a different model
-        if (primaryModel.id !== "llama-3.3-70b-versatile") {
-          fallbackChain = ["llama-3.3-70b-versatile", "gpt-4o-mini"];
-        }
-        // Add other fallbacks
-        if (!fallbackChain.includes("llama-3.1-8b-instant")) {
-          fallbackChain.push("llama-3.1-8b-instant");
-        }
-        if (!fallbackChain.includes("gemma2-9b-it")) {
-          fallbackChain.push("gemma2-9b-it");
-        }
-      }
-
-      // Try primary model first
       let response = null;
       let usedModel = primaryModel;
       let fallbackUsed = false;
@@ -140,7 +126,6 @@ class EmailService {
             response_format: { type: "json_object" },
           });
         } else if (primaryModel.provider === "openai") {
-          // OpenAI implementation would go here
           throw new Error("OpenAI provider not implemented");
         } else {
           throw new Error(`Unsupported provider: ${primaryModel.provider}`);
@@ -150,8 +135,6 @@ class EmailService {
           `Error with primary model ${primaryModel.id}:`,
           primaryError
         );
-
-        // Try fallback models
         let fallbackSucceeded = false;
 
         for (const fallbackModelId of fallbackChain) {
@@ -171,7 +154,6 @@ class EmailService {
               fallbackSucceeded = true;
               break;
             } else if (fallbackModel.provider === "openai") {
-              // OpenAI implementation would go here
               throw new Error("OpenAI provider not implemented");
             }
           } catch (fallbackError) {
@@ -179,7 +161,6 @@ class EmailService {
               `Error with fallback model ${fallbackModelId}:`,
               fallbackError
             );
-            // Continue to next fallback
           }
         }
 
@@ -197,9 +178,7 @@ class EmailService {
         fallbackUsed,
       };
 
-      // Cache the result
       modelResponseCache.set(cacheKey, result);
-
       return result;
     } catch (error) {
       console.error("Model call error:", error);
