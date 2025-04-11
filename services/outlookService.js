@@ -104,7 +104,7 @@ class OutlookService extends EmailService {
       starred: `${client.baseUrl}/messages${baseParams}&$filter=flag/flagStatus eq 'flagged'`,
       drafts: `${client.baseUrl}/mailFolders/drafts/messages${baseParams}`,
       important: `${client.baseUrl}/messages${baseParams}&$filter=importance eq 'high'`,
-      trash: `${client.baseUrl}/mailFolders/deleteditems/messages${baseParams}`,
+      // trash: `${client.baseUrl}/mailFolders/deleteditems/messages${baseParams}`,
     };
 
     endpoint = filterMap[filter.toLowerCase()];

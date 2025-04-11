@@ -6,7 +6,7 @@ import User from "../models/User.js";
 
 // Simple TTL cache implementation
 class TTLCache {
-  constructor(ttl = 3600000) { // 1 hour default TTL
+  constructor(ttl = 3600000) { 
     this.cache = new Map();
     this.ttl = ttl;
   }
@@ -35,7 +35,7 @@ class EmailService {
   constructor(user) {
     this.user = user;
     this.grok = groq;
-    this.analysisCache = new TTLCache(); // Use TTL cache
+    this.analysisCache = new TTLCache(); 
   }
 
   // Abstract methods to be implemented by provider-specific classes

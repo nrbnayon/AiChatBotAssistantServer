@@ -88,7 +88,7 @@ class GmailService extends EmailService {
     };
 
     const filterMap = {
-      all: (params) => params, // Default to INBOX as per Gmail API behavior
+      all: (params) => params, 
       read: (params) => {
         params.q = params.q ? `${params.q} is:read` : "is:read";
         return params;
@@ -117,14 +117,14 @@ class GmailService extends EmailService {
         params.labelIds = ["IMPORTANT"];
         return params;
       },
-      trash: (params) => {
-        params.labelIds = ["TRASH"];
-        return params;
-      },
+      // trash: (params) => {
+      //   params.labelIds = ["TRASH"];
+      //   return params;
+      // },
     };
 
     const appliedFilter = filterMap[filter.toLowerCase()] || filterMap["all"];
-    const filteredParams = appliedFilter(params);
+    const filteredParams = appliedFilter(params, filter);
 
     try {
       const response = await client.users.messages.list(filteredParams);
@@ -154,12 +154,12 @@ class GmailService extends EmailService {
       );
 
       return {
-        messages: emails.filter(Boolean), // Remove null entries
+        messages: emails.filter(Boolean), 
         nextPageToken: response.data.nextPageToken || null,
       };
     } catch (error) {
       console.error("[ERROR] Failed to fetch emails:", error);
-      return { messages: [], nextPageToken: null }; // Return empty result on error
+      return { messages: [], nextPageToken: null }; 
     }
   }
 

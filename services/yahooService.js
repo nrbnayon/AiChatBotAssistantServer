@@ -72,9 +72,9 @@ class YahooService extends EmailService {
       case "drafts":
         folder = "drafts";
         break;
-      case "trash":
-        folder = "trash";
-        break;
+      // case "trash":
+      //   folder = "trash";
+      //   break;
       default:
         throw new ApiError(
           StatusCodes.BAD_REQUEST,
