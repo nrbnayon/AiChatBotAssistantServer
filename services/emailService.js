@@ -3,59 +3,35 @@ import Groq from "groq-sdk";
 import { ApiError } from "../utils/errorHandler.js";
 import { StatusCodes } from "http-status-codes";
 import User from "../models/User.js";
+import { getDefaultModel, getModelById } from "../routes/aiModelRoutes.js";
 
 // Simple TTL cache implementation
 class TTLCache {
   constructor(ttl = 3600000) {
     this.cache = new Map();
     this.ttl = ttl;
-    console.log(`TTLCache initialized with TTL: ${ttl}ms`);
   }
 
   set(key, value) {
-    console.log(
-      `TTLCache: Setting key "${key}" in cache with expiry at ${new Date(
-        Date.now() + this.ttl
-      )}`
-    );
     this.cache.set(key, { value, expiry: Date.now() + this.ttl });
   }
 
   get(key) {
     const item = this.cache.get(key);
     if (item && item.expiry > Date.now()) {
-      console.log(
-        `TTLCache: Cache HIT for key "${key}", expires in ${
-          (item.expiry - Date.now()) / 1000
-        }s`
-      );
       return item.value;
     }
-    console.log(`TTLCache: Cache MISS for key "${key}"`);
     this.cache.delete(key);
     return undefined;
   }
 
   clear() {
-    console.log(
-      `TTLCache: Clearing entire cache with ${this.cache.size} entries`
-    );
     this.cache.clear();
   }
-
-  // Debug method to show cache contents
-  dumpCache() {
-    console.log("TTLCache contents:");
-    const now = Date.now();
-    this.cache.forEach((item, key) => {
-      const expiresIn = Math.round((item.expiry - now) / 1000);
-      console.log(
-        `- Key: "${key}", Expires in: ${expiresIn}s, Value:`,
-        item.value
-      );
-    });
-  }
 }
+
+// Cache to store model call results
+const modelResponseCache = new TTLCache(300000); // 5 minute cache for model responses
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -64,7 +40,6 @@ class EmailService {
     this.user = user;
     this.grok = groq;
     this.analysisCache = new TTLCache();
-    console.log(`EmailService created for user: ${user.id}`);
   }
 
   // Abstract methods to be implemented by provider-specific classes
@@ -108,18 +83,139 @@ class EmailService {
     throw new Error("Method 'getEmailCount' must be implemented");
   }
 
+  // Helper method to call AI model with fallback
+  async callModelWithFallback(
+    prompt,
+    modelId = null,
+    customFallbackChain = []
+  ) {
+    try {
+      // Get default model if no specific model is provided
+      let primaryModel = modelId
+        ? await getModelById(modelId)
+        : await getDefaultModel();
+
+      if (!primaryModel) {
+        throw new ApiError(StatusCodes.BAD_REQUEST, "No valid AI model found");
+      }
+
+      // Generate cache key
+      const cacheKey = `${primaryModel.id}-${prompt.slice(0, 100)}`;
+
+      // Check cache first
+      const cachedResponse = modelResponseCache.get(cacheKey);
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+
+      // Set up fallback chain
+      let fallbackChain = customFallbackChain;
+
+      // If no custom fallback chain, create default fallback chain
+      if (!fallbackChain || fallbackChain.length === 0) {
+        // Default fallback to llama-3.3-70b-versatile if using a different model
+        if (primaryModel.id !== "llama-3.3-70b-versatile") {
+          fallbackChain = ["llama-3.3-70b-versatile"];
+        }
+        // Add other fallbacks
+        if (!fallbackChain.includes("llama-3.1-8b-instant")) {
+          fallbackChain.push("llama-3.1-8b-instant");
+        }
+        if (!fallbackChain.includes("gemma2-9b-it")) {
+          fallbackChain.push("gemma2-9b-it");
+        }
+      }
+
+      // Try primary model first
+      let response = null;
+      let usedModel = primaryModel;
+      let fallbackUsed = false;
+
+      try {
+        if (primaryModel.provider === "groq") {
+          response = await this.grok.chat.completions.create({
+            messages: [{ role: "user", content: prompt }],
+            model: primaryModel.id,
+            temperature: 1.0,
+            response_format: { type: "json_object" },
+          });
+        } else if (primaryModel.provider === "openai") {
+          // OpenAI implementation would go here
+          throw new Error("OpenAI provider not implemented");
+        } else {
+          throw new Error(`Unsupported provider: ${primaryModel.provider}`);
+        }
+      } catch (primaryError) {
+        console.error(
+          `Error with primary model ${primaryModel.id}:`,
+          primaryError
+        );
+
+        // Try fallback models
+        let fallbackSucceeded = false;
+
+        for (const fallbackModelId of fallbackChain) {
+          try {
+            const fallbackModel = await getModelById(fallbackModelId);
+            if (!fallbackModel) continue;
+
+            if (fallbackModel.provider === "groq") {
+              response = await this.grok.chat.completions.create({
+                messages: [{ role: "user", content: prompt }],
+                model: fallbackModel.id,
+                temperature: 1.0,
+                response_format: { type: "json_object" },
+              });
+              usedModel = fallbackModel;
+              fallbackUsed = true;
+              fallbackSucceeded = true;
+              break;
+            } else if (fallbackModel.provider === "openai") {
+              // OpenAI implementation would go here
+              throw new Error("OpenAI provider not implemented");
+            }
+          } catch (fallbackError) {
+            console.error(
+              `Error with fallback model ${fallbackModelId}:`,
+              fallbackError
+            );
+            // Continue to next fallback
+          }
+        }
+
+        if (!fallbackSucceeded) {
+          throw new ApiError(
+            StatusCodes.SERVICE_UNAVAILABLE,
+            "All AI models failed to respond"
+          );
+        }
+      }
+
+      const result = {
+        content: response.choices[0]?.message?.content || "",
+        model: usedModel,
+        fallbackUsed,
+      };
+
+      // Cache the result
+      modelResponseCache.set(cacheKey, result);
+
+      return result;
+    } catch (error) {
+      console.error("Model call error:", error);
+      throw new ApiError(
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        `Failed to process with AI model: ${error.message}`
+      );
+    }
+  }
+
   // Shared AI-related method
   async filterImportantEmails(
     emails,
     customKeywords = [],
     timeRange = "weekly"
   ) {
-    console.log(
-      `filterImportantEmails called with ${emails.length} emails, timeRange: ${timeRange}`
-    );
-    console.log(`Custom keywords: ${customKeywords.join(", ")}`);
-
-    // Validate timeRange
     const validTimeRanges = ["daily", "weekly", "monthly"];
     if (!validTimeRanges.includes(timeRange)) {
       throw new ApiError(
@@ -142,15 +238,9 @@ class EmailService {
       const cutoffDate = new Date(Date.now() - timeLimit);
       return emailDate >= cutoffDate;
     });
-    console.log(
-      `Filtered to ${recentEmails.length} recent emails within ${timeRange} timeframe`
-    );
 
     const emailsToAnalyze = [];
     const processedEmails = [];
-
-    console.log("Checking for cached analysis results...");
-    this.analysisCache.dumpCache();
 
     for (const email of recentEmails) {
       const emailKey = `${email.id}-${timeRange}`;
@@ -159,9 +249,6 @@ class EmailService {
 
       const cached = this.analysisCache.get(emailKey);
       if (cached) {
-        console.log(
-          `Using cached analysis for email ${email.id}: score=${cached.importanceScore}, important=${cached.isImportant}`
-        );
         processedEmails.push(cached);
         continue;
       }
@@ -171,14 +258,8 @@ class EmailService {
       );
 
       if (hasKeyword) {
-        console.log(
-          `Email ${email.id} contains keywords, queuing for analysis`
-        );
         emailsToAnalyze.push(email);
       } else {
-        console.log(
-          `Email ${email.id} doesn't contain keywords, marking as not important`
-        );
         const nonImportantEmail = {
           ...email,
           importanceScore: 0,
@@ -188,8 +269,6 @@ class EmailService {
         this.analysisCache.set(emailKey, nonImportantEmail);
       }
     }
-
-    console.log(`${emailsToAnalyze.length} emails need AI analysis`);
 
     const analysisPromises = emailsToAnalyze.map(async (email) => {
       const emailKey = `${email.id}-${timeRange}`;
@@ -206,15 +285,14 @@ class EmailService {
       `;
 
       try {
-        console.log(`Sending email ${email.id} to Groq API for analysis`);
-        const response = await this.grok.chat.completions.create({
-          messages: [{ role: "user", content: prompt }],
-          model: "llama-3.3-70b-versatile",
-          temperature: 1.0,
-          response_format: { type: "json_object" }, // optional
-        });
+        // Use our new model call method instead of direct Groq call
+        const modelResponse = await this.callModelWithFallback(
+          prompt,
+          "llama-3.3-70b-versatile",
+          ["llama-3.1-8b-instant", "gpt-4o-mini"]
+        );
 
-        const responseText = response.choices[0]?.message?.content || "";
+        const responseText = modelResponse.content || "";
         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
         const jsonStr = jsonMatch
           ? jsonMatch[0]
@@ -232,13 +310,12 @@ class EmailService {
           result = { score: 25, isImportant: false };
         }
 
-        console.log(
-          `Analysis result for email ${email.id}: score=${result.score}, important=${result.isImportant}`
-        );
         const analyzedEmail = {
           ...email,
           importanceScore: result.score,
           isImportant: result.isImportant,
+          modelUsed: modelResponse.model.id,
+          fallbackUsed: modelResponse.fallbackUsed,
         };
         this.analysisCache.set(emailKey, analyzedEmail);
         return analyzedEmail;
@@ -257,19 +334,12 @@ class EmailService {
     const analyzedEmails = await Promise.all(analysisPromises);
     const allEmails = [...analyzedEmails, ...processedEmails];
 
-    const importantEmails = allEmails
+    return allEmails
       .filter((email) => email.isImportant)
       .sort((a, b) => b.importanceScore - a.importanceScore);
-
-    console.log(`Found ${importantEmails.length} important emails`);
-    console.log("Final cache state:");
-    this.analysisCache.dumpCache();
-
-    return importantEmails;
   }
 
   clearCache() {
-    console.log("Clearing analysis cache");
     this.analysisCache.clear();
   }
 }
@@ -278,42 +348,14 @@ class EmailService {
 const emailServiceCache = new Map();
 const TTL = 60000; // 1 minute
 
-// Debug helper function to display cache contents
-function dumpEmailServiceCache() {
-  console.log("==== EMAIL SERVICE CACHE CONTENTS ====");
-  console.log(`Total cached services: ${emailServiceCache.size}`);
-  emailServiceCache.forEach((service, userId) => {
-    console.log(`- User ID: ${userId}, Provider: ${service.user.authProvider}`);
-  });
-  console.log("======================================");
-}
-
 export async function getEmailService(req) {
   const userId = req.user.id;
-  console.log(`getEmailService called for user ${userId}`);
-
   if (emailServiceCache.has(userId)) {
-    console.log(`CACHE HIT: Using cached email service for user ${userId}`);
-    return emailServiceCache.get(userId); // Return cached instance if available
+    return emailServiceCache.get(userId);
   }
-
-  console.log(`CACHE MISS: Creating new email service for user ${userId}`);
-  const emailService = await createEmailService(req); // Create new instance if not cached
-  emailServiceCache.set(userId, emailService); // Cache the instance
-  console.log(`Added email service to cache for user ${userId}`);
-
-  console.log(
-    `Setting expiry timeout for user ${userId} cache entry (${TTL}ms)`
-  );
-  setTimeout(() => {
-    console.log(
-      `CACHE EXPIRY: Removing email service for user ${userId} from cache`
-    );
-    emailServiceCache.delete(userId);
-    dumpEmailServiceCache();
-  }, TTL);
-
-  dumpEmailServiceCache(); // Show current cache state
+  const emailService = await createEmailService(req);
+  emailServiceCache.set(userId, emailService);
+  setTimeout(() => emailServiceCache.delete(userId), TTL);
   return emailService;
 }
 
@@ -328,9 +370,6 @@ export const createEmailService = async (req) => {
     );
   }
 
-  console.log(
-    `Creating email service for user ${user.id} with provider ${user.authProvider}`
-  );
   try {
     switch (user.authProvider) {
       case "google":

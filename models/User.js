@@ -10,7 +10,6 @@ const DEFAULT_IMPORTANT_KEYWORDS = [
   "meeting",
   "deadline",
   "due date",
-  "due",
   "schedule",
   "reminder",
   "task",

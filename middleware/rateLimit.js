@@ -163,21 +163,17 @@ const chatRateLimit = (options = {}) => {
         lastRequest.getMonth() !== now.getMonth() ||
         lastRequest.getFullYear() !== now.getFullYear()
       ) {
-        // Reset to max allowed for the day
         user.subscription.remainingQueries = dailyQueryLimit;
         user.subscription.dailyTokens = 0;
         user.subscription.lastRequestDate = now;
       }
 
-      // Initialize remainingQueries if it doesn't exist yet (for existing users)
       if (user.subscription.remainingQueries === undefined) {
-        // If dailyQueries exists but not remainingQueries, calculate remaining
         if (user.subscription.dailyQueries !== undefined) {
           user.subscription.remainingQueries = Math.max(
             0,
             dailyQueryLimit - user.subscription.dailyQueries
           );
-          // Remove the old field to avoid confusion
           delete user.subscription.dailyQueries;
         } else {
           user.subscription.remainingQueries = dailyQueryLimit;

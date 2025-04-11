@@ -1,7 +1,7 @@
 // routes/aiChatRoutes.js
 import express from "express";
 import auth from "../middleware/authMiddleware.js";
-import { createEmailService, getEmailService } from "../services/emailService.js";
+import { getEmailService } from "../services/emailService.js";
 import { catchAsync } from "../utils/errorHandler.js";
 import MCPServer from "../services/mcpServer.js";
 import multer from "multer";
@@ -193,23 +193,31 @@ router.post(
   chatRateLimit(),
   upload.single("file"),
   catchAsync(async (req, res) => {
-    console.log(`POST /${req.params.chatId} request received for user ${req.user.id}`);
-    
+    console.log(
+      `POST /${req.params.chatId} request received for user ${req.user.id}`
+    );
+
     const startTime = Date.now();
     const emailService = await getEmailService(req);
     const serviceTime = Date.now() - startTime;
-    
+
     // Track email service creation/retrieval
     const trackingId = `${req.user.id}-${Date.now()}`;
     serviceCreationTracker.set(trackingId, {
       userId: req.user.id,
       chatId: req.params.chatId,
       time: serviceTime,
-      cached: serviceTime < 100 // Rough estimate - cached retrievals should be fast
+      cached: serviceTime < 100, // Rough estimate - cached retrievals should be fast
     });
-    
-    console.log(`Email service ${serviceCreationTracker.get(trackingId).cached ? 'retrieved from cache' : 'created'} in ${serviceTime}ms`);
-    
+
+    console.log(
+      `Email service ${
+        serviceCreationTracker.get(trackingId).cached
+          ? "retrieved from cache"
+          : "created"
+      } in ${serviceTime}ms`
+    );
+
     // Rest of your code remains the same...
     const mcpServer = new MCPServer(emailService);
     const { chatId } = req.params;
@@ -273,7 +281,7 @@ router.post(
       console.log(`Fetching emails for user ${userId}`);
       const emails = (await emailService.fetchEmails({ maxResults })).messages;
       console.log(`Retrieved ${emails.length} emails`);
-      
+
       const hour = new Date().getHours();
       let timeContext =
         hour >= 5 && hour < 12
@@ -284,26 +292,32 @@ router.post(
 
       console.log(`Getting inbox stats for user ${userId}`);
       const inboxStats = await emailService.getInboxStats();
-      
+
       // Testing email analysis caching
       console.log("Testing email analysis caching...");
-      console.log("First call to filterImportantEmails (should analyze emails):");
+      console.log(
+        "First call to filterImportantEmails (should analyze emails):"
+      );
       const importantEmails1 = await emailService.filterImportantEmails(
         emails.slice(0, 10), // Use a subset for testing
-        ["urgent", "important"], 
+        ["urgent", "important"],
         "daily"
       );
-      
+
       console.log("Second call with same parameters (should use cache):");
       const importantEmails2 = await emailService.filterImportantEmails(
         emails.slice(0, 10),
-        ["urgent", "important"], 
+        ["urgent", "important"],
         "daily"
       );
-      
-      console.log(`Found ${importantEmails1.length} important emails in first call`);
-      console.log(`Found ${importantEmails2.length} important emails in second call`);
-      
+
+      console.log(
+        `Found ${importantEmails1.length} important emails in first call`
+      );
+      console.log(
+        `Found ${importantEmails2.length} important emails in second call`
+      );
+
       const chatResponse = await mcpServer.chatWithBot(
         req,
         userMessage,
@@ -344,13 +358,17 @@ router.post(
       await chat.save();
 
       // Add service tracking stats to response in dev mode
-      const debugInfo = process.env.NODE_ENV === "development" ? {
-        serviceTracking: Object.fromEntries(serviceCreationTracker),
-        cacheStats: {
-          emailServiceCacheSize: emailServiceCache ? emailServiceCache.size : 'unknown',
-          emailAnalysisCacheEntries: emailService.analysisCache ? emailService.analysisCache.cache.size : 'unknown'
-        }
-      } : null;
+      const debugInfo =
+        process.env.NODE_ENV === "development"
+          ? {
+              serviceTracking: Object.fromEntries(serviceCreationTracker),
+              cacheStats: {
+                emailAnalysisCacheEntries: emailService.analysisCache
+                  ? emailService.analysisCache.cache.size
+                  : "unknown",
+              },
+            }
+          : null;
 
       res.json({
         success: true,
@@ -359,7 +377,7 @@ router.post(
         fallbackUsed: chatResponse.fallbackUsed,
         tokenCount: chatResponse.tokenCount || 0,
         data: chatResponse.artifact?.data || null,
-        debug: debugInfo
+        debug: debugInfo,
       });
     } catch (error) {
       console.error("Error processing request:", error);
@@ -372,7 +390,6 @@ router.post(
     }
   })
 );
-
 
 // Legacy endpoint (without chat ID, creates a new chat)
 router.post(
@@ -414,7 +431,7 @@ router.post(
     }
 
     const chatName = message
-      ? `Chat with Assistant- ${message.substring(0, 10)}...`
+      ? `${message}`
       : "Untitled Chat";
 
     const newChat = new Chat({ userId, name: chatName });
