@@ -1,7 +1,7 @@
 // routes/aiChatRoutes.js
 import express from "express";
 import auth from "../middleware/authMiddleware.js";
-import { createEmailService } from "../services/emailService.js";
+import { createEmailService, getEmailService } from "../services/emailService.js";
 import { catchAsync } from "../utils/errorHandler.js";
 import MCPServer from "../services/mcpServer.js";
 import multer from "multer";
@@ -55,7 +55,7 @@ router.post(
   chatRateLimit(),
   upload.single("file"),
   catchAsync(async (req, res) => {
-    const emailService = await createEmailService(req);
+    const emailService = await getEmailService(req);
     const mcpServer = new MCPServer(emailService);
     const { chatId } = req.params;
     const { message, maxResults, modelId, history: providedHistory } = req.body;
@@ -191,7 +191,7 @@ router.post(
   chatRateLimit(),
   upload.single("file"),
   catchAsync(async (req, res) => {
-    const emailService = await createEmailService(req);
+    const emailService = await getEmailService(req);
     const mcpServer = new MCPServer(emailService);
     const { message, maxResults, modelId, history: providedHistory } = req.body;
     const userId = req.user.id;

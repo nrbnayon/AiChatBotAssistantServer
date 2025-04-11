@@ -15,8 +15,8 @@ class ModelProvider {
       apiKey: process.env.OPENAI_API_KEY,
     });
     this.retryCount = 3;
-    this.retryDelay = 500;
-    this.maxRetryDelay = 1000;
+    this.retryDelay = 200;
+    this.maxRetryDelay = 500;
   }
 
   async callWithFallbackChain(primaryModelId, options, fallbackChain = []) {
@@ -1485,11 +1485,13 @@ class MCPServer {
       }
     }
 
-    // Rest of the function remains unchanged
+    // Process message and limit history to last 5 messages
     let processedMessage = this.preprocessMessage(message, userId);
+    const maxHistory = 5;
+    const limitedHistory = history.slice(-maxHistory);
     const messages = [
       { role: "system", content: personalizedSystemPrompt },
-      ...history,
+      ...limitedHistory,
       { role: "user", content: processedMessage },
     ];
 

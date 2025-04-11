@@ -4,6 +4,7 @@ import { ApiError } from "../utils/errorHandler.js";
 import { StatusCodes } from "http-status-codes";
 import User from "../models/User.js";
 
+
 // Simple TTL cache implementation
 class TTLCache {
   constructor(ttl = 3600000) { 
@@ -212,6 +213,21 @@ class EmailService {
   }
 }
 
+// Cache to store email service instances per user
+const emailServiceCache = new Map();
+const TTL = 60000; // 1 minute
+
+export async function getEmailService(req) {
+  const userId = req.user.id;
+  if (emailServiceCache.has(userId)) {
+    return emailServiceCache.get(userId); // Return cached instance if available
+  }
+  const emailService = await createEmailService(req); // Create new instance if not cached
+  emailServiceCache.set(userId, emailService); // Cache the instance
+  setTimeout(() => emailServiceCache.delete(userId), TTL); // Remove after TTL
+  return emailService;
+}
+
 export const createEmailService = async (req) => {
   const user = await User.findById(req.user.id);
   if (!user) throw new ApiError(StatusCodes.NOT_FOUND, "User not found");
@@ -228,9 +244,6 @@ export const createEmailService = async (req) => {
       case "microsoft":
         const { default: OutlookService } = await import("./outlookService.js");
         return new OutlookService(user);
-      case "yahoo":
-        const { default: YahooService } = await import("./yahooService.js");
-        return new YahooService(user);
       default:
         throw new ApiError(StatusCodes.BAD_REQUEST, "Unsupported email provider");
     }
