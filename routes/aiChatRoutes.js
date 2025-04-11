@@ -1,7 +1,10 @@
 // routes/aiChatRoutes.js
 import express from "express";
 import auth from "../middleware/authMiddleware.js";
-import { createEmailService, getEmailService } from "../services/emailService.js";
+import {
+  createEmailService,
+  getEmailService,
+} from "../services/emailService.js";
 import { catchAsync } from "../utils/errorHandler.js";
 import MCPServer from "../services/mcpServer.js";
 import multer from "multer";
@@ -75,14 +78,18 @@ router.post(
 
     const mcpServer = new MCPServer(emailService);
     const { chatId } = req.params;
-    const {
-      message,
-      maxResults,
-      modelId,
-      history: providedHistory,
-    } = req.body;
+    const { message, maxResults, modelId, history: providedHistory } = req.body;
 
-    console.log("Model ID:", modelId, "Max Results:", maxResults, "Chat ID:", chatId, "Message:", message);
+    console.log(
+      "Model ID:",
+      modelId,
+      "Max Results:",
+      maxResults,
+      "Chat ID:",
+      chatId,
+      "Message:",
+      message
+    );
     if (!modelId) {
       return res.status(400).json({ error: "modelId is required" });
     }
@@ -129,12 +136,10 @@ router.post(
         fs.unlinkSync(req.file.path);
       } catch (error) {
         console.error("File processing error:", error);
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: `Error processing file: ${error.message}`,
-          });
+        return res.status(400).json({
+          success: false,
+          message: `Error processing file: ${error.message}`,
+        });
       }
     }
 
@@ -222,12 +227,10 @@ router.post(
       });
     } catch (error) {
       console.error("Error processing request:", error);
-      res
-        .status(500)
-        .json({
-          success: false,
-          message: "Trouble processing your request. Try again?",
-        });
+      res.status(500).json({
+        success: false,
+        message: "Trouble processing your request. Try again?",
+      });
     }
   })
 );
@@ -278,7 +281,7 @@ function extractContextKeywords(message) {
   // Add top 3 potential topic keywords
   keywords.push(...potentialKeywords.slice(0, 3));
 
-  return [...new Set(keywords)]; 
+  return [...new Set(keywords)];
 }
 
 // Legacy endpoint (without chat ID, creates a new chat)
@@ -438,7 +441,7 @@ async function extractTextFromFile(filePath, mimeType) {
     } else {
       throw new Error("Unsupported file type");
     }
-    const MAX_FILE_CHARS = 4000; 
+    const MAX_FILE_CHARS = 4000;
     if (text.length > MAX_FILE_CHARS) {
       text = text.substring(0, MAX_FILE_CHARS) + "\n\n[File content truncated]";
     }
