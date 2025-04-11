@@ -11,7 +11,7 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
     "for user:",
     req.user.email
   );
-  const { query, maxResults = 5000, pageToken } = req.query;
+  const { query, maxResults = 1000, pageToken } = req.query;
 
   const emailService = await createEmailService(req);
   const mcpServer = new MCPServer(emailService);
@@ -20,7 +20,7 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
     {
       filter,
       query: query?.toString(),
-      maxResults: parseInt(maxResults?.toString() || "5000"),
+      maxResults: parseInt(maxResults?.toString() || "1000"),
       pageToken: pageToken?.toString(),
     },
     req.user.id

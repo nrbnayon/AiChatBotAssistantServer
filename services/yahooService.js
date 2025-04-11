@@ -46,7 +46,7 @@ class YahooService extends EmailService {
     };
   }
 
-  async fetchEmails({ query, maxResults = 5000, pageToken, filter = "all" }) {
+  async fetchEmails({ query, maxResults = 1000, pageToken, filter = "all" }) {
     const client = await this.getClient();
     let endpoint = `${client.baseUrl}/v1/messages?count=${maxResults}`;
     let folder;

@@ -68,7 +68,7 @@ class GmailService extends EmailService {
 
   async fetchEmails({
     query = "",
-    maxResults = 5000,
+    maxResults = 1000,
     pageToken,
     filter = "all",
   }) {
@@ -341,7 +341,7 @@ class GmailService extends EmailService {
       const totalUnreadResponse = await client.users.messages.list({
         userId: "me",
         q: "is:unread",
-        maxResults: 5000, 
+        maxResults: 1000, 
       });
       return {
         totalEmails: inboxResponse.data.messagesTotal || 0, 
@@ -362,7 +362,7 @@ class GmailService extends EmailService {
       const response = await client.users.messages.list({
         userId: "me",
         q,
-        maxResults: 5000, // Just get the count
+        maxResults: 1000, // Just get the count
       });
       return response.data.resultSizeEstimate || 0;
     } catch (error) {
