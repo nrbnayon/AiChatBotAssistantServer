@@ -23,53 +23,10 @@ class ModelProvider {
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
-    this.retryCount = 3;
+    this.retryCount = 1;
     this.retryDelay = 200;
     this.maxRetryDelay = 500;
   }
-
-  async callWithFallbackChain(primaryModelId, options, fallbackChain = []) {
-    if (!options || !options.messages) {
-      throw new ApiError(500, "Invalid options for model call");
-    }
-    const completeChain = [primaryModelId, ...fallbackChain];
-    let lastError = null;
-
-    for (const currentModelId of completeChain) {
-      try {
-        const model = await getModelById(currentModelId);
-        if (!model) {
-          console.warn(`Model ${currentModelId} not found, skipping`);
-          continue;
-        }
-        console.log(`Attempting to use model: ${model.name}`);
-        const { result, tokenCount } = await this.callModelWithRetry(
-          model,
-          options
-        );
-        console.log(`Successfully used model: ${model.name}`);
-        return {
-          result,
-          tokenCount,
-          modelUsed: model,
-          fallbackUsed: currentModelId !== primaryModelId,
-        };
-      } catch (error) {
-        lastError = error;
-        logErrorWithStyle(error);
-        console.warn(
-          `Model ${currentModelId} failed, trying next in fallback chain`
-        );
-      }
-    }
-    throw new ApiError(
-      503,
-      `All models in the fallback chain failed: ${
-        lastError?.message || "Unknown error"
-      }`
-    );
-  }
-
   async callModelWithRetry(model, options) {
     if (!options || !options.messages) {
       throw new ApiError(500, "Invalid options for model retry");
@@ -93,14 +50,19 @@ class ModelProvider {
         } else {
           throw new ApiError(400, `Unsupported provider: ${model.provider}`);
         }
-        // Extract token usage (specific to provider response structure)
         const tokenCount =
           model.provider === "groq"
-            ? result.usage?.total_tokens || 0 // Groq might differ; adjust based on actual response
-            : result.usage?.total_tokens || 0; // OpenAI standard
+            ? result.usage?.total_tokens || 0
+            : result.usage?.total_tokens || 0;
         return { result, tokenCount };
       } catch (error) {
         lastError = error;
+        if (
+          error.message?.includes("429") ||
+          error.message?.includes("rate_limit_exceeded")
+        ) {
+          throw error;
+        }
         attemptCount++;
         if (attemptCount < this.retryCount) {
           console.warn(
@@ -123,8 +85,95 @@ class ModelProvider {
       }`
     );
   }
-}
 
+  async callWithFallbackChain(primaryModelId, options, fallbackChain = []) {
+    if (!options || !options.messages) {
+      throw new ApiError(500, "Invalid options for model call");
+    }
+    const completeChain = [
+      primaryModelId,
+      ...fallbackChain.filter((id) => id !== primaryModelId),
+    ];
+    let lastError = null;
+
+    const primaryModel = await getModelById(primaryModelId);
+    if (primaryModel) {
+      console.log(`Attempting to use primary model: ${primaryModel.name}`); 
+      let attemptCount = 0;
+      let currentRetryDelay = this.retryDelay;
+      while (attemptCount < this.retryCount) {
+        try {
+          const { result, tokenCount } = await this.callModelWithRetry(
+            primaryModel,
+            options
+          );
+          console.log(`Successfully used primary model: ${primaryModel.name}`); 
+          return {
+            result,
+            tokenCount,
+            modelUsed: primaryModel,
+            fallbackUsed: false,
+          };
+        } catch (error) {
+          lastError = error;
+          if (
+            error.message?.includes("429") ||
+            error.message?.includes("rate_limit_exceeded")
+          ) {
+            console.log(
+              "Rate limit error detected, stopping retries for primary model"
+            );
+            break;
+          }
+          attemptCount++;
+          if (attemptCount < this.retryCount) {
+            console.warn(
+              `Attempt ${attemptCount} failed for model ${primaryModel.id}, retrying after ${currentRetryDelay}ms`
+            );
+            await new Promise((resolve) =>
+              setTimeout(resolve, currentRetryDelay)
+            );
+            currentRetryDelay *= 2;
+          }
+        }
+      }
+    }
+
+    // Fallback chain if primary model fails
+    for (const currentModelId of completeChain.slice(1)) {
+      try {
+        const model = await getModelById(currentModelId);
+        if (!model) {
+          console.warn(`Model ${currentModelId} not found, skipping`);
+          continue;
+        }
+        console.log(`Attempting to use fallback model: ${model.name}`);
+        const { result, tokenCount } = await this.callModelWithRetry(
+          model,
+          options
+        );
+        console.log(`Successfully used fallback model: ${model.name}`);
+        return {
+          result,
+          tokenCount,
+          modelUsed: model,
+          fallbackUsed: true,
+        };
+      } catch (error) {
+        lastError = error;
+        logErrorWithStyle(error);
+        console.warn(`Fallback model ${currentModelId} failed, trying next`);
+      }
+    }
+    throw new ApiError(
+      503,
+      `All models in the fallback chain failed: ${
+        lastError?.message || "Unknown error"
+      }`
+    );
+  }
+}
+  
 class MCPServer {
   constructor(emailService) {
     this.emailService = emailService;
@@ -460,20 +509,33 @@ class MCPServer {
       case "trash-email": {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID parameter");
-        await this.emailService.trashEmail(email_id);
-        const trashConfirmations = [
-          "Moved that email to the trash for you!",
-          "Email’s trashed—gone for good!",
-          "That one’s in the trash now. All set?",
-        ];
-        return [
-          {
-            type: "text",
-            text: trashConfirmations[
-              Math.floor(Math.random() * trashConfirmations.length)
-            ],
-          },
-        ];
+        try {
+          await this.emailService.getEmail(email_id);
+          await this.emailService.trashEmail(email_id);
+          const trashConfirmations = [
+            "Moved that email to the trash for you!",
+            "Email’s trashed—gone for good!",
+            "That one’s in the trash now. All set?",
+          ];
+          return [
+            {
+              type: "text",
+              text: trashConfirmations[
+                Math.floor(Math.random() * trashConfirmations.length)
+              ],
+            },
+          ];
+        } catch (error) {
+          if (error.status === 404) {
+            return [
+              {
+                type: "text",
+                text: "Hmm, that email seems to be missing. Maybe it was already deleted or the ID is incorrect.",
+              },
+            ];
+          }
+          throw error;
+        }
       }
       case "reply-to-email": {
         const { email_id, message, attachments = [] } = args;
@@ -795,7 +857,7 @@ class MCPServer {
                 temperature: 1.0,
                 max_tokens: 5500,
               },
-              STANDARD_FALLBACK_CHAIN 
+              STANDARD_FALLBACK_CHAIN
             );
           draftText =
             modificationResponse.result.choices[0]?.message?.content ||
@@ -1320,7 +1382,7 @@ class MCPServer {
       historyTokens += estimateTokens(msg.content);
     });
     const MAX_TOKENS = 5500; // Safe threshold below 6000
-    let totalTokens = systemTokens + historyTokens + userMessageTokens + 100; 
+    let totalTokens = systemTokens + historyTokens + userMessageTokens + 100;
 
     // Truncate history if exceeding token limit
     let adjustedHistory = [...limitedHistory];
@@ -1490,7 +1552,7 @@ class MCPServer {
                   temperature: 1.0,
                   max_tokens: 5500,
                 },
-                fallbackChain
+                STANDARD_FALLBACK_CHAIN
               );
             const summary =
               summaryResponse.result.choices[0]?.message?.content ||

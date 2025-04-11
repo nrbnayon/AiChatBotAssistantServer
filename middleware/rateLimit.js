@@ -154,7 +154,7 @@ const chatRateLimit = (options = {}) => {
 
       // Get the daily query limit based on plan
       const dailyQueryLimit = planLimits[user.subscription.plan] || max;
-      const maxTokens = tokenLimits[user.subscription.plan] || 10000;
+      const maxTokens = tokenLimits[user.subscription.plan] || 100000000000;
 
       // Reset daily counters if it's a new day
       if (

@@ -13,8 +13,8 @@ const availableModels = [
     name: "GPT-4.o Mini", 
     developer: "OpenAI",
     provider: "openai",
-    contextWindow: 100000000,
-    maxCompletionTokens: 10000000000,
+    contextWindow: 100000000000,
+    maxCompletionTokens: 1000000000000,
     description: "OpenAI's efficient and versatile chat model",
     isDefault: true,
   },
@@ -110,7 +110,7 @@ export const getModelById = async (id) => {
 
 class ModelProvider {
   constructor() {
-    this.retryCount = 3;
+    this.retryCount = 1;
     this.retryDelay = 500;
   }
 
