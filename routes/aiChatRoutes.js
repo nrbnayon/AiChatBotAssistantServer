@@ -516,7 +516,7 @@ router.post(
       // First call will populate the cache, subsequent calls will use it
       console.log("Analyzing important emails with dynamic keywords");
       const importantEmails = await emailService.filterImportantEmails(
-        emails.slice(0, 20), // Use a reasonable subset
+        emails.slice(0, 100), // Use a reasonable subset
         combinedKeywords,
         "daily"
       );
@@ -539,7 +539,7 @@ router.post(
           unreadCount: inboxStats.unreadEmails,
           importantCount: importantEmails.length,
           // Include top important emails if relevant
-          topImportantEmails: importantEmails.slice(0, 3).map((email) => ({
+          topImportantEmails: importantEmails.slice(0, 10).map((email) => ({
             from: email.from,
             subject: email.subject,
             score: email.importanceScore,
