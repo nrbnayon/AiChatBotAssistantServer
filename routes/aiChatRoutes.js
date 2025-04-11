@@ -521,7 +521,7 @@ router.post(
         "daily"
       );
 
-      console.log(`Found ${importantEmails.length} important emails`);
+      console.log(`Found ${importantEmails} important emails`);
 
       // Verify cache is working by examining cache size
       const cacheSize = emailService.analysisCache
@@ -539,7 +539,7 @@ router.post(
           unreadCount: inboxStats.unreadEmails,
           importantCount: importantEmails.length,
           // Include top important emails if relevant
-          topImportantEmails: importantEmails.slice(0, 10).map((email) => ({
+          topImportantEmails: importantEmails.slice(0, 100).map((email) => ({
             from: email.from,
             subject: email.subject,
             score: email.importanceScore,
