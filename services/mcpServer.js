@@ -351,9 +351,9 @@ class MCPServer {
       }
 
       case "count-emails": {
-        const { filter } = args;
+        const { filter = "all", query = "" } = args;
         if (!filter) throw new Error("Missing filter parameter");
-        const emails = await this.emailService.fetchEmails({ filter });
+        const emails = await this.emailService.fetchEmails({ filter, query });
         const totalEmails = emails.messages ? emails.messages.length : 0;
 
         let text = "";
