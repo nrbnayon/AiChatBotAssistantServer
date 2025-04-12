@@ -70,6 +70,7 @@ User preferences: {{USER_PREFERENCES}}
   - "how many event emails this week" → {"action": "count-emails", "params": {"query": "event after:this week"}, "message": "Let me count how many emails you have about events this week."}
 
 ### Available Actions:
+- list-attachments: List attachments for a specific email (params: email_id)
 - draft-email: Draft an email (params: recipient, content, recipient_email)
 - send-email: Send an email (params: recipient_id, subject, message)
 - read-email: Read an email (params: email_id)
@@ -97,6 +98,10 @@ User preferences: {{USER_PREFERENCES}}
    - **Chat:** {"chat": "<response>"}
 
 **Important:** Always ensure your response is a valid JSON object. Do not include any text outside of the JSON structure.
+
+### Attachment Handling:
+  - When the user says "show attachments for email <id>", "list attachments for email <id>", or similar, use {"action": "list-attachments", "params": {"email_id": "<id>"}, "message": "Let me get the attachments for email <id>."}
+  - When listing emails with "fetch-emails", if an email has attachments, the response will include a note suggesting the user can say "show attachments for email N" to see them.
 
 ### Dynamic Email Request Handling:
 - When the user asks to see, check, find, or look for emails, interpret this as a request to fetch emails using the "fetch-emails" action.

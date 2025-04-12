@@ -169,6 +169,42 @@ class OutlookService extends EmailService {
       snippet: email.bodyPreview || "",
       body: bodyText,
       isRead: email.isRead || false,
+      hasAttachments: email.hasAttachments || false,
+    };
+  }
+
+  async getAttachments(emailId) {
+    const client = await this.getClient();
+    const response = await fetch(
+      `${client.baseUrl}/messages/${emailId}/attachments`,
+      {
+        headers: { Authorization: `Bearer ${client.accessToken}` },
+      }
+    );
+    if (!response.ok) throw new Error("Failed to fetch attachments");
+    const data = await response.json();
+    return data.value.map((att) => ({
+      id: att.id,
+      filename: att.name,
+      mimeType: att.contentType,
+      size: att.size,
+    }));
+  }
+
+  async getAttachment(emailId, attachmentId) {
+    const client = await this.getClient();
+    const response = await fetch(
+      `${client.baseUrl}/messages/${emailId}/attachments/${attachmentId}`,
+      {
+        headers: { Authorization: `Bearer ${client.accessToken}` },
+      }
+    );
+    if (!response.ok) throw new Error("Failed to fetch attachment");
+    const attachment = await response.json();
+    return {
+      filename: attachment.name || "unnamed",
+      mimeType: attachment.contentType || "application/octet-stream",
+      content: Buffer.from(attachment.contentBytes, "base64"),
     };
   }
 

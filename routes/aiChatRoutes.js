@@ -18,8 +18,6 @@ import { chatRateLimit } from "../middleware/rateLimit.js";
 import User from "../models/User.js";
 import Chat from "../models/Chat.js";
 
-const serviceCreationTracker = new Map();
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -59,6 +57,8 @@ router.post(
   chatRateLimit(),
   upload.single("file"),
   catchAsync(async (req, res) => {
+
+    
     console.log(
       `POST /${req.params.chatId} request received for user ${
         req.user.id
@@ -162,6 +162,11 @@ router.post(
       const hasImportantKeyword = combinedKeywords.some((keyword) =>
         userMessage.toLowerCase().includes(keyword.toLowerCase())
       );
+
+      console.log("Combined Keywords:", combinedKeywords);
+      console.log("User Message:", userMessage);
+      console.log("Has Important Keyword:", hasImportantKeyword);
+      console.log("Inbox Stats:", inboxStats);
 
       let importantEmails = [];
       if (hasImportantKeyword) {

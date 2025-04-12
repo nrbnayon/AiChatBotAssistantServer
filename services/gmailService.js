@@ -90,7 +90,7 @@ class GmailService extends EmailService {
     };
 
     const filterMap = {
-      all: (params) => params, 
+      all: (params) => params,
       read: (params) => {
         params.q = params.q ? `${params.q} is:read` : "is:read";
         return params;
@@ -156,17 +156,27 @@ class GmailService extends EmailService {
       );
 
       return {
-        messages: emails.filter(Boolean), 
+        messages: emails.filter(Boolean),
         nextPageToken: response.data.nextPageToken || null,
       };
     } catch (error) {
       console.error("[ERROR] Failed to fetch emails:", error);
-      return { messages: [], nextPageToken: null }; 
+      return { messages: [], nextPageToken: null };
     }
   }
 
   formatEmail(email) {
     const headers = email.payload.headers || [];
+    const parts = email.payload?.parts || [];
+    const attachments = parts
+      .filter((part) => part.filename && part.body?.attachmentId)
+      .map((part) => ({
+        id: part.body.attachmentId,
+        filename: part.filename,
+        mimeType: part.mimeType,
+        size: part.body.size,
+      }));
+
     return {
       id: email.id || "",
       threadId: email.threadId || "",
@@ -177,6 +187,8 @@ class GmailService extends EmailService {
       snippet: email.snippet || "",
       body: this.getEmailBody(email.payload),
       isRead: !(email.labelIds || []).includes("UNREAD"),
+      hasAttachments: attachments.length > 0,
+      attachments: attachments,
     };
   }
 
@@ -219,6 +231,34 @@ class GmailService extends EmailService {
       }
     }
     return body;
+  }
+
+  async getAttachments(emailId) {
+    const email = await this.getEmail(emailId);
+    const parts = email.payload?.parts || [];
+    return parts
+      .filter((part) => part.filename && part.body?.attachmentId)
+      .map((part) => ({
+        id: part.body.attachmentId,
+        filename: part.filename,
+        mimeType: part.mimeType,
+        size: part.body.size,
+      }));
+  }
+
+  async getAttachment(emailId, attachmentId) {
+    const client = await this.getClient();
+    const response = await client.users.messages.attachments.get({
+      userId: "me",
+      messageId: emailId,
+      id: attachmentId,
+    });
+    const attachment = response.data;
+    return {
+      filename: attachment.filename || "unnamed",
+      mimeType: attachment.mimeType || "application/octet-stream",
+      content: Buffer.from(attachment.data, "base64"),
+    };
   }
 
   async sendEmail({ to, subject, body, attachments = [] }) {

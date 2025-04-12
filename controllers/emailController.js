@@ -47,7 +47,7 @@ const fetchImportantEmails = catchAsync(async (req, res) => {
   const emailService = await createEmailService(req);
   const {
     query,
-    maxResults = 100,
+    maxResults = 1000,
     pageToken,
     keywords,
     timeRange = "weekly",

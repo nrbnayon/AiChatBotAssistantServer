@@ -229,7 +229,11 @@ class MCPServer {
     if (!lastListed) return message;
 
     const lowerMessage = message.toLowerCase();
-    if (
+    if (lowerMessage.includes("this emails")) {
+      // Replace "this emails" with comma-separated IDs of last listed emails
+      const emailIds = lastListed.map((e) => e.id).join(", ");
+      return message.replace(/this\s+emails?/i, `emails ${emailIds}`);
+    } else if (
       lowerMessage.includes("the first email") ||
       lowerMessage.includes("email 1")
     ) {
@@ -299,7 +303,7 @@ class MCPServer {
           return [
             {
               type: "text",
-              text: "Sorry, I couldn’t fetch your emails right now. Want to try again?",
+              text: "Sorry, I couldn't fetch your emails right now. Want to try again?",
             },
           ];
         }
@@ -312,16 +316,16 @@ class MCPServer {
         let text = "";
         if (analyzedData.table) {
           const introTexts = [
-            "Here’s what I dug up from your emails:",
-            "I’ve sifted through your inbox and found this:",
+            "Here's what I dug up from your emails:",
+            "I've sifted through your inbox and found this:",
             "Check out what I discovered in your emails:",
-            "Here’s the scoop from your inbox:",
+            "Here's the scoop from your inbox:",
           ];
           const followUpTexts = [
             "What do you want to do with these?",
             "Anything catch your eye here?",
             "Need help with any of these?",
-            "What’s next on your mind?",
+            "What's next on your mind?",
           ];
           const intro =
             introTexts[Math.floor(Math.random() * introTexts.length)];
@@ -345,9 +349,9 @@ class MCPServer {
               ];
           } else {
             const foundEmailsTexts = [
-              `Found **${count} emails** that match. Here’s a peek at the latest **${previewCount}**:`,
+              `Found **${count} emails** that match. Here's a peek at the latest **${previewCount}**:`,
               `Got **${count} emails** for you. Here are the top **${previewCount}**:`,
-              `I’ve tracked down **${count} emails**. Check out the most recent **${previewCount}**:`,
+              `I've tracked down **${count} emails**. Check out the most recent **${previewCount}**:`,
             ];
             text =
               foundEmailsTexts[
@@ -361,7 +365,7 @@ class MCPServer {
                   "summarize-email",
                   { email_id: email.id },
                   userId,
-                  modelId // Pass modelId here
+                  modelId
                 );
                 const summaryText = summaryResponse[0].text;
                 const parts = summaryText.split(": **");
@@ -375,31 +379,42 @@ class MCPServer {
               text += previewEmails
                 .map((e, i) => {
                   const date = new Date(e.date).toLocaleDateString();
+                  const attachmentNote = e.hasAttachments
+                    ? "\n**Attachments:** Yes (say 'show attachments for email " +
+                      (i + 1) +
+                      "' to see them)"
+                    : "";
                   return `**${i + 1}.** **From:** ${e.from}\n**Subject:** ${
                     e.subject || "No subject"
-                  }\n**Date:** ${date}\n**ID:** ${e.id}\n**Summary:** ${
-                    summaries[i]
-                  }\n`;
+                  }\n**Date:** ${date}\n**ID:** ${
+                    e.id
+                  }${attachmentNote}\n**Summary:** ${summaries[i]}\n`;
                 })
                 .join("\n");
             } else {
               text += previewEmails
                 .map((e, i) => {
                   const date = new Date(e.date).toLocaleDateString();
+                  const attachmentNote = e.hasAttachments
+                    ? "\n**Attachments:** Yes (say 'show attachments for email " +
+                      (i + 1) +
+                      "' to see them)"
+                    : "";
                   return `**${i + 1}.** **From:** ${e.from}\n**Subject:** ${
                     e.subject || "No subject"
-                  }\n**Date:** ${date}\n**ID:** ${e.id}\n${
+                  }\n**Date:** ${date}\n**ID:** ${e.id}${attachmentNote}\n${
                     e.snippet || "No preview available"
                   }\n`;
                 })
                 .join("\n");
             }
+
             const followUps = [
               summarize
                 ? "Anything else I can help with?"
                 : "Want me to summarize any of these for you?",
               "Should I open one up or refine the search?",
-              "Anything here you’d like to explore further?",
+              "Anything here you'd like to explore further?",
             ];
             text += `\n\n${
               followUps[Math.floor(Math.random() * followUps.length)]
@@ -410,6 +425,23 @@ class MCPServer {
         return [
           { type: "text", text, artifact: { type: "json", data: emails } },
         ];
+      }
+
+      case "list-attachments": {
+        const { email_id } = args;
+        if (!email_id) throw new Error("Missing email ID");
+        const attachments = await this.emailService.getAttachments(email_id);
+        if (attachments.length === 0) {
+          return [{ type: "text", text: "This email has no attachments." }];
+        }
+        const attachmentList = attachments
+          .map((att, index) => {
+            const downloadLink = `https://indexai-chatbot.vercel.app/api/v1/emails/download/attachment?emailId=${email_id}&attachmentId=${att.id}`;
+            return `${index + 1}. [${att.filename}](${downloadLink})`;
+          })
+          .join("\n");
+        const text = `Here are the attachments for email ${email_id}:\n${attachmentList}\n\nClick the links to download them!`;
+        return [{ type: "text", text }];
       }
 
       case "count-emails": {
@@ -1004,156 +1036,29 @@ class MCPServer {
   }
 
   analyzeEmails(emails, query) {
-    // Defensive check for undefined or missing messages
-    if (!emails || !emails.messages) {
-      console.error(
-        "[ERROR] analyzeEmails: emails or emails.messages is undefined",
-        emails
-      );
-      return {
-        emails: [],
-        summary: {
-          totalCount: 0,
-          unreadCount: 0,
-          senderBreakdown: [],
-          timeDistribution: {},
-        },
-      };
+    const relevantEmails = emails.messages.filter((email) => {
+      const content = `${email.subject || ""} ${
+        email.body || ""
+      }`.toLowerCase();
+      return query.split(" ").some((q) => content.includes(q.toLowerCase()));
+    });
+    if (relevantEmails.length > 5 && /meeting|event|package/i.test(query)) {
+      return { table: this.buildTable(relevantEmails, query) };
+    } else if (relevantEmails.length > 0) {
+      return { list: this.buildList(relevantEmails) };
     }
+    return { text: "No matching emails found." };
+  }
 
-    const queryLower = query.toLowerCase();
-
-    if (
-      queryLower.includes("car") &&
-      (queryLower.includes("offer") || queryLower.includes("deal"))
-    ) {
-      const offers = emails.messages
-        .filter((email) => {
-          const content = `${email?.subject || ""} ${
-            email?.body || ""
-          }`.toLowerCase();
-          return (
-            content.includes("car") &&
-            (content.includes("offer") ||
-              content.includes("deal") ||
-              content.includes("sale") ||
-              content.includes("price"))
-          );
-        })
-        .map((email) => {
-          const modelMatch = email?.body?.match(
-            /(?:car|model|vehicle):?\s*(\w+\s*\w*)/i
-          ) || ["", "N/A"];
-          const yearMatch = email?.body?.match(
-            /(?:year|model year):?\s*(\d{4})/i
-          ) || ["", "N/A"];
-          const priceMatch = email?.body?.match(
-            /(?:price|cost|value):?\s*\$?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i
-          ) || ["", "N/A"];
-          return {
-            "Car Model": modelMatch[1],
-            Year: yearMatch[1],
-            Price: priceMatch[1] === "N/A" ? "N/A" : `$${priceMatch[1]}`,
-            From: email?.from || "N/A",
-            Date: email?.date
-              ? new Date(email.date).toLocaleDateString()
-              : "N/A",
-            "Email ID": email?.id || "N/A",
-          };
-        });
-      return { table: offers };
-    } else if (
-      queryLower.includes("package") ||
-      queryLower.includes("delivery") ||
-      queryLower.includes("shipping")
-    ) {
-      const packages = emails.messages
-        .filter((email) => {
-          const content = `${email?.subject || ""} ${
-            email?.body || ""
-          }`.toLowerCase();
-          return (
-            content.includes("package") ||
-            content.includes("delivery") ||
-            content.includes("shipping") ||
-            content.includes("tracking")
-          );
-        })
-        .map((email) => {
-          const trackingMatch = email?.body?.match(
-            /(?:tracking|track):?\s*#?\s*([A-Z0-9]{8,})/i
-          ) || ["", "N/A"];
-          const statusMatch = email?.body?.match(
-            /(?:status|delivery status):?\s*(\w+\s*\w*)/i
-          ) || ["", "N/A"];
-          const dateMatch = email?.body?.match(
-            /(?:delivery|arrival|expected):?\s*(?:date|by)?:?\s*(\w+\s*\d{1,2},?\s*\d{4})/i
-          ) || ["", "N/A"];
-          return {
-            Sender: email?.from || "N/A",
-            Subject: email?.subject || "N/A",
-            "Tracking Number": trackingMatch[1],
-            Status: statusMatch[1],
-            "Delivery Date": dateMatch[1],
-            "Email ID": email?.id || "N/A",
-          };
-        });
-      return { table: packages };
-    } else if (
-      queryLower.includes("event") ||
-      queryLower.includes("meeting") ||
-      queryLower.includes("calendar")
-    ) {
-      const events = emails.messages
-        .filter((email) => {
-          const content = `${email?.subject || ""} ${
-            email?.body || ""
-          }`.toLowerCase();
-          return (
-            content.includes("event") ||
-            content.includes("meeting") ||
-            content.includes("calendar") ||
-            content.includes("appointment")
-          );
-        })
-        .map((email) => {
-          const titleMatch = email?.subject?.match(/(.+)/) || ["", "N/A"];
-          const dateMatch = email?.body?.match(
-            /(?:date|scheduled|when):?\s*(\w+\s*\d{1,2},?\s*\d{4})/i
-          ) || ["", "N/A"];
-          const timeMatch = email?.body?.match(
-            /(?:time|at):?\s*(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i
-          ) || ["", "N/A"];
-          const locationMatch = email?.body?.match(
-            /(?:location|place|venue):?\s*(.+?)(?:\.|,|\n|$)/i
-          ) || ["", "N/A"];
-          return {
-            Event: titleMatch[1],
-            Date: dateMatch[1],
-            Time: timeMatch[1],
-            Location: locationMatch[1],
-            Organizer: email?.from || "N/A",
-            "Email ID": email?.id || "N/A",
-          };
-        });
-      return { table: events };
-    } else {
-      return {
-        emails: emails.messages.map((email) => ({
-          id: email?.id || "N/A",
-          subject: email?.subject || "No subject",
-          from: email?.from || "N/A",
-          date: email?.date ? new Date(email.date).toLocaleDateString() : "N/A",
-          snippet: email?.snippet || "No preview available",
-        })),
-        summary: {
-          totalCount: emails.messages.length,
-          unreadCount: emails.messages.filter((e) => e?.unread).length,
-          senderBreakdown: this.getSenderBreakdown(emails.messages),
-          timeDistribution: this.getTimeDistribution(emails.messages),
-        },
-      };
-    }
+  buildList(emails) {
+    return emails
+      .map(
+        (e, i) =>
+          `${i + 1}. From: ${e.from}\n   Subject: ${
+            e.subject
+          }\n   Date: ${new Date(e.date).toLocaleDateString()}\n   ${e.snippet}`
+      )
+      .join("\n\n");
   }
 
   getSenderBreakdown(emails) {
@@ -1201,10 +1106,45 @@ class MCPServer {
     console.log("User name:", userName);
     console.log("User Send Message:", message);
     const userEmail = req.user.email;
+
+    const [emails, inboxStats] = await Promise.all([
+      this.emailService
+        .fetchEmails({ query: message, maxResults: 50 })
+        .catch((err) => {
+          console.error("Error fetching emails:", err);
+          return { messages: [] }; 
+        }),
+      this.emailService.getInboxStats().catch((err) => {
+        console.error("Error fetching inbox stats:", err);
+        return { total: 0, unread: 0 }; 
+      }),
+    ]);
+
+    // Analyze emails using updated function
+    const analyzed = this.analyzeEmails(emails, message);
+    if (analyzed.table) {
+      return {
+        type: "text",
+        text: `Here’s what I found:\n\n${this.formatTable(
+          analyzed.table
+        )}\n\nWhat do you want to do next?`,
+        modelUsed: "N/A",
+        fallbackUsed: false,
+      };
+    } else if (analyzed.list) {
+      this.lastListedEmails.set(userId, emails.messages.slice(0, 10));
+      return {
+        type: "text",
+        text: `Found some emails:\n\n${analyzed.list}\n\nNeed summaries or more details?`,
+        modelUsed: "N/A",
+        fallbackUsed: false,
+      };
+    }
+
     const {
       timeContext = "",
-      emailCount = 0,
-      unreadCount = 0,
+      emailCount = inboxStats.total || 0,
+      unreadCount = inboxStats.unread || 0,
       importantCount = 0,
       topImportantEmails = [],
     } = context;
@@ -1374,45 +1314,40 @@ class MCPServer {
       }
     }
 
-    const user = await User.findById(userId);
-    const userKeywords = user.getAllImportantKeywords();
-
-    // Check if message contains any of the user's important keywords
-    const hasImportantKeyword = userKeywords.some((keyword) =>
-      message.toLowerCase().includes(keyword.toLowerCase())
+    const lowerMessage = message.toLowerCase();
+    const importantTriggers = ["important", "priority", "urgent"];
+    const isImportantQuery = importantTriggers.some((trigger) =>
+      lowerMessage.includes(trigger)
     );
 
-    if (hasImportantKeyword) {
-      if (importantCount > 0 && topImportantEmails.length > 0) {
-        const importantEmailsList = topImportantEmails
-          .map((email, index) => {
-            const score = Math.round(email.score);
-            const snippet = email.snippet ? `\nSnippet: ${email.snippet}` : "";
-            const body = email.body
-              ? `\nContent: ${email.body.substring(0, 200)}${
-                  email.body.length > 200 ? "..." : ""
-                }`
-              : "";
-            return `**${index + 1}.** From: ${email.from}\nSubject: ${
-              email.subject
-            }\nImportance Score: ${score}%${snippet}${body}\n`;
-          })
-          .join("\n");
-
-        return {
-          type: "text",
-          text: `I found **${importantCount} important emails** that need your attention. Here are the top ones:\n\n${importantEmailsList}\nWould you like me to fetch the full content of any of these emails?`,
-          modelUsed: modelId ? (await getModelById(modelId)).name : "N/A",
-          fallbackUsed: false,
-        };
-      } else {
-        return {
-          type: "text",
-          text: "I've checked your inbox and don't see any emails marked as important right now. Would you like me to check for something specific?",
-          modelUsed: modelId ? (await getModelById(modelId)).name : "N/A",
-          fallbackUsed: false,
-        };
-      }
+    if (isImportantQuery && importantCount > 0) {
+      const importantEmailsList = topImportantEmails
+        .map((email, index) => {
+          const score = Math.round(email.score);
+          const snippet = email.snippet ? `\nSnippet: ${email.snippet}` : "";
+          const body = email.body
+            ? `\nContent: ${email.body.substring(0, 200)}${
+                email.body.length > 200 ? "..." : ""
+              }`
+            : "";
+          return `**${index + 1}.** From: ${email.from}\nSubject: ${
+            email.subject
+          }\nImportance Score: ${score}%${snippet}${body}\n`;
+        })
+        .join("\n");
+      return {
+        type: "text",
+        text: `Hey ${userName}, I found **${importantCount} important emails** that need your attention. Here are the top ones:\n\n${importantEmailsList}\nWant me to open any of these?`,
+        modelUsed: modelId ? (await getModelById(modelId)).name : "N/A",
+        fallbackUsed: false,
+      };
+    } else if (isImportantQuery) {
+      return {
+        type: "text",
+        text: `Hi ${userName}, I didn’t find any important emails right now. Anything else I can help with?`,
+        modelUsed: modelId ? (await getModelById(modelId)).name : "N/A",
+        fallbackUsed: false,
+      };
     }
 
     // Process message and limit history

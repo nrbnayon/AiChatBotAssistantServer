@@ -219,4 +219,24 @@ router.post(
   createDraft
 );
 
+router.get("/download/attachment", auth(), async (req, res) => {
+  const { emailId, attachmentId } = req.query;
+  if (!emailId || !attachmentId) {
+    return res.status(400).json({ error: "Missing emailId or attachmentId" });
+  }
+  try {
+    const emailService = await getEmailService(req);
+    const attachment = await emailService.getAttachment(emailId, attachmentId);
+    res.setHeader("Content-Type", attachment.mimeType);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${attachment.filename}"`
+    );
+    res.send(attachment.content);
+  } catch (error) {
+    console.error("Failed to download attachment:", error);
+    res.status(500).json({ error: "Failed to download attachment" });
+  }
+});
+
 export default router;

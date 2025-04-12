@@ -32,14 +32,14 @@ class TTLCache {
 }
 
 // Cache to store model call results
-const modelResponseCache = new TTLCache(300000); 
+const modelResponseCache = new TTLCache(300000);
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const STANDARD_FALLBACK_CHAIN = [
   "llama-3.3-70b-versatile",
   "llama-3.1-8b-instant",
-  'gpt-4o',
+  "gpt-4o",
   "gemma2-9b-it",
   "llama3-70b-8192",
   "gpt-4o-mini",
@@ -91,6 +91,14 @@ class EmailService {
 
   async getEmailCount({ filter, query }) {
     throw new Error("Method 'getEmailCount' must be implemented");
+  }
+
+  async getAttachments(emailId) {
+    throw new Error("Method 'getAttachments' must be implemented");
+  }
+
+  async getAttachment(emailId, attachmentId) {
+    throw new Error("Method 'getAttachment' must be implemented");
   }
 
   // Helper method to call AI model with fallback
@@ -164,12 +172,16 @@ class EmailService {
               fallbackSucceeded = true;
               break;
             } else if (fallbackModel.provider === "openai") {
-             response = await this.openai.chat.completions.create({
-               messages: [{ role: "user", content: prompt }],
-               model: fallbackModel.id,
-               temperature: 1.0,
-               response_format: { type: "json_object" },
-             });
+              response = await this.openai.chat.completions.create({
+                messages: [{ role: "user", content: prompt }],
+                model: fallbackModel.id,
+                temperature: 1.0,
+                response_format: { type: "json_object" },
+              });
+              usedModel = fallbackModel;
+              fallbackUsed = true;
+              fallbackSucceeded = true;
+              break;
             }
           } catch (fallbackError) {
             console.error(
@@ -205,12 +217,250 @@ class EmailService {
   }
 
   // Shared AI-related method
+  // async filterImportantEmails(
+  //   emails,
+  //   customKeywords = [],
+  //   timeRange = "weekly",
+  //   modelId = null
+  // ) {
+  //   const validTimeRanges = ["daily", "weekly", "monthly"];
+  //   if (!validTimeRanges.includes(timeRange)) {
+  //     throw new ApiError(
+  //       StatusCodes.BAD_REQUEST,
+  //       `Invalid timeRange: ${timeRange}`
+  //     );
+  //   }
+
+  //   const userKeywords = this.user.userImportantMailKeywords || [];
+  //   const keywords = [...new Set([...userKeywords, ...customKeywords])];
+  //   const timeFrames = {
+  //     daily: 1 * 24 * 60 * 60 * 1000,
+  //     weekly: 7 * 24 * 60 * 60 * 1000,
+  //     monthly: 30 * 24 * 60 * 60 * 1000,
+  //   };
+  //   const timeLimit = timeFrames[timeRange];
+
+  //   const recentEmails = emails.filter((email) => {
+  //     const emailDate = new Date(email.date);
+  //     const cutoffDate = new Date(Date.now() - timeLimit);
+  //     return emailDate >= cutoffDate;
+  //   });
+
+  //   const emailsToAnalyze = [];
+  //   const processedEmails = [];
+
+  //   for (const email of recentEmails) {
+  //     const emailKey = `${email.id}-${timeRange}`;
+  //     const content =
+  //       `${email.subject} ${email.snippet} ${email.body}`.toLowerCase();
+
+  //     const cached = this.analysisCache.get(emailKey);
+  //     if (cached) {
+  //       processedEmails.push(cached);
+  //       continue;
+  //     }
+
+  //     const hasKeyword = keywords.some((keyword) =>
+  //       content.includes(keyword.toLowerCase())
+  //     );
+
+  //     if (hasKeyword) {
+  //       emailsToAnalyze.push(email);
+  //     } else {
+  //       const nonImportantEmail = {
+  //         ...email,
+  //         importanceScore: 0,
+  //         isImportant: false,
+  //       };
+  //       processedEmails.push(nonImportantEmail);
+  //       this.analysisCache.set(emailKey, nonImportantEmail);
+  //     }
+  //   }
+
+  //   const analysisPromises = emailsToAnalyze.map(async (email) => {
+  //     const emailKey = `${email.id}-${timeRange}`;
+  //     const content =
+  //       `${email.subject} ${email.snippet} ${email.body}`.toLowerCase();
+  //     const prompt = `
+  //       Analyze the following email content and determine if it's important based on these keywords: ${keywords.join(
+  //         ", "
+  //       )}.
+  //       Consider context, sender, and urgency. Return only a valid JSON object: {"score": NUMBER_BETWEEN_0_AND_100, "isImportant": BOOLEAN_VALUE}
+
+  //       Email content: "${content}"
+  //       Sender: "${email.from}"
+  //     `;
+
+  //     try {
+  //       // Use our new model call method instead of direct Groq call
+  //       const modelResponse = await this.callModelWithFallback(prompt, modelId);
+
+  //       const responseText = modelResponse.content || "";
+  //       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+  //       const jsonStr = jsonMatch
+  //         ? jsonMatch[0]
+  //         : '{"score": 25, "isImportant": false}';
+  //       let result;
+  //       try {
+  //         result = JSON.parse(jsonStr);
+  //       } catch (parseError) {
+  //         console.error(
+  //           "JSON parse error:",
+  //           parseError,
+  //           "Response:",
+  //           responseText
+  //         );
+  //         result = { score: 25, isImportant: false };
+  //       }
+
+  //       const analyzedEmail = {
+  //         ...email,
+  //         importanceScore: result.score,
+  //         isImportant: result.isImportant,
+  //         modelUsed: modelResponse.model.id,
+  //         fallbackUsed: modelResponse.fallbackUsed,
+  //       };
+  //       this.analysisCache.set(emailKey, analyzedEmail);
+  //       return analyzedEmail;
+  //     } catch (error) {
+  //       console.error("Error analyzing email:", error);
+  //       const fallbackEmail = {
+  //         ...email,
+  //         importanceScore: 0,
+  //         isImportant: false,
+  //       };
+  //       this.analysisCache.set(emailKey, fallbackEmail);
+  //       return fallbackEmail;
+  //     }
+  //   });
+
+  //   const analyzedEmails = await Promise.all(analysisPromises);
+  //   const allEmails = [...analyzedEmails, ...processedEmails];
+
+  //   return allEmails
+  //     .filter((email) => email.isImportant)
+  //     .sort((a, b) => b.importanceScore - a.importanceScore)
+  //     .map((email) => ({
+  //       ...email,
+  //       score: email.importanceScore,
+  //       subject: email.subject,
+  //       from: email.from,
+  //       snippet: email.snippet,
+  //       body: email.body,
+  //     }));
+  // }
+
+  // async filterImportantEmails(
+  //   emails,
+  //   customKeywords = [],
+  //   timeRange = "weekly",
+  //   modelId = null
+  // ) {
+  //   const validTimeRanges = ["daily", "weekly", "monthly"];
+  //   if (!validTimeRanges.includes(timeRange)) {
+  //     throw new ApiError(400, `Invalid timeRange: ${timeRange}`);
+  //   }
+
+  //   const cacheKey = `${this.user.id}-${customKeywords.join(",")}-${timeRange}`;
+  //   const cached = this.analysisCache.get(cacheKey);
+  //   if (cached) return cached;
+
+  //   // Filter emails by time range
+  //   const timeFrames = {
+  //     daily: 1 * 24 * 60 * 60 * 1000,
+  //     weekly: 7 * 24 * 60 * 60 * 1000,
+  //     monthly: 30 * 24 * 60 * 60 * 1000,
+  //   };
+  //   const cutoffDate = new Date(Date.now() - timeFrames[timeRange]);
+  //   const recentEmails = emails.filter(
+  //     (email) => new Date(email.date) >= cutoffDate
+  //   );
+
+  //   if (recentEmails.length === 0) {
+  //     this.analysisCache.set(cacheKey, []);
+  //     return [];
+  //   }
+
+  //   // Batch analysis
+  //   const batchPrompt =
+  //     recentEmails
+  //       .map(
+  //         (e, i) =>
+  //           `Email ${i}: Subject: "${e.subject || "No subject"}", Snippet: "${
+  //             e.snippet || ""
+  //           }"`
+  //       )
+  //       .join("\n") +
+  //     `\n\nAnalyze these emails for importance based on keywords: ${
+  //       customKeywords.join(", ") || "none"
+  //     }. ` +
+  //     `Return a JSON array ONLY, without any wrapping object: [{index: NUMBER, score: NUMBER, isImportant: BOOLEAN}]`;
+
+  //   try {
+  //     const response = await this.callModelWithFallback(batchPrompt, modelId);
+  //     let results = JSON.parse(response.content || "[]");
+
+  //     // Handle cases where results is an object with importance_analysis or emails
+  //     if (!Array.isArray(results)) {
+  //       if (
+  //         results &&
+  //         typeof results === "object" &&
+  //         Array.isArray(results.importance_analysis)
+  //       ) {
+  //         console.log(
+  //           "Extracted array from importance_analysis:",
+  //           results.importance_analysis
+  //         );
+  //         results = results.importance_analysis;
+  //       } else if (
+  //         results &&
+  //         typeof results === "object" &&
+  //         Array.isArray(results.emails)
+  //       ) {
+  //         console.log("Extracted array from emails:", results.emails);
+  //         results = results.emails;
+  //       } else {
+  //         console.error("Model did not return a valid array:", results);
+  //         results = []; // Fallback to empty array
+  //       }
+  //     }
+
+  //     const analyzedEmails = recentEmails
+  //       .map((e, i) => {
+  //         const result = results.find((r) => r.index === i) || {
+  //           score: 0,
+  //           isImportant: false,
+  //         };
+  //         return {
+  //           ...e,
+  //           importanceScore: result.score || 0,
+  //           isImportant: result.isImportant || false,
+  //         };
+  //       })
+  //       .filter((e) => e.isImportant)
+  //       .sort((a, b) => b.importanceScore - a.importanceScore);
+
+  //     this.analysisCache.set(cacheKey, analyzedEmails);
+  //     return analyzedEmails;
+  //   } catch (error) {
+  //     console.error("Error analyzing emails:", error);
+  //     return [];
+  //   }
+  // }
+
   async filterImportantEmails(
     emails,
     customKeywords = [],
     timeRange = "weekly",
     modelId = null
   ) {
+    console.log(
+      "Filtering important emails with keywords:",
+      // emails,
+      customKeywords,
+      timeRange,
+      modelId
+    );
     const validTimeRanges = ["daily", "weekly", "monthly"];
     if (!validTimeRanges.includes(timeRange)) {
       throw new ApiError(
@@ -219,124 +469,121 @@ class EmailService {
       );
     }
 
+    const cacheKey = `${this.user.id}-${customKeywords.join(",")}-${timeRange}`;
+    const cached = this.analysisCache.get(cacheKey);
+    if (cached) return cached;
 
-    const userKeywords = this.user.userImportantMailKeywords || [];
-    const keywords = [...new Set([...userKeywords, ...customKeywords])];
+    // Filter emails by time range
     const timeFrames = {
       daily: 1 * 24 * 60 * 60 * 1000,
       weekly: 7 * 24 * 60 * 60 * 1000,
       monthly: 30 * 24 * 60 * 60 * 1000,
     };
-    const timeLimit = timeFrames[timeRange];
+    const cutoffDate = new Date(Date.now() - timeFrames[timeRange]);
+    const recentEmails = emails.filter(
+      (email) => new Date(email.date) >= cutoffDate
+    );
 
-    const recentEmails = emails.filter((email) => {
-      const emailDate = new Date(email.date);
-      const cutoffDate = new Date(Date.now() - timeLimit);
-      return emailDate >= cutoffDate;
-    });
-
-    const emailsToAnalyze = [];
-    const processedEmails = [];
-
-    for (const email of recentEmails) {
-      const emailKey = `${email.id}-${timeRange}`;
-      const content =
-        `${email.subject} ${email.snippet} ${email.body}`.toLowerCase();
-
-      const cached = this.analysisCache.get(emailKey);
-      if (cached) {
-        processedEmails.push(cached);
-        continue;
-      }
-
-      const hasKeyword = keywords.some((keyword) =>
-        content.includes(keyword.toLowerCase())
-      );
-
-      if (hasKeyword) {
-        emailsToAnalyze.push(email);
-      } else {
-        const nonImportantEmail = {
-          ...email,
-          importanceScore: 0,
-          isImportant: false,
-        };
-        processedEmails.push(nonImportantEmail);
-        this.analysisCache.set(emailKey, nonImportantEmail);
-      }
+    if (recentEmails.length === 0) {
+      this.analysisCache.set(cacheKey, []);
+      return [];
     }
 
-    const analysisPromises = emailsToAnalyze.map(async (email) => {
-      const emailKey = `${email.id}-${timeRange}`;
-      const content =
-        `${email.subject} ${email.snippet} ${email.body}`.toLowerCase();
-      const prompt = `
-        Analyze the following email content and determine if it's important based on these keywords: ${keywords.join(
-          ", "
-        )}.
-        Consider context, sender, and urgency. Return only a valid JSON object: {"score": NUMBER_BETWEEN_0_AND_100, "isImportant": BOOLEAN_VALUE}
-        
-        Email content: "${content}"
-        Sender: "${email.from}"
-      `;
+    // Batch analysis with clearer instructions for response format
+    const batchPrompt =
+      recentEmails
+        .map(
+          (e, i) =>
+            `Email ${i}: Subject: "${e.subject || "No subject"}", Snippet: "${
+              e.snippet || ""
+            }"`
+        )
+        .join("\n") +
+      `\n\nAnalyze these emails for importance based on keywords: ${
+        customKeywords.join(", ") || "none"
+      }. ` +
+      `Return ONLY a JSON array at the top level (not nested in an object): [{index: NUMBER, score: NUMBER, isImportant: BOOLEAN}]`;
 
-      try {
-        // Use our new model call method instead of direct Groq call
-        const modelResponse = await this.callModelWithFallback(prompt, modelId);
+    try {
+      const response = await this.callModelWithFallback(batchPrompt, modelId);
+      const parsedContent = JSON.parse(response.content || "[]");
 
-        const responseText = modelResponse.content || "";
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        const jsonStr = jsonMatch
-          ? jsonMatch[0]
-          : '{"score": 25, "isImportant": false}';
-        let result;
-        try {
-          result = JSON.parse(jsonStr);
-        } catch (parseError) {
-          console.error(
-            "JSON parse error:",
-            parseError,
-            "Response:",
-            responseText
-          );
-          result = { score: 25, isImportant: false };
+      // Extract the array, whether it's directly returned or nested
+      let results = [];
+      if (Array.isArray(parsedContent)) {
+        // Direct array response
+        results = parsedContent;
+      } else if (typeof parsedContent === "object") {
+        // Handle nested structure - check for any array property
+        // First look for common pattern names
+        const possibleArrayProps = [
+          "importance_analysis",
+          "results",
+          "emails",
+          "data",
+          "items",
+        ];
+
+        // Try to find arrays using the common names first
+        for (const propName of possibleArrayProps) {
+          if (
+            parsedContent[propName] &&
+            Array.isArray(parsedContent[propName])
+          ) {
+            results = parsedContent[propName];
+            break;
+          }
         }
 
-        const analyzedEmail = {
-          ...email,
-          importanceScore: result.score,
-          isImportant: result.isImportant,
-          modelUsed: modelResponse.model.id,
-          fallbackUsed: modelResponse.fallbackUsed,
-        };
-        this.analysisCache.set(emailKey, analyzedEmail);
-        return analyzedEmail;
-      } catch (error) {
-        console.error("Error analyzing email:", error);
-        const fallbackEmail = {
-          ...email,
-          importanceScore: 0,
-          isImportant: false,
-        };
-        this.analysisCache.set(emailKey, fallbackEmail);
-        return fallbackEmail;
+        // If still no results, try to find any array in the response
+        if (results.length === 0) {
+          const arrayProp = Object.values(parsedContent).find((val) =>
+            Array.isArray(val)
+          );
+          if (arrayProp) {
+            results = arrayProp;
+          }
+        }
       }
-    });
 
-    const analyzedEmails = await Promise.all(analysisPromises);
-    const allEmails = [...analyzedEmails, ...processedEmails];
+      // Normalize entries to ensure they have the expected format
+      const normalizedResults = results.map((item) => {
+        // Ensure all entries have index, score, and isImportant properties
+        return {
+          index: typeof item.index === "number" ? item.index : 0,
+          score: typeof item.score === "number" ? item.score : 0,
+          isImportant: Boolean(item.isImportant),
+        };
+      });
 
-    return allEmails
-      .filter((email) => email.isImportant)
-      .sort((a, b) => b.importanceScore - a.importanceScore)
-      .map((email) => ({
-        ...email,
-        score: email.importanceScore,
-        subject: email.subject,
-        from: email.from,
-        snippet: email.snippet,
-        body: email.body,
-      }));
+      const analyzedEmails = recentEmails
+        .map((e, i) => {
+          // Find matching result by index, or use default values
+          const result = normalizedResults.find((r) => r.index === i) || {
+            score: 0,
+            isImportant: false,
+          };
+
+          return {
+            ...e,
+            importanceScore: result.score || 0,
+            isImportant: result.isImportant || false,
+          };
+        })
+        .filter((e) => e.isImportant)
+        .sort((a, b) => b.importanceScore - a.importanceScore);
+
+      this.analysisCache.set(cacheKey, analyzedEmails);
+      return analyzedEmails;
+    } catch (error) {
+      console.error("Error analyzing emails:", error);
+      // Log more details about the error
+      if (error.response) {
+        console.error("API error response:", error.response.data);
+      }
+      // Return empty array as fallback
+      return [];
+    }
   }
 
   clearCache() {
