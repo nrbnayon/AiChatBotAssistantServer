@@ -14,13 +14,13 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// Company constants (replace with your actual values)
-const companyName = "Inbox Buddy";
+// Company constants 
+const companyName = "Inbox-Buddy.ai";
 const supportEmail = "support@inboxbuddy.com";
 const year = new Date().getFullYear();
-const logoUrl = "https://ibb.co.com/PZd0NN3y";
-const primaryColor = "#4361EE"; // Modern blue color
-const accentColor = "#3A0CA3"; // Darker accent color
+const logoUrl = "https://i.ibb.co.com/G3M856f9/logo.png";
+const primaryColor = "#4361EE"; 
+const accentColor = "#3A0CA3"; 
 const lightGray = "#f8f9fa";
 const darkGray = "#343a40";
 
