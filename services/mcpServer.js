@@ -7,6 +7,7 @@ import { ApiError, logErrorWithStyle } from "../utils/errorHandler.js";
 import { convert } from "html-to-text";
 import { SYSTEM_PROMPT } from "../helper/aiTraining.js";
 import SystemMessage from "../models/SystemMessage.js";
+import User from "../models/User.js";
 
 const STANDARD_FALLBACK_CHAIN = [
   "llama-3.3-70b-versatile",
@@ -98,7 +99,7 @@ class ModelProvider {
 
     const primaryModel = await getModelById(primaryModelId);
     if (primaryModel) {
-      console.log(`Attempting to use primary model: ${primaryModel.name}`); 
+      console.log(`Attempting to use primary model: ${primaryModel.name}`);
       let attemptCount = 0;
       let currentRetryDelay = this.retryDelay;
       while (attemptCount < this.retryCount) {
@@ -107,7 +108,7 @@ class ModelProvider {
             primaryModel,
             options
           );
-          console.log(`Successfully used primary model: ${primaryModel.name}`); 
+          console.log(`Successfully used primary model: ${primaryModel.name}`);
           return {
             result,
             tokenCount,
@@ -173,7 +174,7 @@ class ModelProvider {
     );
   }
 }
-  
+
 class MCPServer {
   constructor(emailService) {
     this.emailService = emailService;
@@ -748,7 +749,7 @@ class MCPServer {
           const defaultModel = await getDefaultModel();
           const summaryResponse =
             await this.modelProvider.callWithFallbackChain(
-              modelId || defaultModel.id, 
+              modelId || defaultModel.id,
               aiOptions,
               STANDARD_FALLBACK_CHAIN
             );
@@ -905,7 +906,7 @@ class MCPServer {
               subject: updatedSubject,
               message: updatedMessage,
             },
-            { upsert: true } 
+            { upsert: true }
           );
 
           return [
@@ -1197,7 +1198,13 @@ class MCPServer {
     console.log("User name:", userName);
     console.log("User Send Message:", message);
     const userEmail = req.user.email;
-    const { timeContext = "", emailCount = 0, unreadCount = 0 } = context;
+    const {
+      timeContext = "",
+      emailCount = 0,
+      unreadCount = 0,
+      importantCount = 0,
+      topImportantEmails = [],
+    } = context;
 
     const systemPrompt = await this.getDefaultSystemMessage();
     const personalizedSystemPrompt =
@@ -1364,6 +1371,48 @@ class MCPServer {
       }
     }
 
+    // Get user's important keywords
+    const user = await User.findById(userId);
+    const userKeywords = user.getAllImportantKeywords();
+
+    // Check if message contains any of the user's important keywords
+    const hasImportantKeyword = userKeywords.some((keyword) =>
+      message.toLowerCase().includes(keyword.toLowerCase())
+    );
+
+    if (hasImportantKeyword) {
+      if (importantCount > 0 && topImportantEmails.length > 0) {
+        const importantEmailsList = topImportantEmails
+          .map((email, index) => {
+            const score = Math.round(email.score);
+            const snippet = email.snippet ? `\nSnippet: ${email.snippet}` : "";
+            const body = email.body
+              ? `\nContent: ${email.body.substring(0, 200)}${
+                  email.body.length > 200 ? "..." : ""
+                }`
+              : "";
+            return `**${index + 1}.** From: ${email.from}\nSubject: ${
+              email.subject
+            }\nImportance Score: ${score}%${snippet}${body}\n`;
+          })
+          .join("\n");
+
+        return {
+          type: "text",
+          text: `I found **${importantCount} important emails** that need your attention. Here are the top ones:\n\n${importantEmailsList}\nWould you like me to fetch the full content of any of these emails?`,
+          modelUsed: modelId ? (await getModelById(modelId)).name : "N/A",
+          fallbackUsed: false,
+        };
+      } else {
+        return {
+          type: "text",
+          text: "I've checked your inbox and don't see any emails marked as important right now. Would you like me to check for something specific?",
+          modelUsed: modelId ? (await getModelById(modelId)).name : "N/A",
+          fallbackUsed: false,
+        };
+      }
+    }
+
     // Process message and limit history
     let processedMessage = this.preprocessMessage(message, userId);
     const maxHistory = 5;
@@ -1398,8 +1447,20 @@ class MCPServer {
     const messages = [
       { role: "system", content: personalizedSystemPrompt },
       ...adjustedHistory,
-      { role: "user", content: processedMessage },
     ];
+    if (context.topImportantEmails && context.topImportantEmails.length > 0) {
+      const importantEmailsText = context.topImportantEmails
+        .map(
+          (email) =>
+            `From: ${email.from}, Subject: ${email.subject}, Score: ${email.score}`
+        )
+        .join("\n");
+      messages.push({
+        role: "assistant",
+        content: `I have found the following important emails:\n${importantEmailsText}`,
+      });
+    }
+    messages.push({ role: "user", content: processedMessage });
 
     messages.forEach((msg, index) => {
       if (!msg.role || !msg.content) {

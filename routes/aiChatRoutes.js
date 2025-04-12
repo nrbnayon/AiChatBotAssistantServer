@@ -158,11 +158,13 @@ router.post(
         ]),
       ];
 
+      // Check if message contains any important keywords
+      const hasImportantKeyword = combinedKeywords.some((keyword) =>
+        userMessage.toLowerCase().includes(keyword.toLowerCase())
+      );
+
       let importantEmails = [];
-      if (
-        userMessage.toLowerCase().includes("important") ||
-        userMessage.toLowerCase().includes("priority")
-      ) {
+      if (hasImportantKeyword) {
         const analysisStart = Date.now();
         importantEmails = await emailService.filterImportantEmails(
           emails.slice(0, 50),
@@ -191,6 +193,8 @@ router.post(
             from: email.from,
             subject: email.subject,
             score: email.importanceScore,
+            snippet: email.snippet,
+            body: email.body,
           })),
         },
         modelId

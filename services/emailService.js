@@ -255,8 +255,8 @@ class EmailService {
         `${email.subject} ${email.snippet} ${email.body}`.toLowerCase();
       const prompt = `
         Analyze the following email content and determine if it's important based on these keywords: ${keywords.join(
-          ", "
-        )}.
+        ", "
+      )}.
         Consider context, sender, and urgency. Return only a valid JSON object: {"score": NUMBER_BETWEEN_0_AND_100, "isImportant": BOOLEAN_VALUE}
         
         Email content: "${content}"
@@ -315,7 +315,15 @@ class EmailService {
 
     return allEmails
       .filter((email) => email.isImportant)
-      .sort((a, b) => b.importanceScore - a.importanceScore);
+      .sort((a, b) => b.importanceScore - a.importanceScore)
+      .map(email => ({
+        ...email,
+        score: email.importanceScore,
+        subject: email.subject,
+        from: email.from,
+        snippet: email.snippet,
+        body: email.body
+      }));
   }
 
   clearCache() {
