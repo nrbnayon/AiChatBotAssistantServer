@@ -247,7 +247,7 @@ class MCPServer {
     return message;
   }
 
-  async callTool(name, args, userId) {
+  async callTool(name, args, userId, modelId = null) {
     switch (name) {
       case "send-email": {
         const { recipient_id, subject, message, attachments = [] } = args;
@@ -330,7 +330,6 @@ class MCPServer {
           const count = emails.messages.length;
           const previewCount = Math.min(count, 10);
           if (count === 0) {
-            // Updated response messages
             const noEmailResponses = [
               "Your INBOX seems empty. Want to check Sent or Archived emails instead?",
               "No emails found in your INBOX. How about trying Sent, Drafts, or another folder?",
@@ -357,7 +356,8 @@ class MCPServer {
                 const summaryResponse = await this.callTool(
                   "summarize-email",
                   { email_id: email.id },
-                  userId
+                  userId,
+                  modelId // Pass modelId here
                 );
                 const summaryText = summaryResponse[0].text;
                 const parts = summaryText.split(": **");
@@ -748,7 +748,7 @@ class MCPServer {
           const defaultModel = await getDefaultModel();
           const summaryResponse =
             await this.modelProvider.callWithFallbackChain(
-              modelId || defaultModel.id,
+              modelId || defaultModel.id, 
               aiOptions,
               STANDARD_FALLBACK_CHAIN
             );
@@ -816,8 +816,6 @@ class MCPServer {
 
         let draftText;
         const pendingDraft = this.pendingEmails.get(userId);
-
-        // Expanded list of modification keywords
         const modificationKeywords = [
           "change",
           "adjust",
@@ -832,7 +830,6 @@ class MCPServer {
             message.toLowerCase().includes(keyword)
           )
         ) {
-          // Modify the existing draft
           const defaultModel = await getDefaultModel();
           const modificationPrompt = `
       Modify the following email draft based on the user's request: "${message}".
@@ -848,7 +845,6 @@ class MCPServer {
       
       Updated Draft:
     `;
-
           const modificationResponse =
             await this.modelProvider.callWithFallbackChain(
               defaultModel.id,
@@ -863,7 +859,6 @@ class MCPServer {
             modificationResponse.result.choices[0]?.message?.content ||
             "Draft not generated";
 
-          // Extract and parse the updated draft (rest of the parsing logic remains unchanged)
           const updatedDraftIndex = draftText.indexOf("To:");
           if (updatedDraftIndex !== -1) {
             draftText = draftText.substring(updatedDraftIndex).trim();
@@ -910,7 +905,7 @@ class MCPServer {
               subject: updatedSubject,
               message: updatedMessage,
             },
-            { upsert: true } // Ensure a draft exists
+            { upsert: true } 
           );
 
           return [
@@ -1526,7 +1521,8 @@ class MCPServer {
         const toolResponse = await this.callTool(
           actionData.action,
           actionData.params,
-          userId
+          userId,
+          modelId
         );
         return {
           ...toolResponse[0],
