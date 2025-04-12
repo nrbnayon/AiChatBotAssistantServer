@@ -4,6 +4,7 @@ import { ApiError } from "../utils/errorHandler.js";
 import { StatusCodes } from "http-status-codes";
 import User from "../models/User.js";
 import { getDefaultModel, getModelById } from "../routes/aiModelRoutes.js";
+import OpenAI from "openai";
 
 // Simple TTL cache implementation
 class TTLCache {
@@ -31,19 +32,23 @@ class TTLCache {
 }
 
 // Cache to store model call results
-const modelResponseCache = new TTLCache(300000); // 5 minute cache for model responses
+const modelResponseCache = new TTLCache(300000); 
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const STANDARD_FALLBACK_CHAIN = [
   "llama-3.3-70b-versatile",
   "llama-3.1-8b-instant",
+  'gpt-4o',
+  "gemma2-9b-it",
+  "llama3-70b-8192",
   "gpt-4o-mini",
 ];
 class EmailService {
   constructor(user) {
     this.user = user;
     this.grok = groq;
+    this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     this.analysisCache = new TTLCache();
   }
 
@@ -126,7 +131,12 @@ class EmailService {
             response_format: { type: "json_object" },
           });
         } else if (primaryModel.provider === "openai") {
-          throw new Error("OpenAI provider not implemented");
+          response = await this.openai.chat.completions.create({
+            messages: [{ role: "user", content: prompt }],
+            model: primaryModel.id,
+            temperature: 1.0,
+            response_format: { type: "json_object" },
+          });
         } else {
           throw new Error(`Unsupported provider: ${primaryModel.provider}`);
         }
@@ -154,7 +164,12 @@ class EmailService {
               fallbackSucceeded = true;
               break;
             } else if (fallbackModel.provider === "openai") {
-              throw new Error("OpenAI provider not implemented");
+             response = await this.openai.chat.completions.create({
+               messages: [{ role: "user", content: prompt }],
+               model: fallbackModel.id,
+               temperature: 1.0,
+               response_format: { type: "json_object" },
+             });
             }
           } catch (fallbackError) {
             console.error(
@@ -193,7 +208,8 @@ class EmailService {
   async filterImportantEmails(
     emails,
     customKeywords = [],
-    timeRange = "weekly"
+    timeRange = "weekly",
+    modelId = null
   ) {
     const validTimeRanges = ["daily", "weekly", "monthly"];
     if (!validTimeRanges.includes(timeRange)) {
@@ -202,6 +218,7 @@ class EmailService {
         `Invalid timeRange: ${timeRange}`
       );
     }
+
 
     const userKeywords = this.user.userImportantMailKeywords || [];
     const keywords = [...new Set([...userKeywords, ...customKeywords])];
@@ -255,8 +272,8 @@ class EmailService {
         `${email.subject} ${email.snippet} ${email.body}`.toLowerCase();
       const prompt = `
         Analyze the following email content and determine if it's important based on these keywords: ${keywords.join(
-        ", "
-      )}.
+          ", "
+        )}.
         Consider context, sender, and urgency. Return only a valid JSON object: {"score": NUMBER_BETWEEN_0_AND_100, "isImportant": BOOLEAN_VALUE}
         
         Email content: "${content}"
@@ -265,11 +282,7 @@ class EmailService {
 
       try {
         // Use our new model call method instead of direct Groq call
-        const modelResponse = await this.callModelWithFallback(
-          prompt,
-          "llama-3.3-70b-versatile",
-          ["llama-3.1-8b-instant", "gpt-4o-mini"]
-        );
+        const modelResponse = await this.callModelWithFallback(prompt, modelId);
 
         const responseText = modelResponse.content || "";
         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
@@ -316,13 +329,13 @@ class EmailService {
     return allEmails
       .filter((email) => email.isImportant)
       .sort((a, b) => b.importanceScore - a.importanceScore)
-      .map(email => ({
+      .map((email) => ({
         ...email,
         score: email.importanceScore,
         subject: email.subject,
         from: email.from,
         snippet: email.snippet,
-        body: email.body
+        body: email.body,
       }));
   }
 

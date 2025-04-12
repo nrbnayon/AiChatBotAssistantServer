@@ -169,7 +169,8 @@ router.post(
         importantEmails = await emailService.filterImportantEmails(
           emails.slice(0, 50),
           combinedKeywords,
-          "daily"
+          "daily",
+          modelId
         );
         console.log(
           `Analyzed ${importantEmails.length} important emails in ${

@@ -12,6 +12,9 @@ import User from "../models/User.js";
 const STANDARD_FALLBACK_CHAIN = [
   "llama-3.3-70b-versatile",
   "llama-3.1-8b-instant",
+  "gpt-4o",
+  "gemma2-9b-it",
+  "llama3-70b-8192",
   "gpt-4o-mini",
 ];
 
@@ -1371,7 +1374,6 @@ class MCPServer {
       }
     }
 
-    // Get user's important keywords
     const user = await User.findById(userId);
     const userKeywords = user.getAllImportantKeywords();
 

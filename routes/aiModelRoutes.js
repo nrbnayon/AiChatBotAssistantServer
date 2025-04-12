@@ -19,6 +19,16 @@ const availableModels = [
     isDefault: true,
   },
   {
+    id: "gpt-4o", 
+    name: "GPT-4.o", 
+    developer: "OpenAI",
+    provider: "openai",
+    contextWindow: 100000000000,
+    maxCompletionTokens: 1000000000000,
+    description: "OpenAI's efficient and versatile chat model",
+    isDefault: false,
+  },
+  {
     id: "llama-3.1-8b-instant",
     name: "Llama 3.1 8B Instant",
     developer: "Meta",
@@ -65,20 +75,17 @@ const availableModels = [
 
 // Helper functions
 export const getDefaultModel = async () => {
-  // Check client-side availability of models
   const clientDefaultModel = availableModels.find((model) => model.isDefault);
   if (clientDefaultModel) {
     return clientDefaultModel;
   }
 
-  // If no default found client-side, query database
   try {
     const defaultModel = await AiModel.findOne({ isDefault: true });
     if (defaultModel) {
       return defaultModel;
     }
 
-    // If no default model found, return first available model
     const firstModel = await AiModel.findOne();
     if (!firstModel) {
       throw new ApiError(404, "No AI models found in the database");
@@ -92,13 +99,11 @@ export const getDefaultModel = async () => {
 };
 
 export const getModelById = async (id) => {
-  // First, check client-side available models
   const clientModel = availableModels.find((model) => model.id === id);
   if (clientModel) {
     return clientModel;
   }
 
-  // If not found client-side, query the database
   try {
     const databaseModel = await AiModel.findOne({ modelId: id });
     return databaseModel || null;

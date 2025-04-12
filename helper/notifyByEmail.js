@@ -58,7 +58,7 @@ const waitingListConfirmationTemplate = `
           <td style="padding: 40px 30px; background-color: #ffffff;">
             <h2 style="color: ${accentColor}; margin-top: 0; font-weight: 600;">You're on the Waiting List!</h2>
             <p style="color: #555;">Hello {{name}},</p>
-            <p style="color: #555;">Thank you for your interest in ${companyName}. We've successfully added you to our waiting list!</p>
+            <p style="color: #555;">Thank you for your interest in ${companyName}. You've successfully added you to Index-Buddy.ai waiting list!</p>
             <div style="background-color: ${lightGray}; border-left: 4px solid ${primaryColor}; padding: 15px; margin: 20px 0;">
               <p style="margin: 0; color: #444;">Our team will carefully review your request, and you'll receive an email as soon as your account is approved.</p>
             </div>
