@@ -184,6 +184,7 @@ class MCPServer {
     this.modelProvider = new ModelProvider();
     this.pendingEmails = new Map();
     this.lastListedEmails = new Map();
+    this.callTool = this.callTool.bind(this);
   }
 
   async getDefaultSystemMessage() {
@@ -331,18 +332,23 @@ class MCPServer {
             introTexts[Math.floor(Math.random() * introTexts.length)];
           const followUp =
             followUpTexts[Math.floor(Math.random() * followUpTexts.length)];
-          text = `${intro}\n\n${this.formatTable(
-            analyzedData.table
-          )}\n\n${followUp}`;
+          text = `${intro}\n\n${analyzedData.table}\n\n${followUp}`;
         } else {
           const count = emails.messages.length;
           const previewCount = Math.min(count, 10);
           if (count === 0) {
             const noEmailResponses = [
-              "Your INBOX seems empty. Want to check Sent or Archived emails instead?",
-              "No emails found in your INBOX. How about trying Sent, Drafts, or another folder?",
-              "Looks like your INBOX is clear. Should I fetch from All Mail or another label?",
+              "**No matching emails found**\n\nI couldn't find any emails that match your search criteria. You could try:\n• Using different keywords\n• Broadening your date range\n• Checking a different folder",
+
+              "**Your search returned no results**\n\nPossible next steps:\n• Try different search terms\n• Remove some filters\n• Check for typos in names or email addresses",
+
+              "**No emails match this query**\n\nSuggestions:\n1. Use broader search terms\n2. Check a different time period\n3. Try searching in 'All Mail' instead",
+
+              "**I couldn't find any matching emails**\n\nThis might be because:\n• Your search was too specific\n• There might be a connection issue\n• The emails might be in another folder",
+
+              "**No results for this search**\n\nLet's try a different approach:\n• Search for `from:[sender]` to find emails from specific people\n• Use `after:yesterday` to find recent emails\n• Try `has:attachment` to find emails with files",
             ];
+
             text =
               noEmailResponses[
                 Math.floor(Math.random() * noEmailResponses.length)
@@ -1035,29 +1041,67 @@ class MCPServer {
     }
   }
 
+  // Improved email analyzer with better output format selection
   analyzeEmails(emails, query) {
+    if (!emails || !emails.messages || emails.messages.length === 0) {
+      return { text: "No emails found." };
+    }
+
     const relevantEmails = emails.messages.filter((email) => {
       const content = `${email.subject || ""} ${
-        email.body || ""
+        email.snippet || ""
       }`.toLowerCase();
-      return query.split(" ").some((q) => content.includes(q.toLowerCase()));
+      return query
+        .toLowerCase()
+        .split(" ")
+        .some(
+          (term) => content.includes(term) && term.length > 2 // Ignore very short terms
+        );
     });
-    if (relevantEmails.length > 5 && /meeting|event|package/i.test(query)) {
-      return { table: this.buildTable(relevantEmails, query) };
-    } else if (relevantEmails.length > 0) {
-      return { list: this.buildList(relevantEmails) };
+
+    if (relevantEmails.length === 0) {
+      return { text: "No matching emails found for your query." };
     }
-    return { text: "No matching emails found." };
+
+    // Sort emails by date (newest first)
+    relevantEmails.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Choose format based on number of results and query type
+    if (
+      relevantEmails.length > 7 ||
+      /meeting|schedule|appointment/i.test(query)
+    ) {
+      return {
+        table: this.formatEmailTable(relevantEmails),
+        summary: `Found ${relevantEmails.length} emails matching "${query}"`,
+      };
+    } else {
+      return {
+        list: buildDetailedList(relevantEmails),
+        summary: `Found ${relevantEmails.length} emails matching "${query}"`,
+      };
+    }
   }
 
-  buildList(emails) {
+  // Build a more readable list format for smaller result sets
+  buildDetailedList(emails) {
     return emails
-      .map(
-        (e, i) =>
-          `${i + 1}. From: ${e.from}\n   Subject: ${
-            e.subject
-          }\n   Date: ${new Date(e.date).toLocaleDateString()}\n   ${e.snippet}`
-      )
+      .map((email, index) => {
+        const date = new Date(email.date).toLocaleString();
+        const fromName = email.from.includes("<")
+          ? email.from.split("<")[0].trim()
+          : email.from;
+        const fromEmail = email.from.includes("<")
+          ? email.from.match(/<(.+)>/)[1]
+          : email.from;
+
+        return (
+          `**${index + 1}. ${email.subject || "No Subject"}**\n` +
+          `   **From:** ${fromName} (${fromEmail})\n` +
+          `   **Date:** ${date}\n` +
+          `   ${email.snippet || "No preview available"}\n`
+        );
+      })
       .join("\n\n");
   }
 
@@ -1089,15 +1133,40 @@ class MCPServer {
     };
   }
 
-  formatTable(data) {
-    if (!data || data.length === 0) return "No data available.";
-    const headers = Object.keys(data[0]);
-    const rows = data.map((row) =>
-      headers.map((header) => row[header] || "N/A").join(" | ")
-    );
-    return `| ${headers.join(" | ")} |\n| ${headers
-      .map(() => "---")
-      .join(" | ")} |\n${rows.map((row) => `| ${row} |`).join("\n")}`;
+  formatEmailTable(emails) {
+    if (!emails || emails.length === 0) return "No emails available.";
+
+    const relevantColumns = ["date", "from", "subject", "snippet"];
+    const headers = {
+      date: "Date",
+      from: "From",
+      subject: "Subject",
+      snippet: "Preview",
+    };
+
+    const headerRow = `| ${relevantColumns
+      .map((col) => headers[col])
+      .join(" | ")} |`;
+    const separator = `| :--- | :--- | :------ | :------ |`;
+
+    const rows = emails.map((email) => {
+      const date = new Date(email.date).toLocaleDateString();
+      const from = email.from.includes("<")
+        ? email.from.split("<")[0].trim()
+        : email.from;
+      const subject = this.truncateText(email.subject || "No Subject", 30);
+      const preview = this.truncateText(email.snippet || "", 50);
+      return `| ${date} | ${from} | ${subject} | ${preview} |`;
+    });
+
+    return `${headerRow}\n${separator}\n${rows.join("\n")}`;
+  }
+
+  // Helper function to truncate text with ellipsis
+  truncateText(text, maxLength) {
+    return text.length > maxLength
+      ? text.substring(0, maxLength - 3) + "..."
+      : text;
   }
 
   async chatWithBot(req, message, history = [], context = {}, modelId = null) {
@@ -1112,11 +1181,11 @@ class MCPServer {
     //     .fetchEmails({ query: message, maxResults: 50 })
     //     .catch((err) => {
     //       console.error("Error fetching emails:", err);
-    //       return { messages: [] }; 
+    //       return { messages: [] };
     //     }),
     //   this.emailService.getInboxStats().catch((err) => {
     //     console.error("Error fetching inbox stats:", err);
-    //     return { total: 0, unread: 0 }; 
+    //     return { total: 0, unread: 0 };
     //   }),
     // ]);
 
@@ -1143,8 +1212,8 @@ class MCPServer {
 
     const {
       timeContext = "",
-      emailCount =  0,
-      unreadCount =  0,
+      emailCount = 0,
+      unreadCount = 0,
       importantCount = 0,
       topImportantEmails = [],
     } = context;
@@ -1568,9 +1637,25 @@ class MCPServer {
           }
         } else {
           console.error("Tool call failed:", error);
+
+          const errorResponses = [
+            "**Something went wrong**\n\nI encountered an error while processing your request. This might be due to:\n• A temporary service disruption\n• Connection issues\n• An unsupported request type\n\nPlease try again in a moment.",
+
+            "**Error processing request**\n\nI couldn't complete the action because:\n• The connection to your email provider might be interrupted\n• The requested information might be unavailable\n• There might be a temporary system limitation\n\nCould you try your request again?",
+
+            "**Action couldn't be completed**\n\nI ran into a technical issue while working on your request. You could:\n1. Try again with a simpler query\n2. Refresh the page and try again\n3. Check if your email account is accessible",
+
+            "**Request failed**\n\nI wasn't able to process that request due to a technical error. Let's try:\n• Breaking your request into smaller steps\n• Using different wording\n• Waiting a moment before trying again",
+
+            "**Technical difficulty encountered**\n\nSorry about that! I experienced an error while trying to handle your request. This is likely a temporary issue. Please try again or try a different request.",
+          ];
+
+          const errorText =
+            errorResponses[Math.floor(Math.random() * errorResponses.length)];
+
           return {
             type: "text",
-            text: "I encountered an error while trying to process your request. Can you try again?",
+            text: errorText,
             modelUsed: modelUsed.name || "N/A",
             fallbackUsed: fallbackUsed,
           };
