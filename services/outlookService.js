@@ -91,7 +91,7 @@ class OutlookService extends EmailService {
     };
   }
 
-  async fetchEmails({ query, maxResults = 1000, pageToken, filter = "all" }) {
+  async fetchEmails({ query, maxResults, pageToken, filter = "all" }) {
     const client = await this.getClient();
     let endpoint;
     const baseParams = `?$top=${maxResults}&$select=id,subject,from,toRecipients,receivedDateTime,bodyPreview,body,isRead`;

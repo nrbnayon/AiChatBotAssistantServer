@@ -288,7 +288,7 @@ class MCPServer {
         const {
           filter = "all",
           query = "",
-          maxResults = 500,
+          maxResults = 1000,
           summarize = false,
         } = args;
         let processedQuery = query ? this.processQuery(query) : "";
@@ -380,7 +380,7 @@ class MCPServer {
                 .map((e, i) => {
                   const date = new Date(e.date).toLocaleDateString();
                   const attachmentNote = e.hasAttachments
-                    ? "\n**Attachments:** Yes (say 'show attachments for email " +
+                    ? "\n**Attachments:** Yes (say **'show attachments for email** " +
                       (i + 1) +
                       "' to see them)"
                     : "";
@@ -396,7 +396,7 @@ class MCPServer {
                 .map((e, i) => {
                   const date = new Date(e.date).toLocaleDateString();
                   const attachmentNote = e.hasAttachments
-                    ? "\n**Attachments:** Yes (say 'show attachments for email " +
+                    ? "\n**Attachments:** Yes (say **'show attachments for email **" +
                       (i + 1) +
                       "' to see them)"
                     : "";
@@ -1107,44 +1107,44 @@ class MCPServer {
     console.log("User Send Message:", message);
     const userEmail = req.user.email;
 
-    const [emails, inboxStats] = await Promise.all([
-      this.emailService
-        .fetchEmails({ query: message, maxResults: 50 })
-        .catch((err) => {
-          console.error("Error fetching emails:", err);
-          return { messages: [] }; 
-        }),
-      this.emailService.getInboxStats().catch((err) => {
-        console.error("Error fetching inbox stats:", err);
-        return { total: 0, unread: 0 }; 
-      }),
-    ]);
+    // const [emails, inboxStats] = await Promise.all([
+    //   this.emailService
+    //     .fetchEmails({ query: message, maxResults: 50 })
+    //     .catch((err) => {
+    //       console.error("Error fetching emails:", err);
+    //       return { messages: [] }; 
+    //     }),
+    //   this.emailService.getInboxStats().catch((err) => {
+    //     console.error("Error fetching inbox stats:", err);
+    //     return { total: 0, unread: 0 }; 
+    //   }),
+    // ]);
 
-    // Analyze emails using updated function
-    const analyzed = this.analyzeEmails(emails, message);
-    if (analyzed.table) {
-      return {
-        type: "text",
-        text: `Here’s what I found:\n\n${this.formatTable(
-          analyzed.table
-        )}\n\nWhat do you want to do next?`,
-        modelUsed: "N/A",
-        fallbackUsed: false,
-      };
-    } else if (analyzed.list) {
-      this.lastListedEmails.set(userId, emails.messages.slice(0, 10));
-      return {
-        type: "text",
-        text: `Found some emails:\n\n${analyzed.list}\n\nNeed summaries or more details?`,
-        modelUsed: "N/A",
-        fallbackUsed: false,
-      };
-    }
+    // // Analyze emails using updated function
+    // const analyzed = this.analyzeEmails(emails, message);
+    // if (analyzed.table) {
+    //   return {
+    //     type: "text",
+    //     text: `Here’s what I found:\n\n${this.formatTable(
+    //       analyzed.table
+    //     )}\n\nWhat do you want to do next?`,
+    //     modelUsed: "N/A",
+    //     fallbackUsed: false,
+    //   };
+    // } else if (analyzed.list) {
+    //   this.lastListedEmails.set(userId, emails.messages.slice(0, 10));
+    //   return {
+    //     type: "text",
+    //     text: `Found some emails:\n\n${analyzed.list}\n\nNeed summaries or more details?`,
+    //     modelUsed: "N/A",
+    //     fallbackUsed: false,
+    //   };
+    // }
 
     const {
       timeContext = "",
-      emailCount = inboxStats.total || 0,
-      unreadCount = inboxStats.unread || 0,
+      emailCount =  0,
+      unreadCount =  0,
       importantCount = 0,
       topImportantEmails = [],
     } = context;

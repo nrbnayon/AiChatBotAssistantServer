@@ -51,248 +51,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-router.post(
-  "/:chatId",
-  auth(),
-  chatRateLimit(),
-  upload.single("file"),
-  catchAsync(async (req, res) => {
 
-    
-    console.log(
-      `POST /${req.params.chatId} request received for user ${
-        req.user.id
-      }, Max Results: ${req.body.maxResults || 100}, modelid: ${
-        req.body?.modelId
-      }`
-    );
-
-    const startTime = Date.now();
-    const emailService = await getEmailService(req);
-    const serviceTime = Date.now() - startTime;
-    console.log(
-      `Email service ${
-        serviceTime < 100 ? "retrieved from cache" : "created"
-      } in ${serviceTime}ms`
-    );
-
-    const mcpServer = new MCPServer(emailService);
-    const { chatId } = req.params;
-    const { message, maxResults, modelId, history: providedHistory } = req.body;
-
-    console.log(
-      "Model ID:",
-      modelId,
-      "Max Results:",
-      maxResults,
-      "Chat ID:",
-      chatId,
-      "Message:",
-      message
-    );
-    if (!modelId) {
-      return res.status(400).json({ error: "modelId is required" });
-    }
-    const userId = req.user.id;
-
-    const chat = await Chat.findOne({ _id: chatId, userId });
-    if (!chat) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Chat not found" });
-    }
-
-    if (!message && !req.file) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Message or file is required" });
-    }
-
-    let history = chat.messages.map((msg) => ({
-      role: msg.userRole,
-      content: msg.message,
-    }));
-    if (providedHistory) {
-      try {
-        history =
-          typeof providedHistory === "string"
-            ? JSON.parse(providedHistory)
-            : providedHistory;
-      } catch (error) {
-        console.error("Error parsing history:", error);
-      }
-    }
-
-    let userMessage = message || "";
-    if (req.file) {
-      try {
-        const fileText = await extractTextFromFile(
-          req.file.path,
-          req.file.mimetype
-        );
-        userMessage = userMessage
-          ? `${userMessage}\n\nFile content: ${fileText}`
-          : fileText;
-        fs.unlinkSync(req.file.path);
-      } catch (error) {
-        console.error("File processing error:", error);
-        return res.status(400).json({
-          success: false,
-          message: `Error processing file: ${error.message}`,
-        });
-      }
-    }
-
-    try {
-      const fetchStart = Date.now();
-      const emails = (await emailService.fetchEmails({ maxResults })).messages;
-      const fetchTime = Date.now() - fetchStart;
-      console.log(`Fetched ${emails.length} emails in ${fetchTime}ms`);
-
-      const inboxStats = await emailService.getInboxStats();
-      const user = await User.findById(userId);
-      const combinedKeywords = [
-        ...new Set([
-          ...(user.getAllImportantKeywords() || []),
-          ...extractContextKeywords(userMessage),
-        ]),
-      ];
-
-      // Check if message contains any important keywords
-      const hasImportantKeyword = combinedKeywords.some((keyword) =>
-        userMessage.toLowerCase().includes(keyword.toLowerCase())
-      );
-
-      console.log("Combined Keywords:", combinedKeywords);
-      console.log("User Message:", userMessage);
-      console.log("Has Important Keyword:", hasImportantKeyword);
-      console.log("Inbox Stats:", inboxStats);
-
-      let importantEmails = [];
-      if (hasImportantKeyword) {
-        const analysisStart = Date.now();
-        importantEmails = await emailService.filterImportantEmails(
-          emails.slice(0, 50),
-          combinedKeywords,
-          "daily",
-          modelId
-        );
-        console.log(
-          `Analyzed ${importantEmails.length} important emails in ${
-            Date.now() - analysisStart
-          }ms`
-        );
-      }
-
-      const chatResponse = await mcpServer.chatWithBot(
-        req,
-        userMessage,
-        history,
-        {
-          timeContext: ["morning", "afternoon", "evening"][
-            Math.floor(new Date().getHours() / 6)
-          ],
-          emailCount: inboxStats.totalEmails,
-          unreadCount: inboxStats.unreadEmails,
-          importantCount: importantEmails.length,
-          topImportantEmails: importantEmails.slice(0, 10).map((email) => ({
-            from: email.from,
-            subject: email.subject,
-            score: email.importanceScore,
-            snippet: email.snippet,
-            body: email.body,
-          })),
-        },
-        modelId
-      );
-
-      const newTokenCount =
-        (user.subscription.dailyTokens || 0) + (chatResponse.tokenCount || 0);
-      if (newTokenCount > req.maxTokens) {
-        return res
-          .status(429)
-          .json({ success: false, message: "Daily token limit reached." });
-      }
-      user.subscription.dailyTokens = newTokenCount;
-      await user.save();
-
-      chat.messages.push(
-        { userRole: "user", message: userMessage, date: new Date() },
-        {
-          userRole: "assistant",
-          message: chatResponse.text,
-          date: new Date(),
-          model: chatResponse.modelUsed,
-        }
-      );
-      await chat.save();
-
-      res.json({
-        success: true,
-        message: chatResponse.text,
-        model: chatResponse.modelUsed,
-        fallbackUsed: chatResponse.fallbackUsed,
-        tokenCount: chatResponse.tokenCount || 0,
-        data: chatResponse.artifact?.data || null,
-      });
-    } catch (error) {
-      console.error("Error processing request:", error);
-      res.status(500).json({
-        success: false,
-        message: "Trouble processing your request. Try again?",
-      });
-    }
-  })
-);
-
-// Helper function to extract potential keywords from user message
-function extractContextKeywords(message) {
-  // Simple keyword extraction - could be enhanced with NLP
-  const keywords = [];
-
-  // Look for potential important terms in the message
-  const importantPatterns = [
-    /\bimportant\s+(\w+)\b/gi,
-    /\bcheck\s+for\s+(\w+)\b/gi,
-    /\bfind\s+(\w+)\b/gi,
-    /\bpriority\s+(\w+)\b/gi,
-    /\burgent\s+(\w+)\b/gi,
-    /\bcritical\s+(\w+)\b/gi,
-  ];
-
-  for (const pattern of importantPatterns) {
-    let match;
-    while ((match = pattern.exec(message)) !== null) {
-      if (match[1] && match[1].length > 3) {
-        keywords.push(match[1].toLowerCase());
-      }
-    }
-  }
-
-  // Extract potential topic keywords
-  const words = message.toLowerCase().split(/\s+/);
-  const potentialKeywords = words.filter(
-    (word) =>
-      word.length > 4 &&
-      ![
-        "about",
-        "these",
-        "those",
-        "their",
-        "there",
-        "where",
-        "which",
-        "would",
-        "could",
-        "should",
-      ].includes(word)
-  );
-
-  // Add top 3 potential topic keywords
-  keywords.push(...potentialKeywords.slice(0, 3));
-
-  return [...new Set(keywords)];
-}
 
 // Legacy endpoint (without chat ID, creates a new chat)
 router.post(
@@ -305,6 +64,19 @@ router.post(
     const mcpServer = new MCPServer(emailService);
     const { message, maxResults, modelId, history: providedHistory } = req.body;
     const userId = req.user.id;
+
+    console.log(
+      "Model ID:",
+      modelId,
+      "Max Results:",
+      maxResults,
+      "Message send from user:",
+      message
+    );
+
+    if (!modelId) {
+      return res.status(400).json({ error: "modelId is required" });
+    }
 
     if (!message && !req.file) {
       return res
@@ -350,10 +122,6 @@ router.post(
     }
 
     try {
-      const emails = (await emailService.fetchEmails({ maxResults })).messages;
-
-      console.log("Get emails:::", emails.length);
-
       const hour = new Date().getHours();
       const timeContext =
         hour >= 5 && hour < 12
@@ -425,6 +193,266 @@ router.post(
     }
   })
 );
+
+router.post(
+  "/:chatId",
+  auth(),
+  chatRateLimit(),
+  upload.single("file"),
+  catchAsync(async (req, res) => {
+    console.log(
+      `POST /${req.params.chatId} request received for user ${
+        req.user.id
+      }, Max Results: ${req.body.maxResults || 100}, modelid: ${
+        req.body?.modelId
+      }`
+    );
+
+    const startTime = Date.now();
+    const emailService = await getEmailService(req);
+    const serviceTime = Date.now() - startTime;
+    console.log(
+      `Email service ${
+        serviceTime < 100 ? "retrieved from cache" : "created"
+      } in ${serviceTime}ms`
+    );
+
+    const mcpServer = new MCPServer(emailService);
+    const { chatId } = req.params;
+    const userId = req.user.id;
+
+    const { message, maxResults, modelId, history: providedHistory } = req.body;
+
+    console.log(
+      "Model ID:",
+      modelId,
+      "Max Results:",
+      maxResults,
+      "Chat ID:",
+      chatId,
+      "Message:",
+      message
+    );
+    if (!modelId) {
+      return res.status(400).json({ error: "modelId is required" });
+    }
+
+    const chat = await Chat.findOne({ _id: chatId, userId });
+    if (!chat) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Chat not found" });
+    }
+
+    if (!message && !req.file) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Message or file is required" });
+    }
+
+    let history = chat.messages.map((msg) => ({
+      role: msg.userRole,
+      content: msg.message,
+    }));
+    if (providedHistory) {
+      try {
+        history =
+          typeof providedHistory === "string"
+            ? JSON.parse(providedHistory)
+            : providedHistory;
+      } catch (error) {
+        console.error("Error parsing history:", error);
+      }
+    }
+
+    let userMessage = message || "";
+    if (req.file) {
+      try {
+        const fileText = await extractTextFromFile(
+          req.file.path,
+          req.file.mimetype
+        );
+        userMessage = userMessage
+          ? `${userMessage}\n\nFile content: ${fileText}`
+          : fileText;
+        fs.unlinkSync(req.file.path);
+      } catch (error) {
+        console.error("File processing error:", error);
+        return res.status(400).json({
+          success: false,
+          message: `Error processing file: ${error.message}`,
+        });
+      }
+    }
+
+    try {
+      const inboxStats = await emailService.getInboxStats();
+      const user = await User.findById(userId);
+      const combinedKeywords = [
+        ...new Set([
+          ...(user.getAllImportantKeywords() || []),
+          ...extractContextKeywords(userMessage),
+        ]),
+      ];
+
+      const hasImportantKeyword = combinedKeywords.some((keyword) =>
+        userMessage.toLowerCase().includes(keyword.toLowerCase())
+      );
+
+      console.log("Has Important Keyword:", hasImportantKeyword);
+      const importantTriggers = ["important", "priority", "urgent"];
+      const isImportantQuery = importantTriggers.some((trigger) =>
+        userMessage.includes(trigger)
+      );
+      let importantEmails = [];
+      if (isImportantQuery) {
+        try {
+          const fetchStart = Date.now();
+          const emails = (await emailService.fetchEmails({ maxResults }))
+            .messages;
+          const fetchTime = Date.now() - fetchStart;
+          console.log(`Fetched ${emails.length} emails in ${fetchTime}ms`);
+          const analysisStart = Date.now();
+          importantEmails = await emailService.filterImportantEmails(
+            emails,
+            combinedKeywords,
+            "daily",
+            modelId
+          );
+          console.log(
+            `Analyzed important emails in ${
+              Date.now() - analysisStart
+            }ms. Found ${importantEmails.length} important emails.`
+          );
+        } catch (error) {
+          console.error("Error filtering important emails:", error);
+          importantEmails = []; // Ensure we have a fallback
+        }
+      }
+
+      const chatResponse = await mcpServer.chatWithBot(
+        req,
+        userMessage,
+        history,
+        {
+          timeContext: ["morning", "afternoon", "evening"][
+            Math.floor(new Date().getHours() / 6)
+          ],
+          emailCount: inboxStats.totalEmails,
+          unreadCount: inboxStats.unreadEmails,
+          importantCount: importantEmails.length,
+          topImportantEmails:
+            importantEmails && importantEmails.length
+              ? importantEmails.slice(0, 10).map((email) => ({
+                  from: email.from,
+                  subject: email.subject,
+                  score: email.importanceScore,
+                  snippet: email.snippet,
+                  body: email.body,
+                }))
+              : [],
+        },
+        modelId
+      );
+
+      const newTokenCount =
+        (user.subscription.dailyTokens || 0) + (chatResponse.tokenCount || 0);
+      if (newTokenCount > req.maxTokens) {
+        return res
+          .status(429)
+          .json({ success: false, message: "Daily token limit reached." });
+      }
+      user.subscription.dailyTokens = newTokenCount;
+      await user.save();
+
+      chat.messages.push(
+        { userRole: "user", message: userMessage, date: new Date() },
+        {
+          userRole: "assistant",
+          message: chatResponse.text,
+          date: new Date(),
+          model: chatResponse.modelUsed,
+        }
+      );
+      await chat.save();
+
+      res.json({
+        success: true,
+        message: chatResponse.text,
+        model: chatResponse.modelUsed,
+        fallbackUsed: chatResponse.fallbackUsed,
+        tokenCount: chatResponse.tokenCount || 0,
+        data: chatResponse.artifact?.data || null,
+      });
+    } catch (error) {
+      console.error("Error processing request:", error);
+      res.status(500).json({
+        success: false,
+        message: "Trouble processing your request. Try again?",
+      });
+    }
+  })
+);
+
+// Helper function to extract potential keywords from user message
+function extractContextKeywords(message) {
+  // Simple keyword extraction with better patterns
+  const keywords = [];
+  const lowerCaseMessage = message.toLowerCase();
+
+  // Add direct check for important-related words
+  if (/\b(important|urgent|priority)\b/i.test(lowerCaseMessage)) {
+    keywords.push("important");
+  }
+
+  // Look for potential important terms in the message
+  const importantPatterns = [
+    /\bimportant\s+(\w+)\b/gi,
+    /\bcheck\s+for\s+(\w+)\b/gi,
+    /\bfind\s+(\w+)\b/gi,
+    /\bpriority\s+(\w+)\b/gi,
+    /\burgent\s+(\w+)\b/gi,
+    /\bcritical\s+(\w+)\b/gi,
+  ];
+
+  for (const pattern of importantPatterns) {
+    let match;
+    while ((match = pattern.exec(message)) !== null) {
+      if (match[1] && match[1].length > 3) {
+        keywords.push(match[1].toLowerCase());
+      }
+    }
+  }
+
+  // Add more general keywords for common important topics
+  if (lowerCaseMessage.includes("email")) keywords.push("email");
+
+  // Extract potential topic keywords
+  const words = lowerCaseMessage.split(/\s+/);
+  const potentialKeywords = words.filter(
+    (word) =>
+      word.length > 4 &&
+      ![
+        "about",
+        "these",
+        "those",
+        "their",
+        "there",
+        "where",
+        "which",
+        "would",
+        "could",
+        "should",
+        "anything",
+        "email",
+      ].includes(word)
+  );
+
+  // Add top 3 potential topic keywords
+  keywords.push(...potentialKeywords.slice(0, 3));
+
+  return [...new Set(keywords)];
+}
 
 // Extract Text from Uploaded File
 async function extractTextFromFile(filePath, mimeType) {

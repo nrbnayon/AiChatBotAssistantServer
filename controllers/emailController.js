@@ -54,14 +54,14 @@ const fetchImportantEmails = catchAsync(async (req, res) => {
   } = req.query;
   const result = await emailService.fetchEmails({
     query: query?.toString(),
-    maxResults: parseInt(maxResults?.toString() || "100"),
+    maxResults: parseInt(maxResults?.toString() || "1000"),
     pageToken: pageToken?.toString(),
   });
   const customKeywords = keywords ? keywords.split(",") : [];
   const importantEmails = await emailService.filterImportantEmails(
     result.messages,
     customKeywords,
-    timeRange?.toString() || "weekly"
+    timeRange?.toString() || "daily"
   );
   res.json({
     success: true,
