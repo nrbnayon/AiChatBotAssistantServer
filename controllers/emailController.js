@@ -53,7 +53,7 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
     emails: messages,
     nextPageToken: emailsData.nextPageToken,
     prevPageToken: emailsData.prevPageToken,
-    maxResults: messages?.length || parseInt(maxResults || "1000"),
+    maxResults: parseInt(messages?.length || maxResults || "1000"),
   };
 
   // Cache the response
