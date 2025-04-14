@@ -65,15 +65,7 @@ router.post(
     const { message, maxResults, modelId, history: providedHistory } = req.body;
     const userId = req.user.id;
 
-    console.log(
-      "Model ID:",
-      modelId,
-      "Max Results:",
-      maxResults,
-      "Message send from user:",
-      message
-    );
-
+    
     if (!modelId) {
       return res.status(400).json({ error: "modelId is required" });
     }

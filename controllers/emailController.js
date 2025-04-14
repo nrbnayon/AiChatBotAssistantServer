@@ -49,7 +49,6 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
   const responseData = {
     success: true,
     totalEmails: parseInt(inboxStats.totalEmails || 0),
-    totalEmailsEstimate,
     emails: messages,
     nextPageToken: emailsData.nextPageToken,
     prevPageToken: emailsData.prevPageToken,
