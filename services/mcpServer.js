@@ -1677,7 +1677,7 @@ class MCPServer {
       return {
         type: "text",
         text: fallbackUsed
-          ? `⚠️ The selected model is unavailable due to quota limits. Please use another best model.\n\n${text}`
+          ? `⚠️ The selected model is unavailable due to ***token limits***. Please use another best model.\n\n${text}`
           : text,
         modelUsed: modelUsed.name || "N/A",
         fallbackUsed: fallbackUsed,
@@ -1687,7 +1687,7 @@ class MCPServer {
       return {
         type: "text",
         text: fallbackUsed
-          ? `⚠️ The selected model is unavailable due to quota limits. Please use another best model.\n\n${actionData.chat}`
+          ? `⚠️ The selected model is unavailable due to ***token limits***. Please use another best model.\n\n${actionData.chat}`
           : actionData.chat,
         modelUsed: modelUsed.name || "N/A",
         fallbackUsed: fallbackUsed,
@@ -1697,7 +1697,7 @@ class MCPServer {
       return {
         type: "text",
         text: fallbackUsed
-          ? `⚠️ The selected model is unavailable due to quota limits. Please use another best model.\n\n${actionData.message}`
+          ? `⚠️ The selected model is unavailable due to ***token limits***. Please use another best model.\n\n${actionData.message}`
           : actionData.message,
         modelUsed: modelUsed.name || "N/A",
         fallbackUsed: fallbackUsed,
