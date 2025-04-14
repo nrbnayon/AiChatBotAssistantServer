@@ -7,7 +7,7 @@ import NodeCache from "node-cache";
 const emailListCache = new NodeCache({ stdTTL: 300 });
 
 const fetchEmails = catchAsync(async (req, res, filter = "all") => {
-  const { query, maxResults = 1000, pageToken } = req.query;
+  const { query, maxResults = 10000, pageToken } = req.query;
 
   const cacheKey = `${req.user.id}-${filter}-${query || ""}-${pageToken || ""}`;
   const cachedEmails = emailListCache.get(cacheKey);
@@ -47,7 +47,7 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
   }
 
   const messages = emailsData.messages || [];
-  res.json({
+  const responseData = {
     success: true,
     totalEmails: messages.length,
     totalEmailsEstimate,
@@ -55,10 +55,15 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
     nextPageToken: emailsData.nextPageToken,
     prevPageToken: emailsData.prevPageToken,
     maxResults: parseInt(maxResults || "1000"),
-  });
+  };
 
-  emailListCache.set(cacheKey, responseData);
-  console.log(`Cache set for ${cacheKey}`);
+  // Cache the response
+  try {
+    emailListCache.set(cacheKey, responseData);
+    console.log(`Cache set for ${cacheKey}`);
+  } catch (error) {
+    console.error(`Failed to cache response for ${cacheKey}:`, error);
+  }
 
   res.json(responseData);
 });
