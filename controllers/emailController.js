@@ -5,16 +5,15 @@ import { StatusCodes } from "http-status-codes";
 import { ApiError, catchAsync } from "../utils/errorHandler.js";
 
 const fetchEmails = catchAsync(async (req, res, filter = "all") => {
-  console.log(
-    "Fetching emails with filter:",
-    filter,
-    "for user:",
-    req.user.email
-  );
   const { query, maxResults = 1000, pageToken } = req.query;
 
   const emailService = await createEmailService(req);
   const mcpServer = new MCPServer(emailService);
+
+  // Estimate total emails for pagination
+  const inboxStats = await emailService.getInboxStats();
+  const totalEmailsEstimate = inboxStats.totalEmails || 0;
+
   const emailsResponse = await mcpServer.callTool(
     "fetch-emails",
     {
@@ -38,8 +37,10 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
   res.json({
     success: true,
     totalEmails: messages.length,
+    totalEmailsEstimate,
     emails: messages,
     nextPageToken: emailsData.nextPageToken,
+    maxResults: parseInt(maxResults || "1000"),
   });
 });
 

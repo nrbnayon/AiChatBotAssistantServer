@@ -145,8 +145,7 @@ class GmailService extends EmailService {
             const email = await client.users.messages.get({
               userId: "me",
               id: msg.id,
-              // format: "full",
-              format: "metadata",
+              format: "full",
             });
             return this.formatEmail(email.data);
           } catch (error) {
@@ -156,9 +155,21 @@ class GmailService extends EmailService {
         })
       );
 
+      // Store page tokens for navigation
+      const pageTokenCache =
+        statsCache.get(`pageTokens-${this.user.email}`) || [];
+      if (pageToken) {
+        pageTokenCache.push(pageToken);
+        statsCache.set(`pageTokens-${this.user.email}`, pageTokenCache);
+      }
+
       return {
         messages: emails.filter(Boolean),
         nextPageToken: response.data.nextPageToken || null,
+        prevPageToken:
+          pageTokenCache.length > 1
+            ? pageTokenCache[pageTokenCache.length - 2]
+            : null,
       };
     } catch (error) {
       console.error("[ERROR] Failed to fetch emails:", error);

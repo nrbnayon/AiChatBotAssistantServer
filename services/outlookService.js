@@ -149,7 +149,22 @@ class OutlookService extends EmailService {
       }
     }
 
-    return { messages: emails, nextPageToken };
+    // Store page tokens for navigation
+    const pageTokenCache =
+      statsCache.get(`pageTokens-${this.user.email}`) || [];
+    if (pageToken) {
+      pageTokenCache.push(pageToken);
+      statsCache.set(`pageTokens-${this.user.email}`, pageTokenCache);
+    }
+
+    return {
+      messages: emails,
+      nextPageToken,
+      prevPageToken:
+        pageTokenCache.length > 1
+          ? pageTokenCache[pageTokenCache.length - 2]
+          : null,
+    };
   }
 
   formatEmail(email) {
