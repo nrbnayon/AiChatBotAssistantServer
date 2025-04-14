@@ -7,7 +7,6 @@ import { ApiError, logErrorWithStyle } from "../utils/errorHandler.js";
 import { convert } from "html-to-text";
 import { SYSTEM_PROMPT } from "../helper/aiTraining.js";
 import SystemMessage from "../models/SystemMessage.js";
-import User from "../models/User.js";
 
 const STANDARD_FALLBACK_CHAIN = [
   "llama-3.3-70b-versatile",
@@ -1069,7 +1068,7 @@ class MCPServer {
     // Choose format based on number of results and query type
     if (
       relevantEmails.length > 7 ||
-      /meeting|schedule|appointment/i.test(query)
+      /schedule|appointment/i.test(query)
     ) {
       return {
         table: this.formatEmailTable(relevantEmails),
