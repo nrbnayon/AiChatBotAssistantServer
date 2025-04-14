@@ -3,9 +3,22 @@ import { createEmailService } from "../services/emailService.js";
 import MCPServer from "../services/mcpServer.js";
 import { StatusCodes } from "http-status-codes";
 import { ApiError, catchAsync } from "../utils/errorHandler.js";
+import NodeCache from "node-cache";
+const emailListCache = new NodeCache({ stdTTL: 300 });
 
 const fetchEmails = catchAsync(async (req, res, filter = "all") => {
   const { query, maxResults = 1000, pageToken } = req.query;
+
+  const cacheKey = `${req.user.id}-${filter}-${query || ""}-${pageToken || ""}`;
+  const cachedEmails = emailListCache.get(cacheKey);
+  if (cachedEmails) {
+    console.log(`Cache hit for ${cacheKey}`);
+    return res.json(cachedEmails);
+  }
+
+  if (pageToken && typeof pageToken !== "string") {
+    throw new ApiError(StatusCodes.BAD_REQUEST, "Invalid pageToken");
+  }
 
   const emailService = await createEmailService(req);
   const mcpServer = new MCPServer(emailService);
@@ -40,8 +53,14 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
     totalEmailsEstimate,
     emails: messages,
     nextPageToken: emailsData.nextPageToken,
+    prevPageToken: emailsData.prevPageToken,
     maxResults: parseInt(maxResults || "1000"),
   });
+
+  emailListCache.set(cacheKey, responseData);
+  console.log(`Cache set for ${cacheKey}`);
+
+  res.json(responseData);
 });
 
 const fetchImportantEmails = catchAsync(async (req, res) => {
