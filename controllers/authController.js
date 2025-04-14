@@ -95,6 +95,12 @@ const localLogin = catchAsync(async (req, res, next) => {
 
     const { accessToken, refreshToken } = generateTokens(user);
     user.refreshToken = refreshToken;
+
+    if (user.firstLogin) {
+      await sendFirstLoginConfirmation(user);
+      user.firstLogin = false;
+    }
+
     await user.save();
 
     safeCookie.set(res, "accessToken", accessToken, {
