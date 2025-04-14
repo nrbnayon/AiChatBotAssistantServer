@@ -25,7 +25,6 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
 
   // Estimate total emails for pagination
   const inboxStats = await emailService.getInboxStats();
-  const totalEmailsEstimate = inboxStats.totalEmails || 0;
 
   const emailsResponse = await mcpServer.callTool(
     "fetch-emails",
@@ -49,12 +48,12 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
   const messages = emailsData.messages || [];
   const responseData = {
     success: true,
-    totalEmails: messages.length,
+    totalEmails: parseInt(inboxStats.totalEmails || 0),
     totalEmailsEstimate,
     emails: messages,
     nextPageToken: emailsData.nextPageToken,
     prevPageToken: emailsData.prevPageToken,
-    maxResults: parseInt(maxResults || "1000"),
+    maxResults: messages?.length || parseInt(maxResults || "1000"),
   };
 
   // Cache the response
