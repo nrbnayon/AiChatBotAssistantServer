@@ -1,6 +1,6 @@
 // routes/chatRoutes.js
 import express from "express";
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 import auth from "../middleware/authMiddleware.js";
 import {
@@ -13,13 +13,12 @@ import {
 
 const router = express.Router();
 
-
 // Middleware to validate MongoDB ObjectId
 const validateObjectId = (req, res, next) => {
   if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
     return res.status(404).json({
       success: false,
-      message: "Invalid Chat ID format"
+      message: "Invalid Chat ID format",
     });
   }
   next();

@@ -5,7 +5,8 @@ import User from "../models/User.js";
 import userService from "../services/userService.js";
 import { safeCookie } from "../helper/cookieHelper.js";
 import { AppError, catchAsync } from "../utils/errorHandler.js";
-import { jwtHelper } from './../helper/jwtHelper.js';
+import { jwtHelper } from "./../helper/jwtHelper.js";
+import { sendFirstLoginConfirmation } from "../helper/notifyByEmail.js";
 
 dotenv.config();
 
