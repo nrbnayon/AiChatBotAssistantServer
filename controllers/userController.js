@@ -68,18 +68,33 @@ const rejectWaitingList = catchAsync(async (req, res, next) => {
   res.json({ message: "User rejected", entry });
 });
 
-export const getAllWaitingList = async (req, res) => {
-  try {
-    const waitingList = await WaitingList.find().lean();
-    res.status(200).json({
-      success: true,
-      data: waitingList,
-    });
-  } catch (error) {
-    console.error("Error fetching waiting list:", error);
-    res.status(500).json({ message: "Server error" });
+export const getAllWaitingList = catchAsync(async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const status = req.query.status;
+  const skip = (page - 1) * limit;
+
+  let query = {};
+  if (status) {
+    query.status = status;
   }
-};
+
+  const waitingList = await WaitingList.find(query)
+    .skip(skip)
+    .limit(limit)
+    .sort({ createdAt: -1 })
+    .lean();
+  const totalWaiting = await WaitingList.countDocuments(query);
+  const totalPages = Math.ceil(totalWaiting / limit);
+
+  res.status(200).json({
+    success: true,
+    data: waitingList,
+    total: totalWaiting,
+    totalPages,
+    currentPage: page,
+  });
+});
 
 const getMe = catchAsync(async (req, res, next) => {
   if (!req.user || !req.user.id)
@@ -126,8 +141,27 @@ const deleteMe = catchAsync(async (req, res) => {
 });
 
 const getAllUsers = catchAsync(async (req, res) => {
-  const users = await userService.getAllUsers();
-  res.json({ success: true, users });
+  const page = parseInt(req.query.page) || 1; 
+  const limit = parseInt(req.query.limit) || 10; 
+  const skip = (page - 1) * limit;
+
+  const users = await User.find()
+    .select("-password -refreshToken -googleAccessToken -microsoftAccessToken")
+    .skip(skip)
+    .limit(limit)
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const totalUsers = await User.countDocuments();
+  const totalPages = Math.ceil(totalUsers / limit);
+
+  res.json({
+    success: true,
+    users,
+    totalCount: totalUsers,
+    totalPages,
+    currentPage: page,
+  });
 });
 
 const updateKeywords = catchAsync(async (req, res, next) => {
@@ -168,7 +202,6 @@ const createUser = catchAsync(async (req, res, next) => {
   const newUser = await userService.createUser({ name, email, password, role });
   const { accessToken, refreshToken } = generateTokens(newUser);
   newUser.refreshToken = refreshToken;
-  await newUser.save();
 
   // Send first login email for locally created users
   await sendFirstLoginConfirmation(newUser);

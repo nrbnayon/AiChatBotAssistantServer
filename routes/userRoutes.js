@@ -1,4 +1,3 @@
-// routes\userRoutes.js
 // routes/userRoutes.js
 import express from "express";
 import {

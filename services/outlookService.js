@@ -8,8 +8,12 @@ import { convert } from "html-to-text";
 import { decrypt, encrypt } from "../utils/encryptionUtils.js";
 
 class OutlookService extends EmailService {
+  constructor(user) {
+    super(user);
+    this.pageTokenCache = []; // Initialize page token cache
+  }
+
   async getClient() {
-    // Retrieve encrypted refresh token from user model
     const encryptedRefreshToken = this.user.microsoftRefreshToken;
     if (!encryptedRefreshToken) {
       throw new ApiError(
@@ -18,17 +22,13 @@ class OutlookService extends EmailService {
       );
     }
 
-    // Decrypt the refresh token for use
     const refreshToken = decrypt(encryptedRefreshToken);
-
-    // Retrieve encrypted access token from user model
     const encryptedAccessToken = this.user.microsoftAccessToken;
     let accessToken = encryptedAccessToken
       ? decrypt(encryptedAccessToken)
       : null;
-
     const microsoftTokenExpiry = this.user.microsoftAccessTokenExpires || 0;
-    // Check if access token is expired or missing
+
     if (microsoftTokenExpiry < Date.now() || !accessToken) {
       try {
         const response = await fetch(
@@ -65,13 +65,13 @@ class OutlookService extends EmailService {
 
         const { access_token, refresh_token, expires_in } =
           await response.json();
-        accessToken = access_token; // Assign new plain access token
-        const newEncryptedAccessToken = encrypt(access_token); // Encrypt new access token
-        this.user.microsoftAccessToken = newEncryptedAccessToken; // Save encrypted access token
+        accessToken = access_token;
+        const newEncryptedAccessToken = encrypt(access_token);
+        this.user.microsoftAccessToken = newEncryptedAccessToken;
         if (refresh_token) {
-          const newEncryptedRefreshToken = encrypt(refresh_token); // Encrypt new refresh token if provided
+          const newEncryptedRefreshToken = encrypt(refresh_token);
           this.user.microsoftRefreshToken = newEncryptedRefreshToken;
-        } // If no new refresh token, retain the existing one
+        }
         this.user.microsoftAccessTokenExpires = Date.now() + expires_in * 1000;
         await this.user.save();
         console.log("[DEBUG] Microsoft token refreshed");
@@ -84,9 +84,8 @@ class OutlookService extends EmailService {
       }
     }
 
-    // Return the decrypted access token for API calls
     return {
-      accessToken, // Plain text token for immediate use
+      accessToken,
       baseUrl: "https://graph.microsoft.com/v1.0/me",
     };
   }
@@ -104,7 +103,6 @@ class OutlookService extends EmailService {
       starred: `${client.baseUrl}/messages${baseParams}&$filter=flag/flagStatus eq 'flagged'`,
       drafts: `${client.baseUrl}/mailFolders/drafts/messages${baseParams}`,
       important: `${client.baseUrl}/messages${baseParams}&$filter=importance eq 'high'`,
-      // trash: `${client.baseUrl}/mailFolders/deleteditems/messages${baseParams}`,
     };
 
     endpoint = filterMap[filter.toLowerCase()];
@@ -149,12 +147,9 @@ class OutlookService extends EmailService {
       }
     }
 
-    // Store page tokens for navigation
-    const pageTokenCache =
-      statsCache.get(`pageTokens-${this.user.email}`) || [];
+    const pageTokenCache = this.pageTokenCache;
     if (pageToken) {
       pageTokenCache.push(pageToken);
-      statsCache.set(`pageTokens-${this.user.email}`, pageTokenCache);
     }
 
     return {
