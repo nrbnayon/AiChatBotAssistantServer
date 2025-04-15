@@ -9,6 +9,8 @@ const emailListCache = new NodeCache({ stdTTL: 300 });
 const fetchEmails = catchAsync(async (req, res, filter = "all") => {
   const { query, maxResults = 10000, pageToken } = req.query;
 
+  console.log("Check all parameters::", { query, maxResults, pageToken })
+
   const cacheKey = `${req.user.id}-${filter}-${query || ""}-${pageToken || ""}`;
   const cachedEmails = emailListCache.get(cacheKey);
   if (cachedEmails) {

@@ -14,7 +14,7 @@ import stripeRoutes from "./routes/stripeRoutes.js";
 import emailRoutes from "./routes/emailRoutes.js";
 import aiChatRoutes from "./routes/aiChatRoutes.js";
 import aiModelRoutes from "./routes/aiModelRoutes.js";
-import chatRoutes from "./routes/chatRoutes.js"; // New import
+import chatRoutes from "./routes/chatRoutes.js"; 
 import { globalErrorHandler } from "./utils/errorHandler.js";
 import requestLogger from "./utils/requestLogger.js";
 import "./config/passport.js";
