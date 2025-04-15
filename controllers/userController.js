@@ -68,6 +68,19 @@ const rejectWaitingList = catchAsync(async (req, res, next) => {
   res.json({ message: "User rejected", entry });
 });
 
+export const getAllWaitingList = async (req, res) => {
+  try {
+    const waitingList = await WaitingList.find().lean();
+    res.status(200).json({
+      success: true,
+      data: waitingList,
+    });
+  } catch (error) {
+    console.error("Error fetching waiting list:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 const getMe = catchAsync(async (req, res, next) => {
   if (!req.user || !req.user.id)
     return next(new ApiError("User not authenticated", 400));

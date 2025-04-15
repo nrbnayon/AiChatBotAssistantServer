@@ -16,6 +16,7 @@ import {
   getUserStats,
   approveWaitingList,
   rejectWaitingList,
+  getAllWaitingList,
   getAllSystemMessages,
   getSystemMessage,
   createSystemMessage,
@@ -264,6 +265,15 @@ router.get(
  * @description Admin routes for waiting list operations
  * @access Admin and Super Admin
  */
+// Retrieve all waiting list entries
+router.get(
+  "/admin/waiting-list",
+  auth("admin", "super_admin"),
+  setRefreshedTokenCookie,
+  rateLimitMiddleware(),
+  getAllWaitingList
+);
+
 // Approve a user from the waiting list
 router.post(
   "/waiting-list/approve",
