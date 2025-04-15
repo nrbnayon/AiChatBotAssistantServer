@@ -84,7 +84,7 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
     });
     if (user) {
       user.subscription.status =
-        subscription.status === "active" ? "active" : "canceled";
+        subscription.status === "active" ? "active" : "cancelled";
       user.subscription.endDate = new Date(
         subscription.current_period_end * 1000
       );
@@ -96,7 +96,7 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
       "subscription.stripeSubscriptionId": subscription.id,
     });
     if (user) {
-      user.subscription.status = "canceled";
+      user.subscription.status = "cancelled";
       user.subscription.endDate = new Date();
       await user.save();
     }

@@ -70,7 +70,7 @@ const userSchema = new mongoose.Schema({
   status: {
     type: String,
     default: "active",
-    enum: ["active", "canceled", "pending", "block"],
+    enum: ["active", "cancelled", "pending", "blocked"],
   },
   verified: { type: Boolean, default: false },
   subscription: { type: subscriptionSchema, default: () => ({}) },
