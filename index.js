@@ -14,7 +14,7 @@ import stripeRoutes from "./routes/stripeRoutes.js";
 import emailRoutes from "./routes/emailRoutes.js";
 import aiChatRoutes from "./routes/aiChatRoutes.js";
 import aiModelRoutes from "./routes/aiModelRoutes.js";
-import chatRoutes from "./routes/chatRoutes.js"; 
+import chatRoutes from "./routes/chatRoutes.js";
 import { globalErrorHandler } from "./utils/errorHandler.js";
 import requestLogger from "./utils/requestLogger.js";
 import "./config/passport.js";
@@ -95,7 +95,7 @@ app.use(
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "Cache-Control"],
     exposedHeaders: ["Authorization"],
   })
 );
@@ -118,7 +118,7 @@ app.use("/api/v1/ai-models", aiModelRoutes);
 app.use("/api/v1/stripe", stripeRoutes);
 app.use("/api/v1/emails", emailRoutes);
 app.use("/api/v1/ai-assistant", aiChatRoutes);
-app.use("/api/v1/chats", chatRoutes); 
+app.use("/api/v1/chats", chatRoutes);
 
 app.use((req, res) => {
   res.status(404).json({

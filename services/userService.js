@@ -1,5 +1,6 @@
 // services\userService.js
 import User from "../models/User.js";
+import WaitingList from "../models/WaitingList.js";
 import { ApiError } from "../utils/errorHandler.js";
 import path from "path";
 
@@ -114,10 +115,104 @@ const deleteUser = async (userId) => {
   if (!user) throw new ApiError("User not found", 404);
 };
 
-const getAllUsers = async () => {
-  return await User.find().select(
-    "-password -refreshToken -googleAccessToken -microsoftAccessToken"
-  );
+const getAllUsers = async (
+  page = 1,
+  limit = 10,
+  searchQuery = "",
+  status = ""
+) => {
+  const skip = (page - 1) * limit;
+
+  // Create search query
+  let query = {};
+
+  // Add status filter if provided
+  if (status) {
+    query.status = status;
+  }
+
+  // Add search query if provided
+  if (searchQuery) {
+    query = {
+      ...query,
+      $or: [
+        { name: { $regex: searchQuery, $options: "i" } },
+        { email: { $regex: searchQuery, $options: "i" } },
+      ],
+    };
+  }
+
+  const users = await User.find(query)
+    .select("-password -refreshToken -googleAccessToken -microsoftAccessToken")
+    .skip(skip)
+    .limit(limit)
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const totalUsers = await User.countDocuments(query);
+  const totalPages = Math.ceil(totalUsers / limit);
+
+  return {
+    users,
+    totalCount: totalUsers,
+    totalPages,
+    currentPage: page,
+  };
+};
+
+const searchWaitingList = async (
+  page = 1,
+  limit = 10,
+  searchQuery = "",
+  status = ""
+) => {
+  const skip = (page - 1) * limit;
+
+  // Create search query
+  let query = {};
+
+  if (status) {
+    query.status = status;
+  }
+
+  if (searchQuery) {
+    query = {
+      ...query,
+      $or: [
+        { name: { $regex: searchQuery, $options: "i" } },
+        { email: { $regex: searchQuery, $options: "i" } },
+      ],
+    };
+  }
+
+  // Using aggregation to sort "waiting" status to the top
+  const waitingList = await WaitingList.aggregate([
+    { $match: query },
+    {
+      $addFields: {
+        sortOrder: {
+          $cond: {
+            if: { $eq: ["$status", "waiting"] },
+            then: 0,
+            else: 1,
+          },
+        },
+      },
+    },
+    { $sort: { sortOrder: 1, createdAt: -1 } },
+    { $skip: skip },
+    { $limit: limit },
+  ]);
+
+  const totalWaiting = await WaitingList.countDocuments(query);
+  const totalPages = Math.ceil(totalWaiting / limit);
+
+  return {
+    data: waitingList,
+    total: totalWaiting,
+    totalPages,
+    currentPage: page,
+  };
 };
 
 const createUser = async ({ name, email, password, role }) => {
@@ -141,11 +236,66 @@ const createUser = async ({ name, email, password, role }) => {
   return userWithoutPassword;
 };
 
+// Email services
+const sendWaitingListConfirmation = async (entry) => {
+  try {
+    // Import directly in the function to avoid circular dependencies
+    const { sendWaitingListConfirmation } = await import(
+      "../helper/notifyByEmail.js"
+    );
+    return await sendWaitingListConfirmation(entry);
+  } catch (error) {
+    console.error("Failed to send waiting list confirmation:", error);
+    throw error;
+  }
+};
+
+const sendAdminNotification = async (entry) => {
+  try {
+    const { sendAdminNotification } = await import(
+      "../helper/notifyByEmail.js"
+    );
+    return await sendAdminNotification(entry);
+  } catch (error) {
+    console.error("Failed to send admin notification:", error);
+    throw error;
+  }
+};
+
+const sendApprovalEmail = async (entry, loginLink) => {
+  try {
+    const { sendApprovalConfirmation } = await import(
+      "../helper/notifyByEmail.js"
+    );
+    return await sendApprovalConfirmation(entry, loginLink);
+  } catch (error) {
+    console.error("Failed to send approval email:", error);
+    throw error;
+  }
+};
+
+const sendFirstLoginEmail = async (user) => {
+  try {
+    const { sendFirstLoginConfirmation } = await import(
+      "../helper/notifyByEmail.js"
+    );
+    return await sendFirstLoginConfirmation(user);
+  } catch (error) {
+    console.error("Failed to send first login email:", error);
+    throw error;
+  }
+};
+
 export default {
   handleLocalLogin,
   updateProfile,
   updateSubscription,
   deleteUser,
   getAllUsers,
+  searchWaitingList,
   createUser,
+  sendWaitingListConfirmation,
+  sendAdminNotification,
+  sendApprovalEmail,
+  sendFirstLoginEmail,
 };

@@ -82,6 +82,7 @@ const userSchema = new mongoose.Schema({
   gender: { type: String },
   dateOfBirth: { type: Date },
   createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
   lastSync: { type: Date, default: Date.now },
   userImportantMailKeywords: {
     type: [String],

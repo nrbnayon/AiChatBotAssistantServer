@@ -9,7 +9,6 @@ import AiModel from "../models/AiModel.js";
 import SystemMessage from "../models/SystemMessage.js";
 import { safeCookie } from "../helper/cookieHelper.js";
 import { generateTokens } from "./authController.js";
-import { sendApprovalConfirmation, sendFirstLoginConfirmation } from "../helper/notifyByEmail.js";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const getIncome = catchAsync(async (req, res, next) => {
@@ -52,7 +51,7 @@ const approveWaitingList = catchAsync(async (req, res, next) => {
   if (!entry)
     return next(new ApiError("Entry not found or already processed", 404));
   const loginLink = `${process.env.FRONTEND_URL}/login`;
-  await sendApprovalConfirmation(entry, loginLink); // Send approval email
+  await userService.sendApprovalEmail(entry, loginLink); // Use service function
   res.json({ message: "User approved", entry });
 });
 
@@ -72,27 +71,18 @@ export const getAllWaitingList = catchAsync(async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
   const status = req.query.status;
-  const skip = (page - 1) * limit;
+  const search = req.query.search || "";
 
-  let query = {};
-  if (status) {
-    query.status = status;
-  }
-
-  const waitingList = await WaitingList.find(query)
-    .skip(skip)
-    .limit(limit)
-    .sort({ createdAt: -1 })
-    .lean();
-  const totalWaiting = await WaitingList.countDocuments(query);
-  const totalPages = Math.ceil(totalWaiting / limit);
+  const result = await userService.searchWaitingList(
+    page,
+    limit,
+    search,
+    status
+  );
 
   res.status(200).json({
     success: true,
-    data: waitingList,
-    total: totalWaiting,
-    totalPages,
-    currentPage: page,
+    ...result,
   });
 });
 
@@ -107,11 +97,7 @@ const getMe = catchAsync(async (req, res, next) => {
 });
 
 const updateProfile = catchAsync(async (req, res) => {
-   const user = await userService.updateProfile(
-     req.user.id,
-     req.body,
-     req.file
-   );
+  const user = await userService.updateProfile(req.user.id, req.body, req.file);
 
   res.json({
     success: true,
@@ -141,26 +127,16 @@ const deleteMe = catchAsync(async (req, res) => {
 });
 
 const getAllUsers = catchAsync(async (req, res) => {
-  const page = parseInt(req.query.page) || 1; 
-  const limit = parseInt(req.query.limit) || 10; 
-  const skip = (page - 1) * limit;
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const search = req.query.search || "";
+  const status = req.query.status || "";
 
-  const users = await User.find()
-    .select("-password -refreshToken -googleAccessToken -microsoftAccessToken")
-    .skip(skip)
-    .limit(limit)
-    .sort({ createdAt: -1 })
-    .lean();
-
-  const totalUsers = await User.countDocuments();
-  const totalPages = Math.ceil(totalUsers / limit);
+  const result = await userService.getAllUsers(page, limit, search, status);
 
   res.json({
     success: true,
-    users,
-    totalCount: totalUsers,
-    totalPages,
-    currentPage: page,
+    ...result,
   });
 });
 
@@ -203,8 +179,8 @@ const createUser = catchAsync(async (req, res, next) => {
   const { accessToken, refreshToken } = generateTokens(newUser);
   newUser.refreshToken = refreshToken;
 
-  // Send first login email for locally created users
-  await sendFirstLoginConfirmation(newUser);
+  // Send first login email for locally created users using service function
+  await userService.sendFirstLoginEmail(newUser);
   newUser.firstLogin = false; // Set to false after sending email
   await newUser.save();
 
@@ -228,7 +204,10 @@ const createUser = catchAsync(async (req, res, next) => {
 
 const updateUser = catchAsync(async (req, res, next) => {
   const { id } = req.params;
-  const updates = req.body;
+  const updates = {
+    ...req.body,
+    updatedAt: new Date(),
+  };
   const requesterRole = req.user.role;
 
   if (id === req.user.id)

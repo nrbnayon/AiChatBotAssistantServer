@@ -9,9 +9,10 @@ const emailListCache = new NodeCache({ stdTTL: 300 });
 const fetchEmails = catchAsync(async (req, res, filter = "all") => {
   const { query, maxResults = 10000, pageToken } = req.query;
 
-  console.log("Check all parameters::", { query, maxResults, pageToken })
+  console.log("Check all parameters::", { query, maxResults, pageToken });
 
   const cacheKey = `${req.user.id}-${filter}-${query || ""}-${pageToken || ""}`;
+  console.log(`Setting response status to 200 for cacheKey: ${cacheKey}`);
   const cachedEmails = emailListCache.get(cacheKey);
   if (cachedEmails) {
     console.log(`Cache hit for ${cacheKey}`);
@@ -64,6 +65,11 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
   } catch (error) {
     console.error(`Failed to cache response for ${cacheKey}:`, error);
   }
+
+  console.log(
+    `Returning ${messages.length} emails:`,
+    messages.map((e) => e.id)
+  );
 
   res.json(responseData);
 });
