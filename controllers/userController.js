@@ -44,26 +44,29 @@ const getUserStats = catchAsync(async (req, res) => {
 const approveWaitingList = catchAsync(async (req, res, next) => {
   const { email } = req.body;
   const entry = await WaitingList.findOneAndUpdate(
-    { email, status: "waiting" },
+    { email, status: { $in: ["waiting", "rejected"] } },
     { status: "approved" },
     { new: true }
   );
-  if (!entry)
-    return next(new ApiError("Entry not found or already processed", 404));
-  const loginLink = `${process.env.FRONTEND_URL}/login`;
-  await userService.sendApprovalEmail(entry, loginLink); // Use service function
-  res.json({ message: "User approved", entry });
+
+  if (!entry) {
+    return next(new ApiError(404, "Entry not found or already processed"));
+  }
+
+  const loginLink = `${process.env.FRONTEND_LIVE_URL}/login`;
+  await userService.sendApprovalEmail(entry, loginLink);
+  res.json({ message: "User approved successfully", entry });
 });
 
 const rejectWaitingList = catchAsync(async (req, res, next) => {
   const { email } = req.body;
   const entry = await WaitingList.findOneAndUpdate(
-    { email, status: "waiting" },
+    { email, status: { $in: ["waiting", "approved"] } },
     { status: "rejected" },
     { new: true }
   );
   if (!entry)
-    return next(new ApiError("Entry not found or already processed", 404));
+    return next(new ApiError(404, "Entry not found or already processed"));
   res.json({ message: "User rejected", entry });
 });
 

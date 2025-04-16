@@ -5,7 +5,7 @@ import { catchAsync } from "../utils/errorHandler.js";
 export const createChat = async (req, res) => {
   const userId = req.user.id;
   const { name } = req.body; 
-  const defaultName = `Chat with AI - ${
+  const defaultName = `untitled - ${
     new Date().toISOString().split("T")[0]
   }`;
   const chatName = name || defaultName; 

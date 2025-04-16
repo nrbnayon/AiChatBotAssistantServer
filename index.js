@@ -94,14 +94,19 @@ app.use(
       }
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Cache-Control"],
     exposedHeaders: ["Authorization"],
   })
 );
 
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+process.on("uncaughtException", (error) => {
+  console.error("UNCAUGHT EXCEPTION! 💥 Shutting down gracefully...");
+  console.error(error.name, error.message, error.stack);
+  // Don't immediately exit to allow pending requests to complete
+  setTimeout(() => {
+    process.exit(1);
+  }, 1000);
 });
 
 app.use(express.json({ limit: "10mb" }));

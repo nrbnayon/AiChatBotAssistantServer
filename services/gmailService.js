@@ -68,26 +68,24 @@ class GmailService extends EmailService {
     return google.gmail({ version: "v1", auth });
   }
 
-  async fetchEmails({
-    query = "",
-    maxResults,
-    pageToken,
-    filter = "all",
-  }) {
+  async fetchEmails({ query = "", maxResults = 1000, pageToken, filter = "all" }) {
     const client = await this.getClient();
 
-    // Ensure maxResults is a number
-    const maxResultsNum = Number(maxResults);
-    if (isNaN(maxResultsNum)) {
-      throw new ApiError(StatusCodes.BAD_REQUEST, "Invalid maxResults value");
-    }
 
     const params = {
       userId: "me",
-      maxResults: maxResultsNum,
+      maxResults,
       q: query,
       pageToken,
     };
+
+    console.log(
+      `[DEBUG] Parameters sent to Gmail API:`,
+      JSON.stringify(params)
+    );
+
+    const response = await client.users.messages.list(params);
+    console.log(`[DEBUG] Gmail API response:`, JSON.stringify(response.data));
 
     const filterMap = {
       all: (params) => params,
@@ -119,10 +117,6 @@ class GmailService extends EmailService {
         params.labelIds = ["IMPORTANT"];
         return params;
       },
-      // trash: (params) => {
-      //   params.labelIds = ["TRASH"];
-      //   return params;
-      // },
     };
 
     const appliedFilter = filterMap[filter.toLowerCase()] || filterMap["all"];
@@ -130,7 +124,6 @@ class GmailService extends EmailService {
 
     try {
       const response = await client.users.messages.list(filteredParams);
-      // Check if response status is not 200 or data is invalid
       if (response.status !== 200 || !response.data) {
         console.error(
           `[ERROR] Gmail API returned status ${response.status}: ${response.statusText}`
@@ -150,12 +143,11 @@ class GmailService extends EmailService {
             return this.formatEmail(email.data);
           } catch (error) {
             console.error(`[ERROR] Failed to fetch email ${msg.id}:`, error);
-            return null; // Skip failed emails
+            return null;
           }
         })
       );
 
-      // Store page tokens for navigation
       const pageTokenCache =
         statsCache.get(`pageTokens-${this.user.email}`) || [];
       if (pageToken) {
@@ -163,7 +155,7 @@ class GmailService extends EmailService {
         statsCache.set(`pageTokens-${this.user.email}`, pageTokenCache);
       }
 
-      return {
+      const result = {
         messages: emails.filter(Boolean),
         nextPageToken: response.data.nextPageToken || null,
         prevPageToken:
@@ -171,6 +163,15 @@ class GmailService extends EmailService {
             ? pageTokenCache[pageTokenCache.length - 2]
             : null,
       };
+
+      console.log(
+        `[DEBUG] Fetched ${result.messages.length} emails with pageToken: ${pageToken}, nextPageToken: ${result.nextPageToken}, prevPageToken: ${result.prevPageToken}`
+      );
+      console.log(
+        `[DEBUG] Email IDs: ${result.messages.map((e) => e.id).join(", ")}`
+      );
+
+      return result;
     } catch (error) {
       console.error("[ERROR] Failed to fetch emails:", error);
       return { messages: [], nextPageToken: null };
@@ -218,7 +219,6 @@ class GmailService extends EmailService {
             Buffer.from(part.body.data, "base64").toString("utf-8")
           );
         } else if (part.parts) {
-          // Handle nested multipart messages
           for (const nestedPart of part.parts) {
             if (nestedPart.mimeType === "text/plain" && nestedPart.body?.data) {
               body = Buffer.from(nestedPart.body.data, "base64").toString(
@@ -245,6 +245,7 @@ class GmailService extends EmailService {
     return body;
   }
 
+  // Other methods remain unchanged...
   async getAttachments(emailId) {
     const email = await this.getEmail(emailId);
     const parts = email.payload?.parts || [];
@@ -398,9 +399,8 @@ class GmailService extends EmailService {
       });
       const totalUnreadResponse = await client.users.messages.list({
         userId: "me",
-        // q: "is:unread", // all unread emails
-        q: "in:inbox is:unread", // unread emails in inbox
-        maxResults : 5000, 
+        q: "in:inbox is:unread",
+        maxResults: 5000,
       });
 
       let totalEmails = inboxResponse.data.messagesTotal ?? 0;
@@ -414,16 +414,15 @@ class GmailService extends EmailService {
     }
   }
 
-  async getEmailCount({ filter = "all", query = "" }) {
+  async getEmailCount({ filter, query }) {
     const client = await this.getClient();
     let q = query;
     if (filter === "unread") q += " is:unread";
-    // Add other filters as needed (e.g., "read", "starred")
     try {
       const response = await client.users.messages.list({
         userId: "me",
         q,
-        maxResults: 5000, 
+        maxResults: 5000,
       });
       return response.data.resultSizeEstimate || 0;
     } catch (error) {

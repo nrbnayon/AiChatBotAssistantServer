@@ -10,7 +10,7 @@ const chatSchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
-    default: () => `Chat with AI - ${new Date().toISOString().split("T")[0]}`,
+    default: () => `untitled - ${new Date().toISOString().split("T")[0]}`,
   },
   messages: [
     {

@@ -62,7 +62,7 @@ router.post(
   catchAsync(async (req, res) => {
     const emailService = await getEmailService(req);
     const mcpServer = new MCPServer(emailService);
-    const { message, maxResults, modelId, history: providedHistory } = req.body;
+    const { message, maxResults = 1000, modelId, history: providedHistory } = req.body;
     const userId = req.user.id;
 
     
@@ -192,14 +192,7 @@ router.post(
   chatRateLimit(),
   upload.single("file"),
   catchAsync(async (req, res) => {
-    console.log(
-      `POST /${req.params.chatId} request received for user ${
-        req.user.id
-      }, Max Results: ${req.body.maxResults || 100}, modelid: ${
-        req.body?.modelId
-      }`
-    );
-
+    
     const startTime = Date.now();
     const emailService = await getEmailService(req);
     const serviceTime = Date.now() - startTime;
@@ -213,7 +206,7 @@ router.post(
     const { chatId } = req.params;
     const userId = req.user.id;
 
-    const { message, maxResults, modelId, history: providedHistory } = req.body;
+    const { message, maxResults = 1000, modelId, history: providedHistory } = req.body;
 
     console.log(
       "Model ID:",

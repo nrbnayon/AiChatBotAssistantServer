@@ -289,13 +289,19 @@ class MCPServer {
           filter = "all",
           query = "",
           maxResults = 1000,
+          pageToken,
           summarize = false,
         } = args;
+
+        console.log(
+          `[DEBUG] maxResults: ${maxResults}, parsed: ${parsedMaxResults}, valid: ${validMaxResults}`
+        );
         let processedQuery = query ? this.processQuery(query) : "";
         const emails = await this.emailService.fetchEmails({
           filter,
           query: processedQuery,
           maxResults,
+          pageToken,
         });
 
         if (!emails || !Array.isArray(emails.messages)) {
@@ -1066,10 +1072,7 @@ class MCPServer {
     relevantEmails.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     // Choose format based on number of results and query type
-    if (
-      relevantEmails.length > 7 ||
-      /schedule|appointment/i.test(query)
-    ) {
+    if (relevantEmails.length > 7 || /schedule|appointment/i.test(query)) {
       return {
         table: this.formatEmailTable(relevantEmails),
         summary: `Found ${relevantEmails.length} emails matching "${query}"`,

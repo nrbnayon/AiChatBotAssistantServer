@@ -56,8 +56,8 @@ router.get(
   auth(),
   emailAuth,
   rateLimitMiddleware({
-    windowMs: 15 * 60 * 1000, 
-    max: 50, 
+    windowMs: 15 * 60 * 1000,
+    max: 50,
     message: "Too many email fetch requests. Please try again later.",
   }),
   (req, res) => {
@@ -74,7 +74,7 @@ router.get(
   setRefreshedTokenCookie,
   rateLimitMiddleware({
     windowMs: 15 * 60 * 1000,
-    max: 20, 
+    max: 20,
     message: "Too many important email requests. Please try again later.",
   }),
   fetchImportantEmails
@@ -87,8 +87,8 @@ router.get(
   setRefreshedTokenCookie,
   emailAuth,
   rateLimitMiddleware({
-    windowMs: 15 * 60 * 1000, 
-    max: 100, 
+    windowMs: 15 * 60 * 1000,
+    max: 100,
     message: "Too many email read requests. Please slow down.",
   }),
   readEmail
@@ -105,8 +105,8 @@ router.post(
   auth(),
   emailAuth,
   rateLimitMiddleware({
-    windowMs: 60 * 60 * 1000, 
-    max: 10, 
+    windowMs: 60 * 60 * 1000,
+    max: 10,
     message: "Too many emails sent. Please wait before sending more.",
   }),
   uploadMiddleware.array("attachments"),
@@ -121,7 +121,7 @@ router.post(
   setRefreshedTokenCookie,
   rateLimitMiddleware({
     windowMs: 30 * 60 * 1000,
-    max: 15, 
+    max: 15,
     message: "Too many email replies. Please slow down.",
   }),
   uploadMiddleware.array("attachments"),
@@ -135,8 +135,8 @@ router.delete(
   emailAuth,
   setRefreshedTokenCookie,
   rateLimitMiddleware({
-    windowMs: 15 * 60 * 1000, 
-    max: 30, 
+    windowMs: 15 * 60 * 1000,
+    max: 30,
     message: "Too many trash actions. Please slow down.",
   }),
   trashEmail
@@ -154,8 +154,8 @@ router.get(
   emailAuth,
   setRefreshedTokenCookie,
   rateLimitMiddleware({
-    windowMs: 15 * 60 * 1000, 
-    max: 25, 
+    windowMs: 15 * 60 * 1000,
+    max: 25,
     message: "Too many search requests. Please try again later.",
   }),
   searchEmails
@@ -168,8 +168,8 @@ router.patch(
   emailAuth,
   setRefreshedTokenCookie,
   rateLimitMiddleware({
-    windowMs: 15 * 60 * 1000, 
-    max: 50, 
+    windowMs: 15 * 60 * 1000,
+    max: 50,
     message: "Too many mark as read actions. Please slow down.",
   }),
   markEmailAsRead
@@ -182,8 +182,8 @@ router.get(
   emailAuth,
   setRefreshedTokenCookie,
   rateLimitMiddleware({
-    windowMs: 30 * 60 * 1000, 
-    max: 10, 
+    windowMs: 30 * 60 * 1000,
+    max: 10,
     message: "Too many email summarization requests. Please try again later.",
   }),
   summarizeEmail
@@ -211,7 +211,7 @@ router.post(
   emailAuth,
   setRefreshedTokenCookie,
   rateLimitMiddleware({
-    windowMs: 15 * 60 * 1000, 
+    windowMs: 15 * 60 * 1000,
     max: 20,
     message: "Too many draft creations. Please slow down.",
   }),

@@ -7,12 +7,12 @@ import NodeCache from "node-cache";
 const emailListCache = new NodeCache({ stdTTL: 300 });
 
 const fetchEmails = catchAsync(async (req, res, filter = "all") => {
-  const { query, maxResults = 10000, pageToken } = req.query;
+  const { query, maxResults = 1000, pageToken, _t } = req.query;
 
-  console.log("Check all parameters::", { query, maxResults, pageToken });
-
-  const cacheKey = `${req.user.id}-${filter}-${query || ""}-${pageToken || ""}`;
-  console.log(`Setting response status to 200 for cacheKey: ${cacheKey}`);
+  // Include _t in cache key to ensure unique requests bypass cache
+  const cacheKey = `${req.user.id}-${filter}-${query || ""}-${
+    pageToken || ""
+  }-${_t || ""}`;
   const cachedEmails = emailListCache.get(cacheKey);
   if (cachedEmails) {
     console.log(`Cache hit for ${cacheKey}`);
@@ -26,7 +26,6 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
   const emailService = await createEmailService(req);
   const mcpServer = new MCPServer(emailService);
 
-  // Estimate total emails for pagination
   const inboxStats = await emailService.getInboxStats();
 
   const emailsResponse = await mcpServer.callTool(
@@ -34,7 +33,7 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
     {
       filter,
       query: query?.toString(),
-      maxResults: parseInt(maxResults?.toString() || "1000"),
+      maxResults: 1000,
       pageToken: pageToken?.toString(),
     },
     req.user.id
@@ -55,10 +54,9 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
     emails: messages,
     nextPageToken: emailsData.nextPageToken,
     prevPageToken: emailsData.prevPageToken,
-    maxResults: parseInt(messages?.length || maxResults || "1000"),
+    maxResults: 1000,
   };
 
-  // Cache the response
   try {
     emailListCache.set(cacheKey, responseData);
     console.log(`Cache set for ${cacheKey}`);
@@ -66,14 +64,10 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
     console.error(`Failed to cache response for ${cacheKey}:`, error);
   }
 
-  console.log(
-    `Returning ${messages.length} emails:`,
-    messages.map((e) => e.id)
-  );
-
   res.json(responseData);
 });
 
+// Other functions remain unchanged...
 const fetchImportantEmails = catchAsync(async (req, res) => {
   const emailService = await createEmailService(req);
   const {
@@ -85,7 +79,7 @@ const fetchImportantEmails = catchAsync(async (req, res) => {
   } = req.query;
   const result = await emailService.fetchEmails({
     query: query?.toString(),
-    maxResults: parseInt(maxResults?.toString() || "1000"),
+    maxResults: 1000,
     pageToken: pageToken?.toString(),
   });
   const customKeywords = keywords ? keywords.split(",") : [];
@@ -245,7 +239,6 @@ const chatWithBot = catchAsync(async (req, res) => {
   const emailService = await createEmailService(req);
   const mcpServer = new MCPServer(emailService);
 
-  // Fetch email counts for context
   const emails = await emailService.fetchEmails({ filter: "all" });
   const emailCount = emails.messages.length;
   const unreadCount = emails.messages.filter((e) => e.unread).length;

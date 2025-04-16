@@ -10,7 +10,7 @@ import { decrypt, encrypt } from "../utils/encryptionUtils.js";
 class OutlookService extends EmailService {
   constructor(user) {
     super(user);
-    this.pageTokenCache = []; // Initialize page token cache
+    this.pageTokenCache = [];
   }
 
   async getClient() {
@@ -90,7 +90,7 @@ class OutlookService extends EmailService {
     };
   }
 
-  async fetchEmails({ query, maxResults, pageToken, filter = "all" }) {
+  async fetchEmails({ query, maxResults = 1000, pageToken, filter = "all" }) {
     const client = await this.getClient();
     let endpoint;
     const baseParams = `?$top=${maxResults}&$select=id,subject,from,toRecipients,receivedDateTime,bodyPreview,body,isRead`;
@@ -152,7 +152,7 @@ class OutlookService extends EmailService {
       pageTokenCache.push(pageToken);
     }
 
-    return {
+    const result = {
       messages: emails,
       nextPageToken,
       prevPageToken:
@@ -160,6 +160,15 @@ class OutlookService extends EmailService {
           ? pageTokenCache[pageTokenCache.length - 2]
           : null,
     };
+
+    console.log(
+      `[DEBUG] Fetched ${result.messages.length} emails with pageToken: ${pageToken}, nextPageToken: ${result.nextPageToken}, prevPageToken: ${result.prevPageToken}`
+    );
+    console.log(
+      `[DEBUG] Email IDs: ${result.messages.map((e) => e.id).join(", ")}`
+    );
+
+    return result;
   }
 
   formatEmail(email) {
@@ -183,6 +192,7 @@ class OutlookService extends EmailService {
     };
   }
 
+  // Other methods remain unchanged...
   async getAttachments(emailId) {
     const client = await this.getClient();
     const response = await fetch(

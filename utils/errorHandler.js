@@ -19,12 +19,16 @@ class AppError extends Error {
  */
 class ApiError extends Error {
   constructor(statusCode, message) {
-    const emoji = getErrorEmoji(statusCode);
-    const funMessage = getFunnyErrorMessage(statusCode);
+    // Make sure statusCode is always a number
+    const numericStatusCode =
+      typeof statusCode === "number" ? statusCode : parseInt(statusCode) || 500;
+
+    const emoji = getErrorEmoji(numericStatusCode);
+    const funMessage = getFunnyErrorMessage(numericStatusCode);
     super(`${emoji} ${message} ${funMessage}`);
 
-    this.statusCode = statusCode;
-    this.status = `${statusCode}`.startsWith("4") ? "fail" : "error";
+    this.statusCode = numericStatusCode;
+    this.status = `${numericStatusCode}`.startsWith("4") ? "fail" : "error";
     this.isOperational = true;
     this.name = this.constructor.name;
 
@@ -112,15 +116,29 @@ const getFunnyErrorMessage = (statusCode) => {
  * Global error handler middleware
  */
 const globalErrorHandler = (err, req, res, next) => {
-  err = handleMongoErrors(err);
+  try {
+    err = handleMongoErrors(err);
 
-  err.statusCode = err.statusCode || 500;
-  err.status = err.status || "error";
+    // Ensure numeric status code
+    err.statusCode =
+      typeof err.statusCode === "number"
+        ? err.statusCode
+        : parseInt(err.statusCode) || 500;
+    err.status = err.status || "error";
 
-  if (process.env.NODE_ENV === "development") {
-    handleDevelopmentError(err, res);
-  } else {
-    handleProductionError(err, res);
+    if (process.env.NODE_ENV === "development") {
+      handleDevelopmentError(err, res);
+    } else {
+      handleProductionError(err, res);
+    }
+  } catch (handlerError) {
+    // Fallback if error handling itself fails
+    console.error("Error in error handler:", handlerError);
+    res.status(500).json({
+      success: false,
+      status: "error",
+      message: "Internal server error occurred",
+    });
   }
 };
 
