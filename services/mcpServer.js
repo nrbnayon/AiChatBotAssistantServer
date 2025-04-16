@@ -293,9 +293,7 @@ class MCPServer {
           summarize = false,
         } = args;
 
-        console.log(
-          `[DEBUG] maxResults: ${maxResults}, parsed: ${maxResults}`
-        );
+        console.log(`[DEBUG] maxResults: ${maxResults}, parsed: ${maxResults}`);
 
         let processedQuery = query ? this.processQuery(query) : "";
         const emails = await this.emailService.fetchEmails({

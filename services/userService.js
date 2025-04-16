@@ -119,14 +119,14 @@ const getAllUsers = async (
   page = 1,
   limit = 10,
   searchQuery = "",
-  status = ""
+  status = null
 ) => {
   const skip = (page - 1) * limit;
 
   // Create search query
   let query = {};
 
-  // Add status filter if provided
+  // Add status filter only if provided
   if (status) {
     query.status = status;
   }
@@ -164,13 +164,14 @@ const searchWaitingList = async (
   page = 1,
   limit = 10,
   searchQuery = "",
-  status = ""
+  status = null
 ) => {
   const skip = (page - 1) * limit;
 
   // Create search query
   let query = {};
 
+  // Add status filter only if provided
   if (status) {
     query.status = status;
   }
