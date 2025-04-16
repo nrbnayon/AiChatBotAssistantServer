@@ -33,7 +33,7 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
     {
       filter,
       query: query?.toString(),
-      maxResults: 1000,
+      maxResults,
       pageToken: pageToken?.toString(),
     },
     req.user.id
@@ -54,7 +54,7 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
     emails: messages,
     nextPageToken: emailsData.nextPageToken,
     prevPageToken: emailsData.prevPageToken,
-    maxResults: 1000,
+    maxResults,
   };
 
   try {
@@ -79,7 +79,7 @@ const fetchImportantEmails = catchAsync(async (req, res) => {
   } = req.query;
   const result = await emailService.fetchEmails({
     query: query?.toString(),
-    maxResults: 1000,
+    maxResults,
     pageToken: pageToken?.toString(),
   });
   const customKeywords = keywords ? keywords.split(",") : [];

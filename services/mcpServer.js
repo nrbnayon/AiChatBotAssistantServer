@@ -288,14 +288,15 @@ class MCPServer {
         const {
           filter = "all",
           query = "",
-          maxResults = 1000,
+          maxResults,
           pageToken,
           summarize = false,
         } = args;
 
         console.log(
-          `[DEBUG] maxResults: ${maxResults}, parsed: ${parsedMaxResults}, valid: ${validMaxResults}`
+          `[DEBUG] maxResults: ${maxResults}, parsed: ${maxResults}`
         );
+
         let processedQuery = query ? this.processQuery(query) : "";
         const emails = await this.emailService.fetchEmails({
           filter,
