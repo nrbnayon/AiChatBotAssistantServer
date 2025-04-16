@@ -85,6 +85,22 @@ export const getAllWaitingList = catchAsync(async (req, res) => {
 
   res.status(200).json({
     success: true,
+    message: "Waiting list fetched successfully",
+    ...result,
+  });
+});
+
+const getAllUsers = catchAsync(async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const search = req.query.search || "";
+  const status = req.query.status || "";
+
+  const result = await userService.getAllUsers(page, limit, search, status);
+
+  res.json({
+    success: true,
+    message: "Users fetched successfully",
     ...result,
   });
 });
@@ -129,19 +145,6 @@ const deleteMe = catchAsync(async (req, res) => {
   res.json({ success: true, message: "User deleted" });
 });
 
-const getAllUsers = catchAsync(async (req, res) => {
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 10;
-  const search = req.query.search || "";
-  const status = req.query.status || "";
-
-  const result = await userService.getAllUsers(page, limit, search, status);
-
-  res.json({
-    success: true,
-    ...result,
-  });
-});
 
 const updateKeywords = catchAsync(async (req, res, next) => {
   const { keywords } = req.body;
