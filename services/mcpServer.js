@@ -290,6 +290,7 @@ class MCPServer {
           query = "",
           maxResults,
           pageToken,
+          timeFilter,
           summarize = false,
         } = args;
 
@@ -301,6 +302,7 @@ class MCPServer {
           query: processedQuery,
           maxResults,
           pageToken,
+          timeFilter,
         });
 
         if (!emails || !Array.isArray(emails.messages)) {
@@ -1046,6 +1048,7 @@ class MCPServer {
   }
 
   // Improved email analyzer with better output format selection
+  // Improved email analyzer with better output format selection
   analyzeEmails(emails, query) {
     if (!emails || !emails.messages || emails.messages.length === 0) {
       return { text: "No emails found." };
@@ -1078,7 +1081,7 @@ class MCPServer {
       };
     } else {
       return {
-        list: buildDetailedList(relevantEmails),
+        list: this.buildDetailedList(relevantEmails), 
         summary: `Found ${relevantEmails.length} emails matching "${query}"`,
       };
     }

@@ -220,10 +220,12 @@ class EmailService {
   async filterImportantEmails(
     emails,
     customKeywords = [],
-    timeRange = "daily",
+    timeRange = "weekly",
     modelId = null
   ) {
-    console.log(`Filtering ${emails.length} emails for importance`);
+    console.log(
+      `Filtering ${emails.length} emails for importance, time range ${timeRange}`
+    );
     const validTimeRanges = ["daily", "weekly", "monthly"];
     if (!validTimeRanges.includes(timeRange)) {
       throw new ApiError(

@@ -90,7 +90,14 @@ class OutlookService extends EmailService {
     };
   }
 
-  async fetchEmails({ query, maxResults = 1000, pageToken, filter = "all" }) {
+  // services/outlookService.js
+  async fetchEmails({
+    query,
+    maxResults = 1000,
+    pageToken,
+    filter = "all",
+    timeFilter,
+  }) {
     const client = await this.getClient();
     let endpoint;
     const baseParams = `?$top=${maxResults}&$select=id,subject,from,toRecipients,receivedDateTime,bodyPreview,body,isRead`;
@@ -112,6 +119,84 @@ class OutlookService extends EmailService {
         StatusCodes.BAD_REQUEST,
         `Unsupported filter: ${filter}`
       );
+    }
+
+    // [CHANGE] Function to calculate date range based on timeFilter
+    function getDateRange(timeFilter) {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const day = now.getDate();
+      const startOfToday = new Date(year, month, day);
+
+      switch (timeFilter) {
+        case "today":
+          return { after: startOfToday };
+        case "yesterday":
+          const startOfYesterday = new Date(startOfToday);
+          startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+          return { after: startOfYesterday, before: startOfToday };
+        case "this week":
+          const startOfWeek = new Date(startOfToday);
+          startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+          return { after: startOfWeek };
+        case "last week":
+          const startOfLastWeek = new Date(startOfWeek);
+          startOfLastWeek.setDate(startOfLastWeek.getDate() - 7);
+          const endOfLastWeek = startOfWeek;
+          return { after: startOfLastWeek, before: endOfLastWeek };
+        case "this month":
+          const startOfMonth = new Date(year, month, 1);
+          return { after: startOfMonth };
+        case "last month":
+          const startOfLastMonth = new Date(year, month - 1, 1);
+          const endOfLastMonth = new Date(year, month, 1);
+          return { after: startOfLastMonth, before: endOfLastMonth };
+        case "this year":
+          const startOfYear = new Date(year, 0, 1);
+          return { after: startOfYear };
+        case "last year":
+          const startOfLastYear = new Date(year - 1, 0, 1);
+          const endOfLastYear = new Date(year, 0, 1);
+          return { after: startOfLastYear, before: endOfLastYear };
+        default:
+          if (timeFilter && timeFilter.match(/^\d{4}\/\d{2}\/\d{2}$/)) {
+            const specificDate = new Date(timeFilter);
+            const nextDay = new Date(specificDate);
+            nextDay.setDate(specificDate.getDate() + 1);
+            return { after: specificDate, before: nextDay };
+          }
+          return {};
+      }
+    }
+
+    // [CHANGE] Apply timeFilter to adjust the endpoint with date filters
+    if (timeFilter) {
+      const dateRange = getDateRange(timeFilter);
+      let filterStr = "";
+      const existingFilter = endpoint.includes("$filter=")
+        ? endpoint.split("$filter=")[1].split("&")[0]
+        : "";
+      if (existingFilter) filterStr = `${existingFilter} and `;
+      if (dateRange.after) {
+        const afterDate = dateRange.after.toISOString();
+        filterStr += `receivedDateTime ge ${afterDate}`;
+      }
+      if (dateRange.before) {
+        const beforeDate = dateRange.before.toISOString();
+        if (dateRange.after) filterStr += " and ";
+        filterStr += `receivedDateTime lt ${beforeDate}`;
+      }
+      if (filterStr) {
+        if (endpoint.includes("$filter=")) {
+          endpoint = endpoint.replace(
+            `$filter=${existingFilter}`,
+            `$filter=${encodeURIComponent(filterStr)}`
+          );
+        } else {
+          endpoint += `&$filter=${encodeURIComponent(filterStr)}`;
+        }
+      }
     }
 
     if (pageToken) endpoint += `&$skiptoken=${encodeURIComponent(pageToken)}`;

@@ -68,9 +68,14 @@ class GmailService extends EmailService {
     return google.gmail({ version: "v1", auth });
   }
 
-  async fetchEmails({ query = "", maxResults = 1000, pageToken, filter = "all" }) {
+  async fetchEmails({
+    query = "",
+    maxResults = 1000,
+    pageToken,
+    filter = "all",
+    timeFilter = "today",
+  }) {
     const client = await this.getClient();
-
 
     const params = {
       userId: "me",
@@ -122,6 +127,74 @@ class GmailService extends EmailService {
     const appliedFilter = filterMap[filter.toLowerCase()] || filterMap["all"];
     const filteredParams = appliedFilter(params, filter);
 
+    function getDateRange(timeFilter) {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const day = now.getDate();
+      const startOfToday = new Date(year, month, day);
+      startOfToday.setUTCHours(0, 0, 0, 0);
+
+      switch (timeFilter) {
+        case "today":
+          return { after: startOfToday };
+        case "yesterday":
+          const startOfYesterday = new Date(startOfToday);
+          startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+          return { after: startOfYesterday, before: startOfToday };
+        case "this week":
+          const startOfWeek = new Date(startOfToday);
+          startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+          return { after: startOfWeek };
+        case "last week":
+          const startOfLastWeek = new Date(startOfWeek);
+          startOfLastWeek.setDate(startOfLastWeek.getDate() - 7);
+          const endOfLastWeek = startOfWeek;
+          return { after: startOfLastWeek, before: endOfLastWeek };
+        case "this month":
+          const startOfMonth = new Date(year, month, 1);
+          return { after: startOfMonth };
+        case "last month":
+          const startOfLastMonth = new Date(year, month - 1, 1);
+          const endOfLastMonth = new Date(year, month, 1);
+          return { after: startOfLastMonth, before: endOfLastMonth };
+        case "this year":
+          const startOfYear = new Date(year, 0, 1);
+          return { after: startOfYear };
+        case "last year":
+          const startOfLastYear = new Date(year - 1, 0, 1);
+          const endOfLastYear = new Date(year, 0, 1);
+          return { after: startOfLastYear, before: endOfLastYear };
+        default:
+          if (timeFilter && timeFilter.match(/^\d{4}\/\d{2}\/\d{2}$/)) {
+            const specificDate = new Date(timeFilter);
+            const nextDay = new Date(specificDate);
+            nextDay.setDate(specificDate.getDate() + 1);
+            return { after: specificDate, before: nextDay };
+          }
+          return {};
+      }
+    }
+
+    // [CHANGE] Apply timeFilter to adjust the query
+    if (timeFilter) {
+      const dateRange = getDateRange(timeFilter);
+      if (dateRange.after) {
+        const afterDate = dateRange.after
+          .toISOString()
+          .split("T")[0]
+          .replace(/-/g, "/");
+        filteredParams.q += ` after:${afterDate}`;
+      }
+      if (dateRange.before) {
+        const beforeDate = dateRange.before
+          .toISOString()
+          .split("T")[0]
+          .replace(/-/g, "/");
+        filteredParams.q += ` before:${beforeDate}`;
+      }
+    }
+
     try {
       const response = await client.users.messages.list(filteredParams);
       if (response.status !== 200 || !response.data) {
@@ -132,6 +205,7 @@ class GmailService extends EmailService {
       }
 
       const messages = response.data.messages || [];
+      console.log(`[DEBUG] Applied query: ${filteredParams.q}`);
       const emails = await Promise.all(
         messages.map(async (msg) => {
           try {
@@ -140,7 +214,9 @@ class GmailService extends EmailService {
               id: msg.id,
               format: "full",
             });
-            return this.formatEmail(email.data);
+            const formattedEmail = this.formatEmail(email.data);
+            console.log(`[DEBUG] Email ${msg.id} date: ${formattedEmail.date}`);
+            return formattedEmail;
           } catch (error) {
             console.error(`[ERROR] Failed to fetch email ${msg.id}:`, error);
             return null;
@@ -204,6 +280,37 @@ class GmailService extends EmailService {
       attachments: attachments,
     };
   }
+
+//   function getDateRange(timeFilter) {
+//   const now = new Date();
+//   const year = now.getFullYear();
+//   const month = now.getMonth();
+//   const day = now.getDate();
+//   const startOfToday = new Date(year, month, day);
+//   startOfToday.setUTCHours(0, 0, 0, 0); // Use UTC for consistency
+
+//   switch (timeFilter) {
+//     case "today":
+//       return { after: startOfToday };
+//     case "yesterday":
+//       const startOfYesterday = new Date(startOfToday);
+//       startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+//       return { after: startOfYesterday, before: startOfToday };
+//     case "this week":
+//       const startOfWeek = new Date(startOfToday);
+//       startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+//       return { after: startOfWeek };
+//     // ... other cases ...
+//     default:
+//       if (timeFilter && timeFilter.match(/^\d{4}\/\d{2}\/\d{2}$/)) {
+//         const specificDate = new Date(timeFilter);
+//         const nextDay = new Date(specificDate);
+//         nextDay.setDate(specificDate.getDate() + 1);
+//         return { after: specificDate, before: nextDay };
+//       }
+//       return {};
+//   }
+// }
 
   getEmailBody(payload) {
     if (!payload) return "";
