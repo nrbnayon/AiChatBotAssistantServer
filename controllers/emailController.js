@@ -7,10 +7,13 @@ import NodeCache from "node-cache";
 const emailListCache = new NodeCache({ stdTTL: 300 });
 
 const fetchEmails = catchAsync(async (req, res, filter = "all") => {
-  const { query, maxResults = 1000, pageToken, _t } = req.query;
+  const { q, maxResults = 1000, pageToken, _t } = req.query;
+
+  console.log("Get query params:", q)
+  console.log("Get Filter :::", filter);
 
   // Include _t in cache key to ensure unique requests bypass cache
-  const cacheKey = `${req.user.id}-${filter}-${query || ""}-${
+  const cacheKey = `${req.user.id}-${filter}-${q || ""}-${
     pageToken || ""
   }-${_t || ""}`;
   const cachedEmails = emailListCache.get(cacheKey);
@@ -32,7 +35,7 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
     "fetch-emails",
     {
       filter,
-      query: query?.toString(),
+      query: q?.toString(),
       maxResults,
       pageToken: pageToken?.toString(),
     },
@@ -71,14 +74,14 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
 const fetchImportantEmails = catchAsync(async (req, res) => {
   const emailService = await createEmailService(req);
   const {
-    query,
+    q,
     maxResults = 1000,
     pageToken,
-    keywords,
-    timeRange = "weekly",
+    keywords = [],
+    timeRange = "daily",
   } = req.query;
   const result = await emailService.fetchEmails({
-    query: query?.toString(),
+    query: q?.toString(),
     maxResults,
     pageToken: pageToken?.toString(),
   });

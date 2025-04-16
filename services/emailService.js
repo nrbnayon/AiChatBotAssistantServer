@@ -220,7 +220,7 @@ class EmailService {
   async filterImportantEmails(
     emails,
     customKeywords = [],
-    timeRange = "weekly",
+    timeRange = "daily",
     modelId = null
   ) {
     console.log(`Filtering ${emails.length} emails for importance`);
