@@ -145,6 +145,59 @@ const deleteMe = catchAsync(async (req, res) => {
   res.json({ success: true, message: "User deleted" });
 });
 
+const getKeywords = catchAsync(async (req, res, next) => {
+  const user = await User.findById(req.user.id).select(
+    "userImportantMailKeywords"
+  );
+  if (!user) return next(new ApiError("User not found", 404));
+  res.status(StatusCodes.OK).json({
+    success: true,
+    keywords: user.userImportantMailKeywords,
+  });
+});
+
+const addKeyword = catchAsync(async (req, res, next) => {
+  const { keyword } = req.body;
+  if (!keyword || typeof keyword !== "string" || keyword.trim() === "") {
+    return next(
+      new ApiError("Invalid keyword: must be a non-empty string", 400)
+    );
+  }
+  const user = await User.findById(req.user.id);
+  if (!user) return next(new ApiError("User not found", 404));
+  await user.addImportantKeyword(keyword);
+  res.status(StatusCodes.CREATED).json({
+    success: true,
+    message: "Keyword added",
+    keywords: user.userImportantMailKeywords,
+  });
+});
+
+const deleteKeyword = catchAsync(async (req, res, next) => {
+  const { keyword } = req.params;
+  if (!keyword || typeof keyword !== "string" || keyword.trim() === "") {
+    return next(
+      new ApiError("Keyword is required and must be a non-empty string", 400)
+    );
+  }
+  const user = await User.findById(req.user.id);
+  if (!user) return next(new ApiError("User not found", 404));
+  const lowerKeyword = keyword.toLowerCase();
+  const index = user.userImportantMailKeywords.findIndex(
+    (k) => k.toLowerCase() === lowerKeyword
+  );
+  if (index !== -1) {
+    user.userImportantMailKeywords.splice(index, 1);
+    await user.save();
+  }
+  res.status(StatusCodes.OK).json({
+    success: true,
+    message: "Keyword removed if it existed",
+    keywords: user.userImportantMailKeywords,
+  });
+});
+
+// Existing updateKeywords (unchanged, included for completeness)
 const updateKeywords = catchAsync(async (req, res, next) => {
   const { keywords } = req.body;
   if (!Array.isArray(keywords))
@@ -156,9 +209,10 @@ const updateKeywords = catchAsync(async (req, res, next) => {
   if (!user) return next(new ApiError("User not found", 404));
   user.userImportantMailKeywords = keywords;
   await user.save();
-  res
-    .status(StatusCodes.OK)
-    .json({ success: true, data: user.userImportantMailKeywords });
+  res.status(StatusCodes.OK).json({
+    success: true,
+    data: user.userImportantMailKeywords,
+  });
 });
 
 const createUser = catchAsync(async (req, res, next) => {
@@ -480,6 +534,9 @@ export {
   updateSubscription,
   deleteMe,
   getAllUsers,
+  getKeywords, 
+  addKeyword, 
+  deleteKeyword,
   updateKeywords,
   createUser,
   updateUser,

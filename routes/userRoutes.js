@@ -6,6 +6,9 @@ import {
   updateSubscription,
   deleteMe,
   getAllUsers,
+  getKeywords,
+  addKeyword,
+  deleteKeyword,
   updateKeywords,
   createUser,
   deleteUser,
@@ -173,7 +176,34 @@ router.delete(
   deleteMe
 );
 
-// 🏷️ Update user's keywords or interests
+// 🏷️ Retrieve user's keywords
+router.get(
+  "/keywords",
+  auth(),
+  setRefreshedTokenCookie,
+  rateLimitMiddleware(),
+  getKeywords
+);
+
+// 🏷️ Add a new keyword
+router.post(
+  "/keywords",
+  auth(),
+  setRefreshedTokenCookie,
+  rateLimitMiddleware(),
+  addKeyword
+);
+
+// 🏷️ Remove a specific keyword
+router.delete(
+  "/keywords/:keyword",
+  auth(),
+  setRefreshedTokenCookie,
+  rateLimitMiddleware(),
+  deleteKeyword
+);
+
+// 🏷️ Update user's keywords (replace entire list)
 router.put(
   "/keywords",
   auth("user"),
