@@ -79,10 +79,10 @@ const fetchImportantEmails = catchAsync(async (req, res) => {
   const emailService = await createEmailService(req);
   const {
     q,
-    maxResults = 1000,
+    maxResults = 500,
     pageToken,
     keywords = [],
-    timeRange = "weekly",
+    timeRange = "daily",
   } = req.query;
 
   const timeFilter = timeRange;
@@ -93,7 +93,18 @@ const fetchImportantEmails = catchAsync(async (req, res) => {
     pageToken: pageToken?.toString(),
     timeFilter,
   });
-  const customKeywords = keywords ? keywords.split(",") : [];
+  let customKeywords = [];
+  if (Array.isArray(keywords)) {
+    customKeywords = keywords.map((k) => k.trim()).filter((k) => k.length > 0);
+  } else if (typeof keywords === "string") {
+    customKeywords = keywords
+      .split(",")
+      .map((k) => k.trim())
+      .filter((k) => k.length > 0);
+  } else {
+    customKeywords = []; // Fallback for unexpected types
+  }
+
   const importantEmails = await emailService.filterImportantEmails(
     result.messages,
     customKeywords,
