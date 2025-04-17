@@ -12,8 +12,17 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
   console.log("Get query params:", q);
   console.log("Get Filter :::", filter);
 
-  const timeFilter = req.query.timeFilter || null;
-  console.log("Get Time Filter :::", timeFilter);
+  const timeFilter = req.query.timeFilter || "all";
+  if (
+    timeFilter &&
+    !["all","daily", "weekly", "monthly"].includes(timeFilter) &&
+    !/^\d{4}\/\d{2}\/\d{2}$/.test(timeFilter)
+  ) {
+    throw new ApiError(
+      StatusCodes.BAD_REQUEST,
+      "Invalid timeFilter. Must be 'all', 'daily', 'weekly', 'monthly', or a date in 'YYYY/MM/DD' format."
+    );
+  }
 
   // Include _t in cache key to ensure unique requests bypass cache
   const cacheKey = `${req.user.id}-${filter}-${q || ""}-${pageToken || ""}-${
@@ -82,10 +91,18 @@ const fetchImportantEmails = catchAsync(async (req, res) => {
     maxResults = 500,
     pageToken,
     keywords = [],
-    timeRange = "daily",
   } = req.query;
 
-  const timeFilter = timeRange;
+  const timeFilter = req.query.timeFilter || "daily";
+  if (
+    !["all","daily", "weekly", "monthly"].includes(timeFilter) &&
+    !/^\d{4}\/\d{2}\/\d{2}$/.test(timeFilter)
+  ) {
+    throw new ApiError(
+      StatusCodes.BAD_REQUEST,
+      "Invalid timeFilter. Must be 'all', 'daily', 'weekly', 'monthly', or a date in 'YYYY/MM/DD' format."
+    );
+  }
 
   const result = await emailService.fetchEmails({
     query: q?.toString(),
@@ -108,7 +125,7 @@ const fetchImportantEmails = catchAsync(async (req, res) => {
   const importantEmails = await emailService.filterImportantEmails(
     result.messages,
     customKeywords,
-    timeRange?.toString() || "daily"
+    timeFilter?.toString() || "daily"
   );
   res.json({
     success: true,

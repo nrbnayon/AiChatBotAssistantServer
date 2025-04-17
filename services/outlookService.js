@@ -96,7 +96,7 @@ class OutlookService extends EmailService {
     maxResults = 1000,
     pageToken,
     filter = "all",
-    timeFilter,
+    timeFilter = "all",
   }) {
     const client = await this.getClient();
     let endpoint;
@@ -122,85 +122,59 @@ class OutlookService extends EmailService {
     }
 
     // [CHANGE] Function to calculate date range based on timeFilter
-    function getDateRange(timeFilter) {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth();
-      const day = now.getDate();
-      const startOfToday = new Date(year, month, day);
+function getDateRange(timeFilter) {
+  const now = new Date();
+  if (timeFilter === "daily") {
+    const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    return { after: start };
+  } else if (timeFilter === "weekly") {
+    const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    return { after: start };
+  } else if (timeFilter === "monthly") {
+    const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    return { after: start };
+  } else if (/^\d{4}\/\d{2}\/\d{2}$/.test(timeFilter)) {
+    const specificDate = new Date(timeFilter);
+    const nextDay = new Date(specificDate);
+    nextDay.setDate(specificDate.getDate() + 1);
+    return { after: specificDate, before: nextDay };
+  } else if (timeFilter === "all") {
+    return {}; 
+  } else {
+    return {};
+  }
+}
 
-      switch (timeFilter) {
-        case "today":
-          return { after: startOfToday };
-        case "yesterday":
-          const startOfYesterday = new Date(startOfToday);
-          startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-          return { after: startOfYesterday, before: startOfToday };
-        case "this week":
-          const startOfWeek = new Date(startOfToday);
-          startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-          return { after: startOfWeek };
-        case "last week":
-          const startOfLastWeek = new Date(startOfWeek);
-          startOfLastWeek.setDate(startOfLastWeek.getDate() - 7);
-          const endOfLastWeek = startOfWeek;
-          return { after: startOfLastWeek, before: endOfLastWeek };
-        case "this month":
-          const startOfMonth = new Date(year, month, 1);
-          return { after: startOfMonth };
-        case "last month":
-          const startOfLastMonth = new Date(year, month - 1, 1);
-          const endOfLastMonth = new Date(year, month, 1);
-          return { after: startOfLastMonth, before: endOfLastMonth };
-        case "this year":
-          const startOfYear = new Date(year, 0, 1);
-          return { after: startOfYear };
-        case "last year":
-          const startOfLastYear = new Date(year - 1, 0, 1);
-          const endOfLastYear = new Date(year, 0, 1);
-          return { after: startOfLastYear, before: endOfLastYear };
-        default:
-          if (timeFilter && timeFilter.match(/^\d{4}\/\d{2}\/\d{2}$/)) {
-            const specificDate = new Date(timeFilter);
-            const nextDay = new Date(specificDate);
-            nextDay.setDate(specificDate.getDate() + 1);
-            return { after: specificDate, before: nextDay };
-          }
-          return {};
-      }
+if (timeFilter) {
+  const dateRange = getDateRange(timeFilter);
+  let filterStr = "";
+  const existingFilter = endpoint.includes("$filter=")
+    ? endpoint.split("$filter=")[1].split("&")[0]
+    : "";
+  if (existingFilter) filterStr = `${existingFilter} and `;
+  if (dateRange.after) {
+    const afterDate = dateRange.after.toISOString();
+    filterStr += `receivedDateTime ge ${afterDate}`;
+  }
+  if (dateRange.before) {
+    const beforeDate = dateRange.before.toISOString();
+    if (dateRange.after) filterStr += " and ";
+    filterStr += `receivedDateTime lt ${beforeDate}`;
+  }
+  if (filterStr) {
+    if (endpoint.includes("$filter=")) {
+      endpoint = endpoint.replace(
+        `$filter=${existingFilter}`,
+        `$filter=${encodeURIComponent(filterStr)}`
+      );
+    } else {
+      endpoint += `&$filter=${encodeURIComponent(filterStr)}`;
     }
+  }
+}
 
-    // [CHANGE] Apply timeFilter to adjust the endpoint with date filters
-    if (timeFilter) {
-      const dateRange = getDateRange(timeFilter);
-      let filterStr = "";
-      const existingFilter = endpoint.includes("$filter=")
-        ? endpoint.split("$filter=")[1].split("&")[0]
-        : "";
-      if (existingFilter) filterStr = `${existingFilter} and `;
-      if (dateRange.after) {
-        const afterDate = dateRange.after.toISOString();
-        filterStr += `receivedDateTime ge ${afterDate}`;
-      }
-      if (dateRange.before) {
-        const beforeDate = dateRange.before.toISOString();
-        if (dateRange.after) filterStr += " and ";
-        filterStr += `receivedDateTime lt ${beforeDate}`;
-      }
-      if (filterStr) {
-        if (endpoint.includes("$filter=")) {
-          endpoint = endpoint.replace(
-            `$filter=${existingFilter}`,
-            `$filter=${encodeURIComponent(filterStr)}`
-          );
-        } else {
-          endpoint += `&$filter=${encodeURIComponent(filterStr)}`;
-        }
-      }
-    }
-
-    if (pageToken) endpoint += `&$skiptoken=${encodeURIComponent(pageToken)}`;
-    if (query) endpoint += `&$search="${encodeURIComponent(query)}"`;
+if (pageToken) endpoint += `&$skiptoken=${encodeURIComponent(pageToken)}`;
+if (query) endpoint += `&$search="${encodeURIComponent(query)}"`;
 
     const response = await fetch(endpoint, {
       headers: { Authorization: `Bearer ${client.accessToken}` },
@@ -249,9 +223,9 @@ class OutlookService extends EmailService {
     console.log(
       `[DEBUG] Fetched ${result.messages.length} emails with pageToken: ${pageToken}, nextPageToken: ${result.nextPageToken}, prevPageToken: ${result.prevPageToken}`
     );
-    console.log(
-      `[DEBUG] Email IDs: ${result.messages.map((e) => e.id).join(", ")}`
-    );
+    // console.log(
+    //   `[DEBUG] Email IDs: ${result.messages.map((e) => e.id).join(", ")}`
+    // );
 
     return result;
   }

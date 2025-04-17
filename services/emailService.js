@@ -57,7 +57,7 @@ class EmailService {
     throw new Error("Method 'getClient' must be implemented");
   }
 
-  async fetchEmails({ query, maxResults, pageToken, filter }) {
+  async fetchEmails({ query, maxResults, pageToken, filter, timeFilter }) {
     throw new Error("Method 'fetchEmails' must be implemented");
   }
 
@@ -220,17 +220,17 @@ class EmailService {
   async filterImportantEmails(
     emails,
     customKeywords = [],
-    timeRange = "weekly",
+    timeFilter = "daily",
     modelId = null
   ) {
     console.log(
-      `Filtering ${emails.length} emails for importance, time range ${timeRange}`
+      `Filtering ${emails.length} emails for importance, time range ${timeFilter}`
     );
-    const validTimeRanges = ["daily", "weekly", "monthly"];
-    if (!validTimeRanges.includes(timeRange)) {
+    const validTimeRanges = ["all", "daily", "weekly", "monthly"];
+    if (!validTimeRanges.includes(timeFilter)) {
       throw new ApiError(
         StatusCodes.BAD_REQUEST,
-        `Invalid timeRange: ${timeRange}`
+        `Invalid timeFilter: ${timeFilter}`
       );
     }
 
@@ -238,28 +238,40 @@ class EmailService {
     const keywords = [...new Set([...userKeywords, ...customKeywords])];
     console.log("Using keywords for filtering:", keywords);
 
-    const timeFrames = {
-      daily: 1 * 24 * 60 * 60 * 1000,
-      weekly: 7 * 24 * 60 * 60 * 1000,
-      monthly: 30 * 24 * 60 * 60 * 1000,
-    };
-    const timeLimit = timeFrames[timeRange];
+    let startDate, endDate;
+
+    if (timeFilter === "daily") {
+      startDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      endDate = new Date();
+    } else if (timeFilter === "weekly") {
+      startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      endDate = new Date();
+    } else if (timeFilter === "monthly") {
+      startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      endDate = new Date();
+    } else if (/^\d{4}\/\d{2}\/\d{2}$/.test(timeFilter)) {
+      startDate = new Date(timeFilter);
+      endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 1);
+    } else if (timeFilter === "all") {
+      startDate = null;
+      endDate = null;
+    }
 
     const recentEmails = emails.filter((email) => {
       const emailDate = new Date(email.date);
-      const cutoffDate = new Date(Date.now() - timeLimit);
-      return emailDate >= cutoffDate;
+      return emailDate >= startDate && emailDate < endDate;
     });
 
     console.log(
-      `Found ${recentEmails.length} emails within the ${timeRange} time frame`
+      `Found ${recentEmails.length} emails within the ${timeFilter} time frame`
     );
 
     const emailsToAnalyze = [];
     const processedEmails = [];
 
     for (const email of recentEmails) {
-      const emailKey = `${email.id}-${timeRange}`;
+      const emailKey = `${email.id}-${timeFilter}`;
       const content = `${email.subject || ""} ${email.snippet || ""} ${
         email.body || ""
       }`.toLowerCase();
@@ -299,7 +311,7 @@ class EmailService {
     }
 
     const analysisPromises = emailsToAnalyze.map(async (email) => {
-      const emailKey = `${email.id}-${timeRange}`;
+      const emailKey = `${email.id}-${timeFilter}`;
       const content = `${email.subject || ""} ${email.snippet || ""} ${
         email.body || ""
       }`.toLowerCase();

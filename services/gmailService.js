@@ -73,7 +73,7 @@ class GmailService extends EmailService {
     maxResults = 1000,
     pageToken,
     filter = "all",
-    timeFilter = "today",
+    timeFilter = "all",
   }) {
     const client = await this.getClient();
 
@@ -90,7 +90,7 @@ class GmailService extends EmailService {
     );
 
     const response = await client.users.messages.list(params);
-    console.log(`[DEBUG] Gmail API response:`, JSON.stringify(response.data));
+    // console.log(`[DEBUG] Gmail API response:`, JSON.stringify(response.data));
 
     const filterMap = {
       all: (params) => params,
@@ -129,71 +129,51 @@ class GmailService extends EmailService {
 
     function getDateRange(timeFilter) {
       const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth();
-      const day = now.getDate();
-      const startOfToday = new Date(year, month, day);
-      startOfToday.setUTCHours(0, 0, 0, 0);
-
-      switch (timeFilter) {
-        case "today":
-          return { after: startOfToday };
-        case "yesterday":
-          const startOfYesterday = new Date(startOfToday);
-          startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-          return { after: startOfYesterday, before: startOfToday };
-        case "this week":
-          const startOfWeek = new Date(startOfToday);
-          startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-          return { after: startOfWeek };
-        case "last week":
-          const startOfLastWeek = new Date(startOfWeek);
-          startOfLastWeek.setDate(startOfLastWeek.getDate() - 7);
-          const endOfLastWeek = startOfWeek;
-          return { after: startOfLastWeek, before: endOfLastWeek };
-        case "this month":
-          const startOfMonth = new Date(year, month, 1);
-          return { after: startOfMonth };
-        case "last month":
-          const startOfLastMonth = new Date(year, month - 1, 1);
-          const endOfLastMonth = new Date(year, month, 1);
-          return { after: startOfLastMonth, before: endOfLastMonth };
-        case "this year":
-          const startOfYear = new Date(year, 0, 1);
-          return { after: startOfYear };
-        case "last year":
-          const startOfLastYear = new Date(year - 1, 0, 1);
-          const endOfLastYear = new Date(year, 0, 1);
-          return { after: startOfLastYear, before: endOfLastYear };
-        default:
-          if (timeFilter && timeFilter.match(/^\d{4}\/\d{2}\/\d{2}$/)) {
-            const specificDate = new Date(timeFilter);
-            const nextDay = new Date(specificDate);
-            nextDay.setDate(specificDate.getDate() + 1);
-            return { after: specificDate, before: nextDay };
-          }
-          return {};
+      if (timeFilter === "daily") {
+        const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        return { after: start };
+      } else if (timeFilter === "weekly") {
+        const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        return { after: start };
+      } else if (timeFilter === "monthly") {
+        const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        return { after: start };
+      } else if (/^\d{4}\/\d{2}\/\d{2}$/.test(timeFilter)) {
+        const specificDate = new Date(timeFilter);
+        const nextDay = new Date(specificDate);
+        nextDay.setDate(specificDate.getDate() + 1);
+        return { after: specificDate, before: nextDay };
+      } else if (timeFilter === "all") {
+        return {}; 
+      } else {
+        return {}; 
       }
     }
 
-    // [CHANGE] Apply timeFilter to adjust the query
-    if (timeFilter) {
-      const dateRange = getDateRange(timeFilter);
-      if (dateRange.after) {
-        const afterDate = dateRange.after
-          .toISOString()
-          .split("T")[0]
-          .replace(/-/g, "/");
-        filteredParams.q += ` after:${afterDate}`;
-      }
-      if (dateRange.before) {
-        const beforeDate = dateRange.before
-          .toISOString()
-          .split("T")[0]
-          .replace(/-/g, "/");
-        filteredParams.q += ` before:${beforeDate}`;
-      }
-    }
+   if (timeFilter) {
+     const dateRange = getDateRange(timeFilter);
+     let timeQuery = "";
+     if (dateRange.after) {
+       const afterDate = dateRange.after
+         .toISOString()
+         .split("T")[0]
+         .replace(/-/g, "/");
+       timeQuery += `after:${afterDate}`;
+     }
+     if (dateRange.before) {
+       const beforeDate = dateRange.before
+         .toISOString()
+         .split("T")[0]
+         .replace(/-/g, "/");
+       timeQuery += ` before:${beforeDate}`;
+     }
+     if (timeQuery) {
+       filteredParams.q = filteredParams.q
+         ? `${filteredParams.q} ${timeQuery}`.trim()
+         : timeQuery;
+     }
+   }
+
 
     try {
       const response = await client.users.messages.list(filteredParams);
@@ -215,7 +195,7 @@ class GmailService extends EmailService {
               format: "full",
             });
             const formattedEmail = this.formatEmail(email.data);
-            console.log(`[DEBUG] Email ${msg.id} date: ${formattedEmail.date}`);
+            // console.log(`[DEBUG] Email ${msg.id} date: ${formattedEmail.date}`);
             return formattedEmail;
           } catch (error) {
             console.error(`[ERROR] Failed to fetch email ${msg.id}:`, error);
@@ -243,9 +223,9 @@ class GmailService extends EmailService {
       console.log(
         `[DEBUG] Fetched ${result.messages.length} emails with pageToken: ${pageToken}, nextPageToken: ${result.nextPageToken}, prevPageToken: ${result.prevPageToken}`
       );
-      console.log(
-        `[DEBUG] Email IDs: ${result.messages.map((e) => e.id).join(", ")}`
-      );
+      // console.log(
+      //   `[DEBUG] Email IDs: ${result.messages.map((e) => e.id).join(", ")}`
+      // );
 
       return result;
     } catch (error) {
@@ -281,36 +261,36 @@ class GmailService extends EmailService {
     };
   }
 
-//   function getDateRange(timeFilter) {
-//   const now = new Date();
-//   const year = now.getFullYear();
-//   const month = now.getMonth();
-//   const day = now.getDate();
-//   const startOfToday = new Date(year, month, day);
-//   startOfToday.setUTCHours(0, 0, 0, 0); // Use UTC for consistency
+  //   function getDateRange(timeFilter) {
+  //   const now = new Date();
+  //   const year = now.getFullYear();
+  //   const month = now.getMonth();
+  //   const day = now.getDate();
+  //   const startOfToday = new Date(year, month, day);
+  //   startOfToday.setUTCHours(0, 0, 0, 0); // Use UTC for consistency
 
-//   switch (timeFilter) {
-//     case "today":
-//       return { after: startOfToday };
-//     case "yesterday":
-//       const startOfYesterday = new Date(startOfToday);
-//       startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-//       return { after: startOfYesterday, before: startOfToday };
-//     case "this week":
-//       const startOfWeek = new Date(startOfToday);
-//       startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-//       return { after: startOfWeek };
-//     // ... other cases ...
-//     default:
-//       if (timeFilter && timeFilter.match(/^\d{4}\/\d{2}\/\d{2}$/)) {
-//         const specificDate = new Date(timeFilter);
-//         const nextDay = new Date(specificDate);
-//         nextDay.setDate(specificDate.getDate() + 1);
-//         return { after: specificDate, before: nextDay };
-//       }
-//       return {};
-//   }
-// }
+  //   switch (timeFilter) {
+  //     case "today":
+  //       return { after: startOfToday };
+  //     case "yesterday":
+  //       const startOfYesterday = new Date(startOfToday);
+  //       startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+  //       return { after: startOfYesterday, before: startOfToday };
+  //     case "this week":
+  //       const startOfWeek = new Date(startOfToday);
+  //       startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+  //       return { after: startOfWeek };
+  //     // ... other cases ...
+  //     default:
+  //       if (timeFilter && timeFilter.match(/^\d{4}\/\d{2}\/\d{2}$/)) {
+  //         const specificDate = new Date(timeFilter);
+  //         const nextDay = new Date(specificDate);
+  //         nextDay.setDate(specificDate.getDate() + 1);
+  //         return { after: specificDate, before: nextDay };
+  //       }
+  //       return {};
+  //   }
+  // }
 
   getEmailBody(payload) {
     if (!payload) return "";

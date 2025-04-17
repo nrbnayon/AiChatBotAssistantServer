@@ -216,7 +216,14 @@ const searchWaitingList = async (
   };
 };
 
-const createUser = async ({ name, email, password, role }) => {
+const createUser = async ({
+  name,
+  email,
+  password,
+  role,
+  status,
+  returnDocument,
+}) => {
   const existingUser = await User.findOne({ email });
   if (existingUser) throw new ApiError("User already exists", 400);
   const newUser = new User({
@@ -225,6 +232,8 @@ const createUser = async ({ name, email, password, role }) => {
     password,
     role: role || "user",
     authProvider: "local",
+    status: status || "active",
+    inboxList: [email],
     subscription: {
       plan: "basic",
       dailyQueries: 15,
@@ -233,6 +242,12 @@ const createUser = async ({ name, email, password, role }) => {
     },
   });
   await newUser.save();
+
+  // Return the mongoose document if needed, otherwise return the object without password
+  if (returnDocument) {
+    return newUser;
+  }
+
   const { password: _, ...userWithoutPassword } = newUser.toObject();
   return userWithoutPassword;
 };

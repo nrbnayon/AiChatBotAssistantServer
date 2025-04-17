@@ -145,7 +145,6 @@ const deleteMe = catchAsync(async (req, res) => {
   res.json({ success: true, message: "User deleted" });
 });
 
-
 const updateKeywords = catchAsync(async (req, res, next) => {
   const { keywords } = req.body;
   if (!Array.isArray(keywords))
@@ -163,11 +162,14 @@ const updateKeywords = catchAsync(async (req, res, next) => {
 });
 
 const createUser = catchAsync(async (req, res, next) => {
-  const { name, email, password, role } = req.body;
-  const requesterRole = req.user.role || "admin";
+  const { name, email, password, role, status } = req.body;
 
-  if (!email || !password)
-    return next(new ApiError("Email and password are required", 400));
+  console.log("Get User Body:::", req.body);
+  if (!name || !email || !password) {
+    return next(new ApiError("Name, email, and password are required", 400));
+  }
+
+  const requesterRole = req.user.role || "admin";
 
   if (requesterRole === "super_admin") {
     if (role && !["user", "admin", "super_admin"].includes(role)) {
@@ -181,7 +183,16 @@ const createUser = catchAsync(async (req, res, next) => {
     return next(new ApiError("Unauthorized to create users", 403));
   }
 
-  const newUser = await userService.createUser({ name, email, password, role });
+  // Create the user without converting to object
+  const newUser = await userService.createUser({
+    name,
+    email,
+    password,
+    role,
+    status,
+    returnDocument: true, // Add flag to indicate we need the mongoose document
+  });
+
   const { accessToken, refreshToken } = generateTokens(newUser);
   newUser.refreshToken = refreshToken;
 
@@ -205,7 +216,12 @@ const createUser = catchAsync(async (req, res, next) => {
 
   res
     .status(StatusCodes.CREATED)
-    .json({ success: true, data: newUser, accessToken, refreshToken });
+    .json({
+      success: true,
+      data: newUser.toObject(),
+      accessToken,
+      refreshToken,
+    });
 });
 
 const updateUser = catchAsync(async (req, res, next) => {
@@ -216,54 +232,88 @@ const updateUser = catchAsync(async (req, res, next) => {
   };
   const requesterRole = req.user.role;
 
+  // Check if trying to update self
   if (id === req.user.id)
-    return next(new ApiError("Use /profile to update your own details", 403));
+    return next(new ApiError(403, "Use /profile to update your own details"));
 
+  // Find target user
   const targetUser = await User.findById(id);
-  if (!targetUser) return next(new ApiError("User not found", 404));
+  if (!targetUser) return next(new ApiError(404, "User not found"));
 
+  // Permission checks based on role hierarchy
   if (requesterRole === "super_admin") {
-    // Super Admin can update any field
+    // Super Admin can update any field except for other super admins
+    if (targetUser.role === "super_admin" && updates.status) {
+      return next(
+        new ApiError(403, "Cannot modify status of another Super Admin")
+      );
+    }
   } else if (requesterRole === "admin") {
-    if (targetUser.role === "super_admin")
-      return next(new ApiError("Admins cannot modify Super Admins", 403));
-    if (updates.role)
-      return next(new ApiError("Admins cannot change user roles", 403));
-    if (updates.status && targetUser.role !== "user") {
-      return next(new ApiError("Admins can only change status of Users", 403));
+    // Admins can only modify regular users, not other admins or super_admins
+    if (targetUser.role === "super_admin" || targetUser.role === "admin") {
+      return next(
+        new ApiError(403, "Admins cannot modify other Admins or Super Admins")
+      );
+    }
+
+    // Admins cannot change roles
+    if (updates.role) {
+      return next(new ApiError(403, "Admins cannot change user roles"));
     }
   } else {
-    return next(new ApiError("Unauthorized to update users", 403));
+    return next(new ApiError(403, "Unauthorized to update users"));
   }
 
+  // Apply updates and save
   Object.assign(targetUser, updates);
   await targetUser.save();
-  res.json({ success: true, user: targetUser });
+
+  res.status(200).json({
+    success: true,
+    message: "User updated successfully",
+    user: targetUser,
+  });
 });
 
 const deleteUser = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const requesterRole = req.user.role;
 
+  // Check if trying to delete self
   if (id === req.user.id)
-    return next(new ApiError("Cannot delete yourself", 403));
+    return next(new ApiError(403, "Cannot delete yourself"));
 
+  // Find target user
   const targetUser = await User.findById(id);
-  if (!targetUser) return next(new ApiError("User not found", 404));
+  if (!targetUser) return next(new ApiError(404, "User not found"));
 
+  // Permission checks based on role hierarchy
   if (requesterRole === "super_admin") {
-    // Super Admin can delete any user
+    // Super Admin can delete any user or admin (but not other super_admins)
+    if (targetUser.role === "super_admin") {
+      return next(new ApiError(403, "Cannot delete another Super Admin"));
+    }
   } else if (requesterRole === "admin") {
-    if (targetUser.role !== "user")
-      return next(new ApiError("Admins can only delete Users", 403));
+    // Admins can only delete regular users, not other admins or super_admins
+    if (targetUser.role !== "user") {
+      return next(
+        new ApiError(
+          403,
+          "Admins can only delete regular Users, not other Admins or Super Admins"
+        )
+      );
+    }
   } else {
-    return next(new ApiError("Unauthorized to delete users", 403));
+    return next(new ApiError(403, "Unauthorized to delete users"));
   }
 
+  // Delete the user
   await userService.deleteUser(id);
-  res
-    .status(StatusCodes.OK)
-    .json({ success: true, message: "User deleted successfully" });
+
+  res.status(200).json({
+    success: true,
+    message: "User deleted successfully",
+  });
 });
 
 const addInbox = catchAsync(async (req, res, next) => {
