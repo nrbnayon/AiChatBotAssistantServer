@@ -18,14 +18,18 @@ class AppError extends Error {
  * Enhanced API error class with emoji and fun text
  */
 class ApiError extends Error {
-  constructor(statusCode, message) {
-    // Make sure statusCode is always a number
+  constructor(statusCode, message, clientFacing = true) {
     const numericStatusCode =
       typeof statusCode === "number" ? statusCode : parseInt(statusCode) || 500;
 
-    const emoji = getErrorEmoji(numericStatusCode);
-    const funMessage = getFunnyErrorMessage(numericStatusCode);
-    super(`${emoji} ${message} ${funMessage}`);
+    // Only add emoji and funny message for non-client-facing errors (e.g., logs)
+    if (!clientFacing) {
+      const emoji = getErrorEmoji(numericStatusCode);
+      const funMessage = getFunnyErrorMessage(numericStatusCode);
+      super(`${emoji} ${message} ${funMessage}`);
+    } else {
+      super(message); // Use plain message for client-facing errors
+    }
 
     this.statusCode = numericStatusCode;
     this.status = `${numericStatusCode}`.startsWith("4") ? "fail" : "error";
@@ -119,20 +123,25 @@ const globalErrorHandler = (err, req, res, next) => {
   try {
     err = handleMongoErrors(err);
 
-    // Ensure numeric status code
     err.statusCode =
       typeof err.statusCode === "number"
         ? err.statusCode
         : parseInt(err.statusCode) || 500;
     err.status = err.status || "error";
 
+    // Strip emojis and funny messages from the error message
+    let cleanMessage = err.message;
+    if (err instanceof ApiError) {
+      cleanMessage = cleanMessage.replace(/[^\w\s.,!?]/g, ""); // Remove emojis
+      cleanMessage = cleanMessage.replace(/🔐.*$/, "").trim(); // Remove funny message
+    }
+
     if (process.env.NODE_ENV === "development") {
       handleDevelopmentError(err, res);
     } else {
-      handleProductionError(err, res);
+      handleProductionError({ ...err, message: cleanMessage }, res);
     }
   } catch (handlerError) {
-    // Fallback if error handling itself fails
     console.error("Error in error handler:", handlerError);
     res.status(500).json({
       success: false,

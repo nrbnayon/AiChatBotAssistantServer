@@ -1,7 +1,7 @@
 // services\userService.js
 import User from "../models/User.js";
 import WaitingList from "../models/WaitingList.js";
-import { ApiError } from "../utils/errorHandler.js";
+import { ApiError, AppError } from "../utils/errorHandler.js";
 import path from "path";
 
 const handleLocalLogin = async (email, password) => {
@@ -20,15 +20,15 @@ const handleLocalLogin = async (email, password) => {
     });
 
     if (!user) {
-      throw new ApiError(401, "User not found");
+      throw new AppError("User Does Not Exist Try With Correct Email", 401);
     }
 
     if (user.authProvider !== "local") {
-      throw new ApiError(401, "Invalid authentication method");
+      throw new AppError(401, "Invalid authentication method");
     }
 
     if (!user.password) {
-      throw new ApiError(401, "Password not set for this account");
+      throw new AppError(401, "Password not set for this account");
     }
 
     const isMatch = await user.comparePassword(password);
