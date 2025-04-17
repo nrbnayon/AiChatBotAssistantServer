@@ -226,11 +226,43 @@ class EmailService {
     console.log(
       `Filtering ${emails.length} emails for importance, time range ${timeFilter}`
     );
-    const validTimeRanges = ["all", "daily", "weekly", "monthly"];
-    if (!validTimeRanges.includes(timeFilter)) {
+
+    // Validate and process timeFilter
+    let startDate, endDate;
+    if (["all", "daily", "weekly", "monthly"].includes(timeFilter)) {
+      if (timeFilter === "daily") {
+        startDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        endDate = new Date();
+      } else if (timeFilter === "weekly") {
+        startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        endDate = new Date();
+      } else if (timeFilter === "monthly") {
+        startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        endDate = new Date();
+      } else if (timeFilter === "all") {
+        startDate = null;
+        endDate = null;
+      }
+    } else if (/^\d{4}\/\d{2}\/\d{2}$/.test(timeFilter)) {
+      const [year, month, day] = timeFilter.split("/").map(Number);
+      startDate = new Date(Date.UTC(year, month - 1, day));
+      endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 1);
+      // Validate date
+      if (
+        startDate.getFullYear() !== year ||
+        startDate.getMonth() + 1 !== month ||
+        startDate.getDate() !== day
+      ) {
+        throw new ApiError(
+          StatusCodes.BAD_REQUEST,
+          `Invalid date in timeFilter: ${timeFilter}`
+        );
+      }
+    } else {
       throw new ApiError(
         StatusCodes.BAD_REQUEST,
-        `Invalid timeFilter: ${timeFilter}`
+        `Invalid timeFilter: ${timeFilter}. Must be 'all', 'daily', 'weekly', 'monthly', or a date in 'YYYY/MM/DD' format.`
       );
     }
 
@@ -238,30 +270,13 @@ class EmailService {
     const keywords = [...new Set([...userKeywords, ...customKeywords])];
     console.log("Using keywords for filtering:", keywords);
 
-    let startDate, endDate;
-
-    if (timeFilter === "daily") {
-      startDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      endDate = new Date();
-    } else if (timeFilter === "weekly") {
-      startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      endDate = new Date();
-    } else if (timeFilter === "monthly") {
-      startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      endDate = new Date();
-    } else if (/^\d{4}\/\d{2}\/\d{2}$/.test(timeFilter)) {
-      startDate = new Date(timeFilter);
-      endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + 1);
-    } else if (timeFilter === "all") {
-      startDate = null;
-      endDate = null;
-    }
-
-    const recentEmails = emails.filter((email) => {
-      const emailDate = new Date(email.date);
-      return emailDate >= startDate && emailDate < endDate;
-    });
+    const recentEmails =
+      startDate && endDate
+        ? emails.filter((email) => {
+            const emailDate = new Date(email.date);
+            return emailDate >= startDate && emailDate < endDate;
+          })
+        : emails;
 
     console.log(
       `Found ${recentEmails.length} emails within the ${timeFilter} time frame`
@@ -276,7 +291,6 @@ class EmailService {
         email.body || ""
       }`.toLowerCase();
 
-      // Fixed variable name from cached to cachedEmail
       const cachedEmail = this.analysisCache.get(emailKey);
       if (cachedEmail) {
         processedEmails.push(cachedEmail);
@@ -286,7 +300,6 @@ class EmailService {
       const hasKeyword = keywords.some(
         (keyword) => keyword && content.includes(keyword.toLowerCase())
       );
-
       if (hasKeyword) {
         emailsToAnalyze.push(email);
       } else {
@@ -326,9 +339,7 @@ class EmailService {
     `;
 
       try {
-        // Use our new model call method instead of direct Groq call
         const modelResponse = await this.callModelWithFallback(prompt, modelId);
-
         const responseText = modelResponse.content || "";
         console.log(
           `Model response for email (${
@@ -380,7 +391,7 @@ class EmailService {
       analyzedEmails = await Promise.all(analysisPromises);
     } catch (error) {
       console.error("Error in Promise.all for email analysis:", error);
-      analyzedEmails = []; // Fallback
+      analyzedEmails = [];
     }
 
     const allEmails = [...analyzedEmails, ...processedEmails];

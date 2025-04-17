@@ -689,11 +689,43 @@ class MCPServer {
         ];
       }
       case "search-emails": {
-        const { query } = args;
+        const { query, timeFilter = "weekly" } = args; // Default to "weekly"
         if (!query) throw new Error("Missing query parameter");
+
+        // Normalize timeFilter to YYYY/MM/DD
+        let normalizedTimeFilter = timeFilter;
+        if (
+          timeFilter &&
+          !["all", "daily", "weekly", "monthly"].includes(timeFilter)
+        ) {
+          if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(timeFilter)) {
+            const [year, month, day] = timeFilter.split("/").map(Number);
+            normalizedTimeFilter = `${year}/${String(month).padStart(
+              2,
+              "0"
+            )}/${String(day).padStart(2, "0")}`;
+            // Validate date
+            const date = new Date(year, month - 1, day);
+            if (
+              date.getFullYear() !== year ||
+              date.getMonth() + 1 !== month ||
+              date.getDate() !== day
+            ) {
+              throw new Error(
+                "Invalid date in timeFilter. Must be a valid date in 'YYYY/MM/DD' or 'YYYY/M/D' format."
+              );
+            }
+          } else {
+            throw new Error(
+              "Invalid timeFilter. Must be 'all', 'daily', 'weekly', 'monthly', or a date in 'YYYY/MM/DD' or 'YYYY/M/D' format."
+            );
+          }
+        }
+
         const processedQuery = this.processQuery(query);
         const searchResults = await this.emailService.fetchEmails({
           query: processedQuery,
+          timeFilter,
         });
         const searchIntros = [
           `Here’s what I found for "**${query}**":`,

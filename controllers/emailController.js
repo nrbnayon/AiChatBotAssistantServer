@@ -15,7 +15,7 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
   const timeFilter = req.query.timeFilter || "all";
   if (
     timeFilter &&
-    !["all","daily", "weekly", "monthly"].includes(timeFilter) &&
+    !["all", "daily", "weekly", "monthly"].includes(timeFilter) &&
     !/^\d{4}\/\d{2}\/\d{2}$/.test(timeFilter)
   ) {
     throw new ApiError(
@@ -86,22 +86,40 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
 // Other functions remain unchanged...
 const fetchImportantEmails = catchAsync(async (req, res) => {
   const emailService = await createEmailService(req);
-  const {
-    q,
-    maxResults = 500,
-    pageToken,
-    keywords = [],
-  } = req.query;
+  const { q, maxResults = 500, pageToken, keywords = [] } = req.query;
 
   const timeFilter = req.query.timeFilter || "daily";
+
+  // Normalize and validate timeFilter
+  let normalizedTimeFilter = timeFilter;
   if (
-    !["all","daily", "weekly", "monthly"].includes(timeFilter) &&
-    !/^\d{4}\/\d{2}\/\d{2}$/.test(timeFilter)
+    timeFilter &&
+    !["all", "daily", "weekly", "monthly"].includes(timeFilter)
   ) {
-    throw new ApiError(
-      StatusCodes.BAD_REQUEST,
-      "Invalid timeFilter. Must be 'all', 'daily', 'weekly', 'monthly', or a date in 'YYYY/MM/DD' format."
-    );
+    if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(timeFilter)) {
+      const [year, month, day] = timeFilter.split("/").map(Number);
+      normalizedTimeFilter = `${year}/${String(month).padStart(
+        2,
+        "0"
+      )}/${String(day).padStart(2, "0")}`;
+      // Validate the date
+      const date = new Date(year, month - 1, day);
+      if (
+        date.getFullYear() !== year ||
+        date.getMonth() + 1 !== month ||
+        date.getDate() !== day
+      ) {
+        throw new ApiError(
+          StatusCodes.BAD_REQUEST,
+          "Invalid date in timeFilter. Must be a valid date in 'YYYY/MM/DD' or 'YYYY/M/D' format."
+        );
+      }
+    } else {
+      throw new ApiError(
+        StatusCodes.BAD_REQUEST,
+        "Invalid timeFilter. Must be 'all', 'daily', 'weekly', 'monthly', or a date in 'YYYY/MM/DD' or 'YYYY/M/D' format."
+      );
+    }
   }
 
   const result = await emailService.fetchEmails({
@@ -210,14 +228,45 @@ const trashEmail = catchAsync(async (req, res) => {
 });
 
 const searchEmails = catchAsync(async (req, res) => {
-  const { query } = req.query;
+  const { query, timeFilter } = req.query;
   if (!query)
     throw new ApiError(StatusCodes.BAD_REQUEST, "Search query is required");
+
+ let normalizedTimeFilter = timeFilter || "weekly";
+ if (
+   normalizedTimeFilter &&
+   !["all", "daily", "weekly", "monthly"].includes(normalizedTimeFilter)
+ ) {
+   if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(normalizedTimeFilter)) {
+     const [year, month, day] = normalizedTimeFilter.split("/").map(Number);
+     normalizedTimeFilter = `${year}/${String(month).padStart(2, "0")}/${String(
+       day
+     ).padStart(2, "0")}`;
+     const date = new Date(year, month - 1, day);
+     if (
+       date.getFullYear() !== year ||
+       date.getMonth() + 1 !== month ||
+       date.getDate() !== day
+     ) {
+       throw new ApiError(
+         StatusCodes.BAD_REQUEST,
+         "Invalid date in timeFilter. Must be a valid date in 'YYYY/MM/DD' or 'YYYY/M/D' format."
+       );
+     }
+   } else {
+     throw new ApiError(
+       StatusCodes.BAD_REQUEST,
+       "Invalid timeFilter. Must be 'all', 'daily', 'weekly', 'monthly', or a date in 'YYYY/MM/DD' or 'YYYY/M/D' format."
+     );
+   }
+ }
+
   const emailService = await createEmailService(req);
   const mcpServer = new MCPServer(emailService);
+  const effectiveTimeFilter = timeFilter || "weekly";
   const searchResponse = await mcpServer.callTool(
     "search-emails",
-    { query },
+    { query, timeFilter: effectiveTimeFilter },
     req.user.id
   );
 

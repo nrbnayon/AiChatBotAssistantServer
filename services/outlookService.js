@@ -122,59 +122,64 @@ class OutlookService extends EmailService {
     }
 
     // [CHANGE] Function to calculate date range based on timeFilter
-function getDateRange(timeFilter) {
-  const now = new Date();
-  if (timeFilter === "daily") {
-    const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    return { after: start };
-  } else if (timeFilter === "weekly") {
-    const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    return { after: start };
-  } else if (timeFilter === "monthly") {
-    const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    return { after: start };
-  } else if (/^\d{4}\/\d{2}\/\d{2}$/.test(timeFilter)) {
-    const specificDate = new Date(timeFilter);
-    const nextDay = new Date(specificDate);
-    nextDay.setDate(specificDate.getDate() + 1);
-    return { after: specificDate, before: nextDay };
-  } else if (timeFilter === "all") {
-    return {}; 
-  } else {
-    return {};
-  }
-}
-
-if (timeFilter) {
-  const dateRange = getDateRange(timeFilter);
-  let filterStr = "";
-  const existingFilter = endpoint.includes("$filter=")
-    ? endpoint.split("$filter=")[1].split("&")[0]
-    : "";
-  if (existingFilter) filterStr = `${existingFilter} and `;
-  if (dateRange.after) {
-    const afterDate = dateRange.after.toISOString();
-    filterStr += `receivedDateTime ge ${afterDate}`;
-  }
-  if (dateRange.before) {
-    const beforeDate = dateRange.before.toISOString();
-    if (dateRange.after) filterStr += " and ";
-    filterStr += `receivedDateTime lt ${beforeDate}`;
-  }
-  if (filterStr) {
-    if (endpoint.includes("$filter=")) {
-      endpoint = endpoint.replace(
-        `$filter=${existingFilter}`,
-        `$filter=${encodeURIComponent(filterStr)}`
-      );
-    } else {
-      endpoint += `&$filter=${encodeURIComponent(filterStr)}`;
+    function getDateRange(timeFilter) {
+      const now = new Date();
+      if (timeFilter === "daily") {
+        const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        return { after: start };
+      } else if (timeFilter === "weekly") {
+        const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        return { after: start };
+      } else if (timeFilter === "monthly") {
+        const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        return { after: start };
+      } else if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(timeFilter)) {
+        // Normalize to YYYY/MM/DD
+        const [year, month, day] = timeFilter
+          .split("/")
+          .map((part) => parseInt(part, 10));
+        const paddedMonth = month.toString().padStart(2, "0");
+        const paddedDay = day.toString().padStart(2, "0");
+        const startDate = new Date(Date.UTC(year, month - 1, day));
+        const endDate = new Date(Date.UTC(year, month - 1, day + 1));
+        return { after: startDate, before: endDate };
+      } else if (timeFilter === "all") {
+        return {};
+      } else {
+        return {};
+      }
     }
-  }
-}
 
-if (pageToken) endpoint += `&$skiptoken=${encodeURIComponent(pageToken)}`;
-if (query) endpoint += `&$search="${encodeURIComponent(query)}"`;
+    if (timeFilter) {
+      const dateRange = getDateRange(timeFilter);
+      let filterStr = "";
+      const existingFilter = endpoint.includes("$filter=")
+        ? endpoint.split("$filter=")[1].split("&")[0]
+        : "";
+      if (existingFilter) filterStr = `${existingFilter} and `;
+      if (dateRange.after) {
+        const afterDate = dateRange.after.toISOString();
+        filterStr += `receivedDateTime ge ${afterDate}`;
+      }
+      if (dateRange.before) {
+        const beforeDate = dateRange.before.toISOString();
+        if (dateRange.after) filterStr += " and ";
+        filterStr += `receivedDateTime lt ${beforeDate}`;
+      }
+      if (filterStr) {
+        if (endpoint.includes("$filter=")) {
+          endpoint = endpoint.replace(
+            `$filter=${existingFilter}`,
+            `$filter=${encodeURIComponent(filterStr)}`
+          );
+        } else {
+          endpoint += `&$filter=${encodeURIComponent(filterStr)}`;
+        }
+      }
+    }
+
+    if (pageToken) endpoint += `&$skiptoken=${encodeURIComponent(pageToken)}`;
+    if (query) endpoint += `&$search="${encodeURIComponent(query)}"`;
 
     const response = await fetch(endpoint, {
       headers: { Authorization: `Bearer ${client.accessToken}` },

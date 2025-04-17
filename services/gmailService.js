@@ -138,42 +138,46 @@ class GmailService extends EmailService {
       } else if (timeFilter === "monthly") {
         const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
         return { after: start };
-      } else if (/^\d{4}\/\d{2}\/\d{2}$/.test(timeFilter)) {
-        const specificDate = new Date(timeFilter);
-        const nextDay = new Date(specificDate);
-        nextDay.setDate(specificDate.getDate() + 1);
-        return { after: specificDate, before: nextDay };
+      } else if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(timeFilter)) {
+        // Normalize to YYYY/MM/DD
+        const [year, month, day] = timeFilter
+          .split("/")
+          .map((part) => parseInt(part, 10));
+        const paddedMonth = month.toString().padStart(2, "0");
+        const paddedDay = day.toString().padStart(2, "0");
+        const startDate = new Date(Date.UTC(year, month - 1, day));
+        const endDate = new Date(Date.UTC(year, month - 1, day + 1));
+        return { after: startDate, before: endDate };
       } else if (timeFilter === "all") {
-        return {}; 
+        return {};
       } else {
-        return {}; 
+        return {};
       }
     }
 
-   if (timeFilter) {
-     const dateRange = getDateRange(timeFilter);
-     let timeQuery = "";
-     if (dateRange.after) {
-       const afterDate = dateRange.after
-         .toISOString()
-         .split("T")[0]
-         .replace(/-/g, "/");
-       timeQuery += `after:${afterDate}`;
-     }
-     if (dateRange.before) {
-       const beforeDate = dateRange.before
-         .toISOString()
-         .split("T")[0]
-         .replace(/-/g, "/");
-       timeQuery += ` before:${beforeDate}`;
-     }
-     if (timeQuery) {
-       filteredParams.q = filteredParams.q
-         ? `${filteredParams.q} ${timeQuery}`.trim()
-         : timeQuery;
-     }
-   }
-
+    if (timeFilter) {
+      const dateRange = getDateRange(timeFilter);
+      let timeQuery = "";
+      if (dateRange.after) {
+        const afterDate = dateRange.after
+          .toISOString()
+          .split("T")[0]
+          .replace(/-/g, "/");
+        timeQuery += `after:${afterDate}`;
+      }
+      if (dateRange.before) {
+        const beforeDate = dateRange.before
+          .toISOString()
+          .split("T")[0]
+          .replace(/-/g, "/");
+        timeQuery += ` before:${beforeDate}`;
+      }
+      if (timeQuery) {
+        filteredParams.q = filteredParams.q
+          ? `${filteredParams.q} ${timeQuery}`.trim()
+          : timeQuery;
+      }
+    }
 
     try {
       const response = await client.users.messages.list(filteredParams);
