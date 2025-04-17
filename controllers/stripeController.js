@@ -49,20 +49,28 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
       process.env.STRIPE_WEBHOOK_SECRET
     );
   } catch (err) {
+    console.error("Webhook signature verification failed:", err.message);
     return next(new ApiError(`Webhook Error: ${err.message}`, 400));
   }
 
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object;
-    const userId = session.client_reference_id;
-    const subscription = await stripe.subscriptions.retrieve(
-      session.subscription
-    );
-    const priceId = subscription.items.data[0].price.id;
-    const plan = getPlanFromPriceId(priceId);
+  try {
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object;
+      const userId = session.client_reference_id;
+      const subscription = await stripe.subscriptions.retrieve(
+        session.subscription
+      );
+      const priceId = subscription.items.data[0].price.id;
+      const plan = getPlanFromPriceId(priceId);
 
-    const user = await User.findById(userId);
-    if (user) {
+      const user = await User.findById(userId);
+      if (!user) {
+        console.error(
+          `User not found for ID: ${userId} in checkout.session.completed`
+        );
+        return res.json({ received: true }); 
+      }
+
       user.subscription.plan = plan;
       user.subscription.status = "active";
       user.subscription.dailyQueries = 0;
@@ -76,30 +84,47 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
         user.inboxList = user.inboxList.slice(0, maxInboxes);
       }
       await user.save();
-    }
-  } else if (event.type === "customer.subscription.updated") {
-    const subscription = event.data.object;
-    const user = await User.findOne({
-      "subscription.stripeSubscriptionId": subscription.id,
-    });
-    if (user) {
+    } else if (event.type === "customer.subscription.updated") {
+      const subscription = event.data.object;
+      const user = await User.findOne({
+        "subscription.stripeSubscriptionId": subscription.id,
+      });
+      if (!user) {
+        console.error(
+          `User not found for subscription ID: ${subscription.id} in customer.subscription.updated`
+        );
+        return res.json({ received: true }); 
+      }
+
       user.subscription.status =
         subscription.status === "active" ? "active" : "cancelled";
       user.subscription.endDate = new Date(
         subscription.current_period_end * 1000
       );
       await user.save();
-    }
-  } else if (event.type === "customer.subscription.deleted") {
-    const subscription = event.data.object;
-    const user = await User.findOne({
-      "subscription.stripeSubscriptionId": subscription.id,
-    });
-    if (user) {
+    } else if (event.type === "customer.subscription.deleted") {
+      const subscription = event.data.object;
+      const user = await User.findOne({
+        "subscription.stripeSubscriptionId": subscription.id,
+      });
+      if (!user) {
+        console.error(
+          `User not found for subscription ID: ${subscription.id} in customer.subscription.deleted`
+        );
+        return res.json({ received: true }); 
+      }
+
       user.subscription.status = "cancelled";
       user.subscription.endDate = new Date();
       await user.save();
     }
+  } catch (err) {
+    console.error(
+      `Error processing webhook event ${event.type}:`,
+      err.message,
+      err.stack
+    );
+    return next(new ApiError(`Webhook processing error: ${err.message}`, 500));
   }
 
   res.json({ received: true });

@@ -1,3 +1,4 @@
+// routes\stripeRoutes.js
 import express from "express";
 import {
   createCheckoutSession,
