@@ -24,7 +24,10 @@ const rateLimitMiddleware = (options = {}) => {
       const limiter = rateLimit({
         windowMs,
         max: (req) => {
-          return req.user && req.user.role === "admin" ? Infinity : max;
+          return req.user &&
+            (req.user.role === "admin" || req.user.role === "super_admin")
+            ? Infinity
+            : max;
         },
         message,
         skipFailedRequests,

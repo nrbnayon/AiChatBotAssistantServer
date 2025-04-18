@@ -25,7 +25,7 @@ const router = express.Router();
  */
 router.get(
   "/oauth/:provider",
-  // authRateLimit(),
+  authRateLimit(),
   (req, res, next) => {
     const { provider } = req.params;
     const providers = {
@@ -121,7 +121,7 @@ router.get("/error", authError);
 // Local user login
 router.post(
   "/login",
-  // authRateLimit(),
+  authRateLimit(),
   localLogin
 );
 

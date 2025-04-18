@@ -17,7 +17,13 @@ router.post(
   "/create-checkout-session",
   auth(),
   setRefreshedTokenCookie,
-  rateLimitMiddleware(),
+  rateLimitMiddleware(
+    {
+      windowMs: 5 * 60 * 1000, 
+      max: 3, 
+      message: "You can only create three checkout session every 5 minutes.",
+    }
+  ),
   createCheckoutSession
 );
 
@@ -26,7 +32,13 @@ router.post(
   "/cancel-subscription",
   auth(),
   setRefreshedTokenCookie,
-  rateLimitMiddleware(),
+  rateLimitMiddleware(
+    {
+      windowMs: 5 * 60 * 1000, 
+      max: 3, 
+      message: "You can only cancel subscription three times every 5 minutes.",
+    }
+  ),
   cancelSubscription
 );
 
@@ -35,7 +47,13 @@ router.post(
   "/cancel-auto-renew",
   auth(),
   setRefreshedTokenCookie,
-  rateLimitMiddleware(),
+  rateLimitMiddleware(
+    {
+      windowMs: 5 * 60 * 1000, 
+      max: 1, 
+      message: "You can only cancel auto-renew one times every 5 minutes.",
+    }
+  ),
   cancelAutoRenew
 );
 

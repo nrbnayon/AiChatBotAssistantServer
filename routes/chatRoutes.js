@@ -10,6 +10,7 @@ import {
   updateChat,
   deleteChat,
 } from "../controllers/chatController.js";
+import { rateLimitMiddleware } from "../middleware/rateLimit.js";
 
 const router = express.Router();
 
@@ -25,18 +26,30 @@ const validateObjectId = (req, res, next) => {
 };
 
 // Create a new chat
-router.post("/", auth(), createChat);
+router.post("/", auth(), rateLimitMiddleware(), createChat);
 
 // Get all chats for the authenticated user
-router.get("/", auth(), getChats);
+router.get("/", auth(), rateLimitMiddleware(), getChats);
 
 // Get a specific chat by ID
-router.get("/:id", auth(), validateObjectId, getChatById);
+router.get(
+  "/:id",
+  auth(),
+  rateLimitMiddleware(),
+  validateObjectId,
+  getChatById
+);
 
 // Update a chat (e.g., rename it)
-router.put("/:id", auth(), validateObjectId, updateChat);
+router.put("/:id", auth(), rateLimitMiddleware(), validateObjectId, updateChat);
 
 // Delete a chat
-router.delete("/:id", auth(), validateObjectId, deleteChat);
+router.delete(
+  "/:id",
+  auth(),
+  rateLimitMiddleware(),
+  validateObjectId,
+  deleteChat
+);
 
 export default router;

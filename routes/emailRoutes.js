@@ -21,6 +21,7 @@ import {
   fetchImportantEmails,
   createDraft,
 } from "../controllers/emailController.js";
+import { getEmailService } from "../services/emailService.js";
 
 const router = express.Router();
 
@@ -55,11 +56,7 @@ router.get(
   "/",
   auth(),
   emailAuth,
-  rateLimitMiddleware({
-    windowMs: 15 * 60 * 1000,
-    max: 50,
-    message: "Too many email fetch requests. Please try again later.",
-  }),
+  rateLimitMiddleware(),
   (req, res) => {
     const filter = req.query.filter || "all";
     fetchEmails(req, res, filter);
@@ -72,11 +69,7 @@ router.get(
   auth(),
   emailAuth,
   setRefreshedTokenCookie,
-  rateLimitMiddleware({
-    windowMs: 15 * 60 * 1000,
-    max: 20,
-    message: "Too many important email requests. Please try again later.",
-  }),
+  rateLimitMiddleware(),
   fetchImportantEmails
 );
 
@@ -86,11 +79,7 @@ router.get(
   auth(),
   setRefreshedTokenCookie,
   emailAuth,
-  rateLimitMiddleware({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
-    message: "Too many email read requests. Please slow down.",
-  }),
+  rateLimitMiddleware(),
   readEmail
 );
 
@@ -104,11 +93,7 @@ router.post(
   "/send",
   auth(),
   emailAuth,
-  rateLimitMiddleware({
-    windowMs: 60 * 60 * 1000,
-    max: 10,
-    message: "Too many emails sent. Please wait before sending more.",
-  }),
+  rateLimitMiddleware(),
   uploadMiddleware.array("attachments"),
   sendEmail
 );
@@ -119,11 +104,7 @@ router.post(
   auth(),
   emailAuth,
   setRefreshedTokenCookie,
-  rateLimitMiddleware({
-    windowMs: 30 * 60 * 1000,
-    max: 15,
-    message: "Too many email replies. Please slow down.",
-  }),
+  rateLimitMiddleware(),
   uploadMiddleware.array("attachments"),
   replyToEmail
 );
@@ -134,11 +115,7 @@ router.delete(
   auth(),
   emailAuth,
   setRefreshedTokenCookie,
-  rateLimitMiddleware({
-    windowMs: 15 * 60 * 1000,
-    max: 30,
-    message: "Too many trash actions. Please slow down.",
-  }),
+  rateLimitMiddleware(),
   trashEmail
 );
 
@@ -153,11 +130,7 @@ router.get(
   auth(),
   emailAuth,
   setRefreshedTokenCookie,
-  rateLimitMiddleware({
-    windowMs: 15 * 60 * 1000,
-    max: 25,
-    message: "Too many search requests. Please try again later.",
-  }),
+  rateLimitMiddleware(),
   searchEmails
 );
 
@@ -167,11 +140,7 @@ router.patch(
   auth(),
   emailAuth,
   setRefreshedTokenCookie,
-  rateLimitMiddleware({
-    windowMs: 15 * 60 * 1000,
-    max: 50,
-    message: "Too many mark as read actions. Please slow down.",
-  }),
+  rateLimitMiddleware(),
   markEmailAsRead
 );
 
@@ -181,11 +150,7 @@ router.get(
   auth(),
   emailAuth,
   setRefreshedTokenCookie,
-  rateLimitMiddleware({
-    windowMs: 30 * 60 * 1000,
-    max: 10,
-    message: "Too many email summarization requests. Please try again later.",
-  }),
+  rateLimitMiddleware(),
   summarizeEmail
 );
 
@@ -210,11 +175,7 @@ router.post(
   auth(),
   emailAuth,
   setRefreshedTokenCookie,
-  rateLimitMiddleware({
-    windowMs: 15 * 60 * 1000,
-    max: 20,
-    message: "Too many draft creations. Please slow down.",
-  }),
+  rateLimitMiddleware(),
   uploadMiddleware.array("attachments"),
   createDraft
 );
