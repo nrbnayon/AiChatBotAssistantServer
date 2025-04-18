@@ -13,6 +13,7 @@
     "@azure/identity": "^4.8.0",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "bcryptjs": "^3.0.2",
+    "body-parser": "^2.2.0",
     "colors": "^1.4.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

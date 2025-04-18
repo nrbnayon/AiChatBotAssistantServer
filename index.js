@@ -19,6 +19,8 @@ import { globalErrorHandler } from "./utils/errorHandler.js";
 import requestLogger from "./utils/requestLogger.js";
 import "./config/passport.js";
 import os from "os";
+import bodyParser from "body-parser";
+import { handleWebhook } from "./controllers/stripeController.js";
 
 dotenv.config();
 const app = express();
@@ -61,7 +63,6 @@ const allowedOrigins = [
   `http://192.168.10.206:3000`,
   `http://172.16.0.2:3000`,
   "https://inbox-buddy-ai-ynx6.vercel.app",
-  "http://192.168.10.206:3000",
   `http://${localIpAddress}:3000`,
   `http://${IP_ADDRESS}:3000`,
 ].filter(Boolean);
@@ -100,15 +101,14 @@ app.use(
   })
 );
 
-process.on("uncaughtException", (error) => {
-  console.error("UNCAUGHT EXCEPTION! 💥 Shutting down gracefully...");
-  console.error(error.name, error.message, error.stack);
-  // Don't immediately exit to allow pending requests to complete
-  setTimeout(() => {
-    process.exit(1);
-  }, 1000);
-});
+// Webhook handler with raw body parsing
+app.post(
+  "/my-webhook",
+  bodyParser.raw({ type: "application/json" }),
+  handleWebhook
+);
 
+// Apply body parsing middleware for other routes
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(requestLogger);
@@ -119,8 +119,8 @@ app.get("/", (req, res) => {
 });
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/users", userRoutes);
-app.use("/api/v1/ai-models", aiModelRoutes);
 app.use("/api/v1/stripe", stripeRoutes);
+app.use("/api/v1/ai-models", aiModelRoutes);
 app.use("/api/v1/emails", emailRoutes);
 app.use("/api/v1/ai-assistant", aiChatRoutes);
 app.use("/api/v1/chats", chatRoutes);
@@ -134,6 +134,14 @@ app.use((req, res) => {
 });
 
 app.use(globalErrorHandler);
+
+process.on("uncaughtException", (error) => {
+  console.error("UNCAUGHT EXCEPTION! 💥 Shutting down gracefully...");
+  console.error(error.name, error.message, error.stack);
+  setTimeout(() => {
+    process.exit(1);
+  }, 1000);
+});
 
 connectDB().then(() => {
   app.listen(PORT, IP_ADDRESS, () => {

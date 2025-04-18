@@ -23,6 +23,9 @@ const primaryColor = "#4361EE";
 const accentColor = "#3A0CA3";
 const lightGray = "#f8f9fa";
 const darkGray = "#343a40";
+const highlightColor = "#2ec4b6";
+const warningColor = "#ff9f1c";
+
 
 // Function to replace placeholders in templates
 const replacePlaceholders = (template, data) => {
@@ -213,35 +216,94 @@ const firstLoginConfirmationTemplate = `
 </table>
 `;
 
-// Subscription Success Template
+// UPDATED: Subscription Success Template with improved design and details
 const subscriptionSuccessTemplate = `
 <table width="100%" cellspacing="0" cellpadding="0" style="${commonStyles}">
   <tr>
     <td align="center" style="background-color: #f4f5f7; padding: 20px;">
       <table width="600" cellspacing="0" cellpadding="0" style="border-radius: 8px; overflow: hidden; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
         <tr>
-          <td style="background-color: ${primaryColor}; padding: 30px; text-align: center;">
+          <td style="background: linear-gradient(135deg, ${primaryColor}, ${accentColor}); padding: 30px; text-align: center;">
             <img src="${logoUrl}" alt="${companyName} Logo" style="max-width: 180px;" />
           </td>
         </tr>
         <tr>
           <td style="padding: 40px 30px; background-color: #ffffff;">
-            <h2 style="color: ${accentColor}; margin-top: 0; font-weight: 600;">Subscription Activated Successfully!</h2>
+            <h2 style="color: ${accentColor}; margin-top: 0; font-weight: 600;">Your {{plan}} Plan is Now Active! 🎉</h2>
             <p style="color: #555;">Hello {{name}},</p>
-            <p style="color: #555;">Great news! Your {{plan}} subscription with ${companyName} is now active.</p>
-            <div style="background-color: ${lightGray}; border-left: 4px solid ${primaryColor}; padding: 15px; margin: 20px 0;">
-              <p style="margin: 0; color: #444;">Your subscription started on {{startDate}} and will renew on {{endDate}} unless cancelled.</p>
+            <p style="color: #555;">Great news! Your subscription to the <strong>{{plan}} Plan</strong> has been successfully activated. Thank you for choosing ${companyName} as your email management solution.</p>
+            
+            <div style="background-color: ${lightGray}; border-radius: 8px; padding: 20px; margin: 25px 0; border-left: 4px solid ${highlightColor};">
+              <h3 style="color: ${accentColor}; margin-top: 0; margin-bottom: 15px; font-size: 18px;">Subscription Details:</h3>
+              <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 8px 0; color: #555; font-weight: 600;">Plan:</td>
+                  <td style="padding: 8px 0; color: #555; text-align: right;">{{plan}}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #555; font-weight: 600;">Start Date:</td>
+                  <td style="padding: 8px 0; color: #555; text-align: right;">{{startDate}}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #555; font-weight: 600;">Next Billing Date:</td>
+                  <td style="padding: 8px 0; color: #555; text-align: right;">{{endDate}}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #555; font-weight: 600;">Auto-Renewal:</td>
+                  <td style="padding: 8px 0; color: #555; text-align: right;">Enabled</td>
+                </tr>
+              </table>
             </div>
-            <p style="color: #555;">Need help? Contact our support team at <a href="mailto:${supportEmail}" style="color: ${primaryColor}; text-decoration: none; font-weight: 500;">${supportEmail}</a>.</p>
+            
+            <h3 style="color: ${accentColor}; margin-top: 30px; font-size: 18px;">Your {{plan}} Plan Includes:</h3>
+            <table width="100%" cellspacing="0" cellpadding="0" style="margin: 15px 0;">
+              <tr>
+                <td style="vertical-align: top; padding: 10px;">
+                  <div style="background-color: white; border: 1px solid #e9ecef; border-radius: 8px; padding: 15px; height: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                    <div style="color: ${primaryColor}; font-size: 24px; text-align: center; margin-bottom: 10px;">
+                      <span style="display: inline-block; width: 50px; height: 50px; line-height: 50px; background-color: rgba(67, 97, 238, 0.1); border-radius: 50%; text-align: center;">
+                        📧
+                      </span>
+                    </div>
+                    <h4 style="color: ${darkGray}; text-align: center; margin-top: 0; margin-bottom: 10px;">Connected Inboxes</h4>
+                    <p style="color: #555; text-align: center; margin: 0; font-size: 15px;">Up to {{maxInboxes}} email accounts</p>
+                  </div>
+                </td>
+                <td style="vertical-align: top; padding: 10px;">
+                  <div style="background-color: white; border: 1px solid #e9ecef; border-radius: 8px; padding: 15px; height: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                    <div style="color: ${primaryColor}; font-size: 24px; text-align: center; margin-bottom: 10px;">
+                      <span style="display: inline-block; width: 50px; height: 50px; line-height: 50px; background-color: rgba(67, 97, 238, 0.1); border-radius: 50%; text-align: center;">
+                        🤖
+                      </span>
+                    </div>
+                    <h4 style="color: ${darkGray}; text-align: center; margin-top: 0; margin-bottom: 10px;">Daily AI Queries</h4>
+                    <p style="color: #555; text-align: center; margin: 0; font-size: 15px;">{{dailyQueries}} queries per day</p>
+                  </div>
+                </td>
+              </tr>
+            </table>
+            
+            <p style="color: #555;">Ready to experience the full power of ${companyName}? Visit your dashboard to start managing your emails more efficiently:</p>
+            
             <div style="text-align: center; margin: 30px 0;">
-              <a href="https://inboxbuddy.com/dashboard" style="background-color: ${primaryColor}; color: white; padding: 12px 28px; text-decoration: none; display: inline-block; border-radius: 4px; font-weight: 500; letter-spacing: 0.3px;">Go to Dashboard</a>
+              <a href="https://inboxbuddy.com/dashboard" style="background-color: ${primaryColor}; color: white; padding: 14px 32px; text-decoration: none; display: inline-block; border-radius: 6px; font-weight: 500; letter-spacing: 0.3px; font-size: 16px; box-shadow: 0 4px 6px rgba(67, 97, 238, 0.2);">Access Your Dashboard</a>
+            </div>
+            
+            <p style="color: #555;">If you have any questions about your subscription or need assistance, our support team is available at <a href="mailto:${supportEmail}" style="color: ${primaryColor}; text-decoration: none; font-weight: 500;">${supportEmail}</a>.</p>
+            
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e9ecef;">
+              <p style="color: #555; font-style: italic; font-size: 14px;">Thank you for being part of the ${companyName} community!</p>
             </div>
           </td>
         </tr>
         <tr>
           <td style="background-color: ${lightGray}; padding: 25px; text-align: center; color: ${darkGray};">
-            <p style="margin-bottom: 10px;">© ${year} ${companyName}. All rights reserved.</p>
-            <p style="margin: 0;"><a href="https://inboxbuddy.com/unsubscribe" style="color: ${primaryColor}; text-decoration: none;">Unsubscribe</a> | <a href="https://inboxbuddy.com/privacy" style="color: ${primaryColor}; text-decoration: none;">Privacy Policy</a></p>
+            <p style="margin-bottom: 10px;">&copy; ${year} ${companyName}. All rights reserved.</p>
+            <p style="margin: 0; font-size: 14px;">
+              <a href="https://inboxbuddy.com/account/billing" style="color: ${primaryColor}; text-decoration: none; margin: 0 10px;">Manage Subscription</a> | 
+              <a href="https://inboxbuddy.com/unsubscribe" style="color: ${primaryColor}; text-decoration: none; margin: 0 10px;">Unsubscribe</a> | 
+              <a href="https://inboxbuddy.com/privacy" style="color: ${primaryColor}; text-decoration: none; margin: 0 10px;">Privacy Policy</a>
+            </p>
           </td>
         </tr>
       </table>
@@ -250,32 +312,61 @@ const subscriptionSuccessTemplate = `
 </table>
 `;
 
-// Subscription Cancellation Template
+// UPDATED: Subscription Cancellation Template with improved design and details
 const subscriptionCancelTemplate = `
 <table width="100%" cellspacing="0" cellpadding="0" style="${commonStyles}">
   <tr>
     <td align="center" style="background-color: #f4f5f7; padding: 20px;">
       <table width="600" cellspacing="0" cellpadding="0" style="border-radius: 8px; overflow: hidden; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
         <tr>
-          <td style="background-color: ${primaryColor}; padding: 30px; text-align: center;">
+          <td style="background: linear-gradient(135deg, ${primaryColor}, ${accentColor}); padding: 30px; text-align: center;">
             <img src="${logoUrl}" alt="${companyName} Logo" style="max-width: 180px;" />
           </td>
         </tr>
         <tr>
           <td style="padding: 40px 30px; background-color: #ffffff;">
-            <h2 style="color: ${accentColor}; margin-top: 0; font-weight: 600;">Subscription Cancelled</h2>
+            <h2 style="color: ${accentColor}; margin-top: 0; font-weight: 600;">Your Subscription Has Been Canceled</h2>
             <p style="color: #555;">Hello {{name}},</p>
-            <p style="color: #555;">Your subscription with ${companyName} has been cancelled.</p>
-            <div style="background-color: ${lightGray}; border-left: 4px solid ${primaryColor}; padding: 15px; margin: 20px 0;">
-              <p style="margin: 0; color: #444;">Your access will remain active until {{endDate}}. We’re sorry to see you go!</p>
+            <p style="color: #555;">We've received your request to cancel your subscription with ${companyName}. Your cancellation has been processed successfully.</p>
+            
+            <div style="background-color: ${lightGray}; border-radius: 8px; padding: 20px; margin: 25px 0; border-left: 4px solid ${warningColor};">
+              <h3 style="color: ${accentColor}; margin-top: 0; margin-bottom: 10px; font-size: 18px;">Important Information:</h3>
+              <p style="color: #555; margin-bottom: 10px;">Your subscription will remain active until <strong>{{endDate}}</strong>, after which your account will be downgraded to the Free plan with limited features.</p>
+              <p style="color: #555; margin: 0;">You can continue to use all premium features until this date.</p>
             </div>
-            <p style="color: #555;">Questions? Reach out to us at <a href="mailto:${supportEmail}" style="color: ${primaryColor}; text-decoration: none; font-weight: 500;">${supportEmail}</a>.</p>
+            
+            <h3 style="color: ${accentColor}; margin-top: 30px; font-size: 18px;">After Your Subscription Ends:</h3>
+            <ul style="color: #555; padding-left: 20px;">
+              <li style="margin-bottom: 10px;">Your connected inboxes will be limited to 1</li>
+              <li style="margin-bottom: 10px;">AI-powered features will have reduced functionality</li>
+              <li style="margin-bottom: 10px;">Daily query limit will be reduced</li>
+            </ul>
+            
+            <div style="background-color: #fff4eb; border-radius: 8px; padding: 20px; margin: 25px 0; border: 1px dashed ${warningColor};">
+              <h4 style="color: ${accentColor}; margin-top: 0; margin-bottom: 10px; font-size: 16px;">We'd Love Your Feedback</h4>
+              <p style="color: #555; margin: 0;">We're sorry to see you go. If you have a moment, please let us know why you've decided to cancel by replying to this email. Your feedback helps us improve.</p>
+            </div>
+            
+            <p style="color: #555;">Should you decide to return, you can reactivate your subscription at any time from your account settings:</p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="https://inboxbuddy.com/account/billing" style="background-color: ${primaryColor}; color: white; padding: 14px 32px; text-decoration: none; display: inline-block; border-radius: 6px; font-weight: 500; letter-spacing: 0.3px; font-size: 16px; box-shadow: 0 4px 6px rgba(67, 97, 238, 0.2);">Reactivate Subscription</a>
+            </div>
+            
+            <p style="color: #555;">If you have any questions about your subscription or need assistance, our support team is available at <a href="mailto:${supportEmail}" style="color: ${primaryColor}; text-decoration: none; font-weight: 500;">${supportEmail}</a>.</p>
+            
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e9ecef;">
+              <p style="color: #555; font-style: italic; font-size: 14px;">Thank you for being part of the ${companyName} community. We hope to see you again soon!</p>
+            </div>
           </td>
         </tr>
         <tr>
           <td style="background-color: ${lightGray}; padding: 25px; text-align: center; color: ${darkGray};">
-            <p style="margin-bottom: 10px;">© ${year} ${companyName}. All rights reserved.</p>
-            <p style="margin: 0;"><a href="https://inboxbuddy.com/privacy" style="color: ${primaryColor}; text-decoration: none;">Privacy Policy</a></p>
+            <p style="margin-bottom: 10px;">&copy; ${year} ${companyName}. All rights reserved.</p>
+            <p style="margin: 0; font-size: 14px;">
+              <a href="https://inboxbuddy.com/account/billing" style="color: ${primaryColor}; text-decoration: none; margin: 0 10px;">Manage Account</a> | 
+              <a href="https://inboxbuddy.com/privacy" style="color: ${primaryColor}; text-decoration: none; margin: 0 10px;">Privacy Policy</a>
+            </p>
           </td>
         </tr>
       </table>
@@ -382,6 +473,57 @@ export const sendFirstLoginConfirmation = async (user) => {
   } catch (error) {
     console.error(
       `Failed to send first login confirmation to ${user.email}:`,
+      error
+    );
+  }
+};
+
+// New subscription email functions
+export const sendSubscriptionSuccessEmail = async (user) => {
+  const html = replacePlaceholders(subscriptionSuccessTemplate, {
+    name: user.name,
+    plan:
+      user.subscription.plan.charAt(0).toUpperCase() +
+      user.subscription.plan.slice(1),
+    startDate: new Date(user.subscription.startDate).toLocaleDateString(),
+    endDate: new Date(user.subscription.endDate).toLocaleDateString(),
+  });
+  const text = htmlToText(html, { wordwrap: 130 });
+  try {
+    await transporter.sendMail({
+      from: `"${companyName}" <${process.env.EMAIL_FROM}>`,
+      to: user.email,
+      subject: `Subscription Activated Successfully`,
+      html,
+      text,
+    });
+    console.log(`Subscription success email sent to ${user.email}`);
+  } catch (error) {
+    console.error(
+      `Failed to send subscription success email to ${user.email}:`,
+      error
+    );
+  }
+};
+
+export const sendSubscriptionCancelEmail = async (user) => {
+  const html = replacePlaceholders(subscriptionCancelTemplate, {
+    name: user.name,
+    endDate: new Date(user.subscription.endDate).toLocaleDateString(),
+  });
+  const text = htmlToText(html, { wordwrap: 130 });
+  try {
+    await transporter.sendMail({
+      from: `"${companyName}" <${process.env.EMAIL_FROM}>`,
+      to: user.email,
+      subject: `Subscription Cancelled`,
+      html,
+      text,
+    });
+    console.log(`Subscription cancellation email sent to ${user.email}`);
+  } catch (error) {
+    console.error(
+      `Failed to send subscription cancellation email to ${user.email}:`,
       error
     );
   }

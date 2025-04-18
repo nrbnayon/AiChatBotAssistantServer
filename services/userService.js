@@ -4,6 +4,12 @@ import WaitingList from "../models/WaitingList.js";
 import { ApiError, AppError } from "../utils/errorHandler.js";
 import path from "path";
 
+const planLimits = {
+  basic: { dailyQueries: 15, maxInboxes: 1 },
+  premium: { dailyQueries: 100, maxInboxes: 3 },
+  enterprise: { dailyQueries: Infinity, maxInboxes: 10 },
+};
+
 const handleLocalLogin = async (email, password) => {
   try {
     // Convert email to lowercase to ensure consistent matching
@@ -87,22 +93,15 @@ const updateProfile = async (userId, profileData, file) => {
 const updateSubscription = async (userId, { plan, autoRenew }) => {
   const user = await User.findById(userId);
   if (!user) throw new ApiError("User not found", 404);
-  const subscriptionPlans = {
-    basic: { dailyQueries: 15, maxInboxes: 1 },
-    premium: { dailyQueries: 100, maxInboxes: 3 },
-    enterprise: { dailyQueries: Infinity, maxInboxes: 10 },
-  };
-  if (plan && subscriptionPlans[plan]) {
+
+  if (plan && planLimits[plan]) {
     user.subscription.plan = plan;
     user.subscription.startDate = new Date();
     user.subscription.dailyQueries = 0;
-    user.subscription.dailyTokens = 0;
+    user.subscription.remainingQueries = planLimits[plan].dailyQueries;
     user.subscription.status = "active";
-    if (user.inboxList.length > subscriptionPlans[plan].maxInboxes) {
-      user.inboxList = user.inboxList.slice(
-        0,
-        subscriptionPlans[plan].maxInboxes
-      );
+    if (user.inboxList.length > planLimits[plan].maxInboxes) {
+      user.inboxList = user.inboxList.slice(0, planLimits[plan].maxInboxes);
     }
   }
   if (typeof autoRenew === "boolean") user.subscription.autoRenew = autoRenew;

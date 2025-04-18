@@ -2,22 +2,14 @@
 import express from "express";
 import {
   createCheckoutSession,
-  handleWebhook,
+  cancelSubscription,
 } from "../controllers/stripeController.js";
 import auth, { setRefreshedTokenCookie } from "../middleware/authMiddleware.js";
 import { rateLimitMiddleware } from "../middleware/rateLimit.js";
 
 const router = express.Router();
 
-/**
- * ╔═══════════════════════════════════════╗
- * ║    Stripe Checkout Session Creation   ║
- * ╚═══════════════════════════════════════╝
- * @description Create a new Stripe checkout session
- * @route POST /create-checkout-session
- * @access Authenticated Users
- * @middleware Authentication, Token Refresh, Rate Limiting
- */
+// Create checkout session
 router.post(
   "/create-checkout-session",
   auth(),
@@ -26,19 +18,13 @@ router.post(
   createCheckoutSession
 );
 
-/**
- * ╔═══════════════════════════════════════╗
- * ║    Stripe Webhook Endpoint            ║
- * ╚═══════════════════════════════════════╝
- * @description Handles incoming Stripe webhook events
- * @route POST /webhook
- * @access Stripe Service
- * @middleware Raw body parsing for webhook verification
- */
+// Cancel subscription
 router.post(
-  "/webhook",
-  express.raw({ type: "application/json" }),
-  handleWebhook
+  "/cancel-subscription",
+  auth(),
+  setRefreshedTokenCookie,
+  rateLimitMiddleware(),
+  cancelSubscription
 );
 
 export default router;

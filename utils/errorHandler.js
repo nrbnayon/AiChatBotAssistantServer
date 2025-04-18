@@ -120,6 +120,7 @@ const getFunnyErrorMessage = (statusCode) => {
  * Global error handler middleware
  */
 const globalErrorHandler = (err, req, res, next) => {
+  console.error("Global Error:", err.stack);
   try {
     err = handleMongoErrors(err);
 
