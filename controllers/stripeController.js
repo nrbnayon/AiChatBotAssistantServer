@@ -69,7 +69,6 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
   res.json({ sessionId: session.id });
 });
 
-// Fixed handleWebhook function for stripeController.js
 export const handleWebhook = catchAsync(async (req, res, next) => {
   const sig = req.headers["stripe-signature"];
   let event;
@@ -122,6 +121,8 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
       }
 
       user.subscription.stripeSubscriptionId = subscription.id;
+      user.subscription.autoRenew = true;
+
       if (user.inboxList.length > planLimits[plan].maxInboxes) {
         user.inboxList = user.inboxList.slice(0, planLimits[plan].maxInboxes);
       }
@@ -157,11 +158,11 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
 
       // Update subscription status based on both active status and cancellation flag
       if (subscription.cancel_at_period_end) {
-        user.subscription.status = "cancelled";
-        user.remainingQueries = 0;
-        user.dailyQueries = 0;
+        user.subscription.status = "active"; 
+        user.subscription.autoRenew = false;
       } else {
         user.subscription.status = subscription.status;
+        user.subscription.autoRenew = true;
       }
 
       // Always use the value from the fully retrieved subscription
@@ -170,9 +171,6 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
           subscription.current_period_end * 1000
         );
       }
-
-      // Update auto-renew status
-      user.subscription.autoRenew = !subscription.cancel_at_period_end;
 
       await user.save();
     } else if (event.type === "customer.subscription.deleted") {
@@ -187,6 +185,7 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
 
       user.subscription.status = "cancelled";
       user.subscription.endDate = new Date();
+      user.subscription.autoRenew = false;
       await user.save();
 
       await sendSubscriptionCancelEmail(user);
@@ -211,11 +210,12 @@ export const cancelSubscription = catchAsync(async (req, res, next) => {
       user.subscription.stripeSubscriptionId,
       { cancel_at_period_end: true }
     );
-    user.subscription.status = "cancelled";
+
+    // Keep status as active but mark as cancelled at period end
+    user.subscription.autoRenew = false;
     user.subscription.endDate = new Date(
       subscription.current_period_end * 1000
     );
-    user.subscription.autoRenew = false;
     await user.save();
 
     res.json({
@@ -228,6 +228,176 @@ export const cancelSubscription = catchAsync(async (req, res, next) => {
     return next(new ApiError("Failed to cancel subscription", 500));
   }
 });
+
+export const cancelAutoRenew = catchAsync(async (req, res, next) => {
+  const user = await User.findById(req.user.id);
+  if (!user || !user.subscription.stripeSubscriptionId) {
+    return next(new ApiError("No active subscription found", 400));
+  }
+
+  try {
+    const subscription = await stripe.subscriptions.update(
+      user.subscription.stripeSubscriptionId,
+      { cancel_at_period_end: true }
+    );
+
+    // Keep the subscription active for the current period
+    user.subscription.autoRenew = false;
+    user.subscription.endDate = new Date(
+      subscription.current_period_end * 1000
+    );
+    await user.save();
+
+    res.json({
+      success: true,
+      message:
+        "Auto-renew has been disabled. Your subscription will remain active until the end of the current billing period.",
+      expiryDate: user.subscription.endDate,
+    });
+  } catch (error) {
+    console.error("Error cancelling auto-renew:", error);
+    return next(new ApiError("Failed to cancel auto-renew", 500));
+  }
+});
+
+export const adminCancelUserSubscription = catchAsync(
+  async (req, res, next) => {
+    // Check if the requesting user is an admin
+    if (req.user.role !== "admin" && req.user.role !== "super_admin") {
+      return next(new ApiError("Unauthorized access", 403));
+    }
+
+    const { userId } = req.body;
+    if (!userId) {
+      return next(new ApiError("User ID is required", 400));
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return next(new ApiError("User not found", 404));
+    }
+
+    if (!user.subscription.stripeSubscriptionId) {
+      return next(
+        new ApiError("No active subscription found for this user", 400)
+      );
+    }
+
+    try {
+      // Immediately cancel the subscription
+      await stripe.subscriptions.del(user.subscription.stripeSubscriptionId);
+
+      // Update user subscription details
+      user.subscription.status = "cancelled";
+      user.subscription.endDate = new Date();
+      user.subscription.autoRenew = false;
+      user.subscription.remainingQueries = 0;
+      await user.save();
+
+      // Send cancellation email
+      await sendSubscriptionCancelEmail(user);
+
+      res.json({
+        success: true,
+        message: "User subscription cancelled successfully by admin",
+        user: {
+          id: user._id,
+          email: user.email,
+          subscriptionStatus: user.subscription.status,
+          endDate: user.subscription.endDate,
+        },
+      });
+    } catch (error) {
+      console.error("Error cancelling subscription:", error);
+      return next(
+        new ApiError(`Failed to cancel subscription: ${error.message}`, 500)
+      );
+    }
+  }
+);
+
+export const adminTotalEarningByUserSubscription = catchAsync(
+  async (req, res, next) => {
+    // Check if the requesting user is an admin
+    if (req.user.role !== "admin" && req.user.role !== "super_admin") {
+      return next(new ApiError("Unauthorized access", 403));
+    }
+
+    const { userId } = req.body;
+    if (!userId) {
+      return next(new ApiError("User ID is required", 400));
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return next(new ApiError("User not found", 404));
+    }
+
+    if (!user.subscription.stripeSubscriptionId) {
+      return next(
+        new ApiError("No active subscription found for this user", 400)
+      );
+    }
+
+    try {
+      // Get subscription details
+      const subscription = await stripe.subscriptions.retrieve(
+        user.subscription.stripeSubscriptionId
+      );
+
+      // Get all invoices for this subscription
+      const invoices = await stripe.invoices.list({
+        subscription: user.subscription.stripeSubscriptionId,
+        limit: 10000000, 
+      });
+
+      // Calculate total paid amount
+      let totalEarnings = 0;
+      invoices.data.forEach((invoice) => {
+        if (invoice.status === "paid") {
+          totalEarnings += invoice.amount_paid / 100; 
+        }
+      });
+
+      // Get current plan details
+      const currentPlan = subscription.items.data[0].price;
+      const planInfo = {
+        name: currentPlan.nickname || getPlanFromPriceId(currentPlan.id),
+        amount: currentPlan.unit_amount / 100, 
+        currency: currentPlan.currency,
+        interval: currentPlan.recurring
+          ? currentPlan.recurring.interval
+          : "unknown",
+      };
+
+      res.json({
+        success: true,
+        totalEarnings,
+        currency: "USD", 
+        subscriptionDetails: {
+          plan: planInfo,
+          status: subscription.status,
+          currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+          cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        },
+        paymentHistory: invoices.data.map((invoice) => ({
+          id: invoice.id,
+          date: new Date(invoice.created * 1000),
+          amount: invoice.amount_paid / 100,
+          status: invoice.status,
+        })),
+      });
+    } catch (error) {
+      console.error("Error retrieving subscription data:", error);
+      return next(
+        new ApiError(
+          `Failed to retrieve subscription data: ${error.message}`,
+          500
+        )
+      );
+    }
+  }
+);
 
 const getStripePriceId = (plan) => {
   return {
