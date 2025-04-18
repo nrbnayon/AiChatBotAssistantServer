@@ -23,19 +23,19 @@ const planLimits = {
 
 export const createCheckoutSession = catchAsync(async (req, res, next) => {
   console.log("Request body:", req.body);
-  
+
   // Check if request body exists
   if (!req.body || Object.keys(req.body).length === 0) {
     return next(new ApiError("Missing request body", 400));
   }
-  
+
   const { plan } = req.body;
-  
+
   // Validate that plan is provided
   if (!plan) {
     return next(new ApiError("Plan is required", 400));
   }
-  
+
   const userId = req.user.id;
   const user = await User.findById(userId);
 
@@ -69,6 +69,7 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
   res.json({ sessionId: session.id });
 });
 
+// Fixed handleWebhook function for stripeController.js
 export const handleWebhook = catchAsync(async (req, res, next) => {
   const sig = req.headers["stripe-signature"];
   let event;
@@ -108,10 +109,18 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
       user.subscription.status = "active";
       user.subscription.dailyQueries = planLimits[plan].dailyQueries;
       user.subscription.remainingQueries = planLimits[plan].dailyQueries;
-      user.subscription.startDate = new Date(subscription.start_date * 1000);
-      user.subscription.endDate = new Date(
-        subscription.current_period_end * 1000
-      );
+
+      // Add safety checks for timestamp values
+      if (subscription.start_date) {
+        user.subscription.startDate = new Date(subscription.start_date * 1000);
+      }
+
+      if (subscription.current_period_end) {
+        user.subscription.endDate = new Date(
+          subscription.current_period_end * 1000
+        );
+      }
+
       user.subscription.stripeSubscriptionId = subscription.id;
       if (user.inboxList.length > planLimits[plan].maxInboxes) {
         user.inboxList = user.inboxList.slice(0, planLimits[plan].maxInboxes);
@@ -120,20 +129,51 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
 
       await sendSubscriptionSuccessEmail(user);
     } else if (event.type === "customer.subscription.updated") {
-      const subscription = event.data.object;
+      const subscriptionEventData = event.data.object;
+
+      // Retrieve the full subscription details from Stripe
+      const subscription = await stripe.subscriptions.retrieve(
+        subscriptionEventData.id
+      );
+
+      console.log(
+        "Full subscription data:",
+        JSON.stringify({
+          id: subscription.id,
+          status: subscription.status,
+          current_period_end: subscription.current_period_end,
+          cancel_at_period_end: subscription.cancel_at_period_end,
+        })
+      );
+
       const user = await User.findOne({
         "subscription.stripeSubscriptionId": subscription.id,
       });
+
       if (!user) {
         console.error(`User not found for subscription ID: ${subscription.id}`);
         return res.json({ received: true });
       }
 
-      user.subscription.status =
-        subscription.status === "active" ? "active" : "cancelled";
-      user.subscription.endDate = new Date(
-        subscription.current_period_end * 1000
-      );
+      // Update subscription status based on both active status and cancellation flag
+      if (subscription.cancel_at_period_end) {
+        user.subscription.status = "cancelled";
+        user.remainingQueries = 0;
+        user.dailyQueries = 0;
+      } else {
+        user.subscription.status = subscription.status;
+      }
+
+      // Always use the value from the fully retrieved subscription
+      if (subscription.current_period_end) {
+        user.subscription.endDate = new Date(
+          subscription.current_period_end * 1000
+        );
+      }
+
+      // Update auto-renew status
+      user.subscription.autoRenew = !subscription.cancel_at_period_end;
+
       await user.save();
     } else if (event.type === "customer.subscription.deleted") {
       const subscription = event.data.object;
@@ -153,6 +193,7 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
     }
   } catch (err) {
     console.error(`Error processing webhook event ${event.type}:`, err.message);
+    console.error(err.stack);
     return next(new ApiError(`Webhook processing error: ${err.message}`, 500));
   }
 
@@ -170,8 +211,7 @@ export const cancelSubscription = catchAsync(async (req, res, next) => {
       user.subscription.stripeSubscriptionId,
       { cancel_at_period_end: true }
     );
-    user.subscription.status =
-      subscription.status === "active" ? "active" : "cancelled";
+    user.subscription.status = "cancelled";
     user.subscription.endDate = new Date(
       subscription.current_period_end * 1000
     );
