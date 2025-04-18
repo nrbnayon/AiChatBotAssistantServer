@@ -33,7 +33,7 @@ const subscriptionSchema = new mongoose.Schema({
   dailyQueries: { type: Number, default: 0 },
   dailyTokens: { type: Number, default: 0 },
   autoRenew: { type: Boolean, default: true },
-  startDate: { type: Date, default: Date.now },
+  startDate: { type: Date },
   endDate: { type: Date },
   stripeSubscriptionId: { type: String },
   lastRequestDate: { type: Date },

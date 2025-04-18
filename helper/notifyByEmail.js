@@ -14,13 +14,13 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// Company constants 
+// Company constants
 const companyName = "Inbox-Buddy.ai";
 const supportEmail = "support@inboxbuddy.com";
 const year = new Date().getFullYear();
 const logoUrl = "https://i.ibb.co.com/G3M856f9/logo.png";
-const primaryColor = "#4361EE"; 
-const accentColor = "#3A0CA3"; 
+const primaryColor = "#4361EE";
+const accentColor = "#3A0CA3";
 const lightGray = "#f8f9fa";
 const darkGray = "#343a40";
 
@@ -205,6 +205,77 @@ const firstLoginConfirmationTemplate = `
           <td style="background-color: ${lightGray}; padding: 25px; text-align: center; color: ${darkGray};">
             <p style="margin-bottom: 10px;">&copy; ${year} ${companyName}. All rights reserved.</p>
             <p style="margin: 0;"><a href="https://inboxbuddy.com/unsubscribe" style="color: ${primaryColor}; text-decoration: none;">Unsubscribe</a> | <a href="https://inboxbuddy.com/privacy" style="color: ${primaryColor}; text-decoration: none;">Privacy Policy</a></p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+`;
+
+// Subscription Success Template
+const subscriptionSuccessTemplate = `
+<table width="100%" cellspacing="0" cellpadding="0" style="${commonStyles}">
+  <tr>
+    <td align="center" style="background-color: #f4f5f7; padding: 20px;">
+      <table width="600" cellspacing="0" cellpadding="0" style="border-radius: 8px; overflow: hidden; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+        <tr>
+          <td style="background-color: ${primaryColor}; padding: 30px; text-align: center;">
+            <img src="${logoUrl}" alt="${companyName} Logo" style="max-width: 180px;" />
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 40px 30px; background-color: #ffffff;">
+            <h2 style="color: ${accentColor}; margin-top: 0; font-weight: 600;">Subscription Activated Successfully!</h2>
+            <p style="color: #555;">Hello {{name}},</p>
+            <p style="color: #555;">Great news! Your {{plan}} subscription with ${companyName} is now active.</p>
+            <div style="background-color: ${lightGray}; border-left: 4px solid ${primaryColor}; padding: 15px; margin: 20px 0;">
+              <p style="margin: 0; color: #444;">Your subscription started on {{startDate}} and will renew on {{endDate}} unless cancelled.</p>
+            </div>
+            <p style="color: #555;">Need help? Contact our support team at <a href="mailto:${supportEmail}" style="color: ${primaryColor}; text-decoration: none; font-weight: 500;">${supportEmail}</a>.</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="https://inboxbuddy.com/dashboard" style="background-color: ${primaryColor}; color: white; padding: 12px 28px; text-decoration: none; display: inline-block; border-radius: 4px; font-weight: 500; letter-spacing: 0.3px;">Go to Dashboard</a>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="background-color: ${lightGray}; padding: 25px; text-align: center; color: ${darkGray};">
+            <p style="margin-bottom: 10px;">© ${year} ${companyName}. All rights reserved.</p>
+            <p style="margin: 0;"><a href="https://inboxbuddy.com/unsubscribe" style="color: ${primaryColor}; text-decoration: none;">Unsubscribe</a> | <a href="https://inboxbuddy.com/privacy" style="color: ${primaryColor}; text-decoration: none;">Privacy Policy</a></p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+`;
+
+// Subscription Cancellation Template
+const subscriptionCancelTemplate = `
+<table width="100%" cellspacing="0" cellpadding="0" style="${commonStyles}">
+  <tr>
+    <td align="center" style="background-color: #f4f5f7; padding: 20px;">
+      <table width="600" cellspacing="0" cellpadding="0" style="border-radius: 8px; overflow: hidden; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+        <tr>
+          <td style="background-color: ${primaryColor}; padding: 30px; text-align: center;">
+            <img src="${logoUrl}" alt="${companyName} Logo" style="max-width: 180px;" />
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 40px 30px; background-color: #ffffff;">
+            <h2 style="color: ${accentColor}; margin-top: 0; font-weight: 600;">Subscription Cancelled</h2>
+            <p style="color: #555;">Hello {{name}},</p>
+            <p style="color: #555;">Your subscription with ${companyName} has been cancelled.</p>
+            <div style="background-color: ${lightGray}; border-left: 4px solid ${primaryColor}; padding: 15px; margin: 20px 0;">
+              <p style="margin: 0; color: #444;">Your access will remain active until {{endDate}}. We’re sorry to see you go!</p>
+            </div>
+            <p style="color: #555;">Questions? Reach out to us at <a href="mailto:${supportEmail}" style="color: ${primaryColor}; text-decoration: none; font-weight: 500;">${supportEmail}</a>.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background-color: ${lightGray}; padding: 25px; text-align: center; color: ${darkGray};">
+            <p style="margin-bottom: 10px;">© ${year} ${companyName}. All rights reserved.</p>
+            <p style="margin: 0;"><a href="https://inboxbuddy.com/privacy" style="color: ${primaryColor}; text-decoration: none;">Privacy Policy</a></p>
           </td>
         </tr>
       </table>
