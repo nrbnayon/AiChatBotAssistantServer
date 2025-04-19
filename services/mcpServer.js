@@ -416,7 +416,7 @@ class MCPServer {
                     e.subject || "No subject"
                   }\n**Date:** ${date}\n**ID:** ${e.id}${attachmentNote}\n${
                     e.snippet || "No preview available"
-                  }\n`;
+                  }\n **Body:** ${e.body} || No preview available`;
                 })
                 .join("\n");
             }
@@ -1438,8 +1438,8 @@ class MCPServer {
           const score = Math.round(email.score);
           const snippet = email.snippet ? `\nSnippet: ${email.snippet}` : "";
           const body = email.body
-            ? `\nContent: ${email.body.substring(0, 500)}${
-                email.body.length > 500 ? "..." : ""
+            ? `\nContent: ${email.body.substring(0, 1000)}${
+                email.body.length > 1000 ? "..." : ""
               }`
             : "";
           return `**${index + 1}.** From: ${email.from}\nSubject: ${
