@@ -70,13 +70,13 @@ const oauthCallback = catchAsync(async (req, res) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 24 * 60 * 60 * 1000,
+    maxAge: jwtHelper.getAccessTokenExpiryMs(),
   });
   safeCookie.set(res, "refreshToken", refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 30 * 24 * 60 * 60 * 1000,
+    maxAge: jwtHelper.getRefreshTokenExpiryMs(),
   });
 
   const redirectUrl = `${getFrontendUrl}/auth-callback?accessToken=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(
@@ -108,13 +108,13 @@ const localLogin = catchAsync(async (req, res, next) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      maxAge: 24 * 60 * 60 * 1000,
+      maxAge: jwtHelper.getAccessTokenExpiryMs(),
     });
     safeCookie.set(res, "refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      maxAge: 30 * 24 * 60 * 60 * 1000,
+      maxAge: jwtHelper.getRefreshTokenExpiryMs(),
     });
 
     res.json({
@@ -165,13 +165,13 @@ const register = catchAsync(async (req, res, next) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 24 * 60 * 60 * 1000,
+    maxAge: jwtHelper.getAccessTokenExpiryMs(),
   });
   safeCookie.set(res, "refreshToken", refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 30 * 24 * 60 * 60 * 1000,
+    maxAge: jwtHelper.getRefreshTokenExpiryMs(),
   });
 
   res.json({
@@ -184,74 +184,75 @@ const register = catchAsync(async (req, res, next) => {
 });
 
 const refresh = catchAsync(async (req, res, next) => {
-  // Get refresh token from cookie first, then from request body as fallback
+  // Get refresh token from cookie OR request body
   const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
 
   if (!refreshToken) {
     return next(new AppError("Refresh token required", 401));
   }
 
-  let decoded;
   try {
-    decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+    const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+    const user = await User.findById(decoded.id);
+
+    if (!user) {
+      return next(new AppError("User not found", 401));
+    }
+
+    // Generate new tokens
+    const { accessToken, refreshToken: newRefreshToken } = generateTokens(user);
+
+    // Update user's refresh token
+    user.refreshToken = newRefreshToken;
+    await user.save();
+
+    // Set cookies with appropriate settings
+    safeCookie.set(res, "accessToken", accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: jwtHelper.getAccessTokenExpiryMs(),
+      path: "/",
+    });
+
+    safeCookie.set(res, "refreshToken", newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: jwtHelper.getRefreshTokenExpiryMs(), // 30 days
+      path: "/",
+    });
+
+    // Return tokens in response for clients that need them directly
+    return res.json({
+      success: true,
+      accessToken,
+      refreshToken: newRefreshToken,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name || "User",
+        role: user.role,
+      },
+    });
   } catch (error) {
-    // If token verification fails, clear invalid cookies
+    // Clear cookies on verification error
     safeCookie.clear(res, "accessToken", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      path: "/",
     });
+
     safeCookie.clear(res, "refreshToken", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      path: "/",
     });
 
     return next(new AppError("Invalid or expired refresh token", 401));
   }
-
-  const user = await User.findById(decoded.id);
-
-  // Check if user exists and refresh token is valid
-  // Optional: uncomment if you're strictly validating stored refresh tokens
-  // if (!user || user.refreshToken !== refreshToken) {
-  if (!user) {
-    return next(new AppError("Invalid refresh token or user not found", 401));
-  }
-
-  // Generate new tokens
-  const { accessToken, refreshToken: newRefreshToken } = generateTokens(user);
-
-  // Update user's refresh token in database
-  user.refreshToken = newRefreshToken;
-  await user.save();
-
-  // Set cookies with new tokens
-  safeCookie.set(res, "accessToken", accessToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 24 * 60 * 60 * 1000,
-  });
-  safeCookie.set(res, "refreshToken", newRefreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 30 * 24 * 60 * 60 * 1000,
-  });
-
-  // Return tokens in response
-  res.json({
-    success: true,
-    accessToken,
-    refreshToken: newRefreshToken,
-    user: {
-      id: user._id,
-      email: user.email,
-      name: user.name || "User",
-      role: user.role,
-    },
-  });
 });
 
 const logout = catchAsync(async (req, res, next) => {

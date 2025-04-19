@@ -23,7 +23,11 @@ const createAccessToken = (payload) => {
       "JWT secret is not defined"
     );
   }
-  return createToken(payload, process.env.JWT_SECRET, "1d");
+  return createToken(
+    payload,
+    process.env.JWT_SECRET,
+    process.env.JWT_EXPIRE_IN || "1d"
+  );
 };
 
 const createRefreshToken = (payload) => {
@@ -33,7 +37,41 @@ const createRefreshToken = (payload) => {
       "JWT refresh secret is not defined"
     );
   }
-  return createToken(payload, process.env.REFRESH_TOKEN_SECRET, "30d");
+  return createToken(
+    payload,
+    process.env.REFRESH_TOKEN_SECRET,
+    process.env.JWT_REFRESH_EXPIRES_IN || "30d"
+  );
+};
+
+// Helper function to convert JWT expiry format to milliseconds
+function convertExpiryToMs(expiryString) {
+  const unit = expiryString.slice(-1);
+  const value = parseInt(expiryString.slice(0, -1));
+
+  switch (unit) {
+    case "s":
+      return value * 1000;
+    case "m":
+      return value * 60 * 1000;
+    case "h":
+      return value * 60 * 60 * 1000;
+    case "d":
+      return value * 24 * 60 * 60 * 1000;
+    default:
+      return 15 * 24 * 60 * 60 * 1000; // Default to 15 days
+  }
+}
+
+// Convert JWT expiration time string to milliseconds for cookies
+const getAccessTokenExpiryMs = () => {
+  const expiry = process.env.JWT_EXPIRE_IN || "15d";
+  return convertExpiryToMs(expiry);
+};
+
+const getRefreshTokenExpiryMs = () => {
+  const expiry = process.env.JWT_REFRESH_EXPIRES_IN || "30d";
+  return convertExpiryToMs(expiry);
 };
 
 export const jwtHelper = {
@@ -41,4 +79,6 @@ export const jwtHelper = {
   verifyToken,
   createAccessToken,
   createRefreshToken,
+  getAccessTokenExpiryMs,
+  getRefreshTokenExpiryMs,
 };

@@ -77,7 +77,7 @@ app.use(
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000,
+      maxAge: 15 * 24 * 60 * 60 * 1000, // 15 days
     },
   })
 );
@@ -91,6 +91,7 @@ app.use(
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
+        console.log(`Origin ${origin} not allowed by CORS`);
         callback(new Error("Not allowed by CORS"));
       }
     },

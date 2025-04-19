@@ -130,7 +130,7 @@ const oauthCallback = async (
       user[accessTokenField] = encryptedAccessToken;
       user[refreshTokenField] =
         encryptedRefreshToken || user[refreshTokenField];
-      user[expiryField] = Date.now() + 24 * 3600 * 1000; // 24 hours
+      user[expiryField] = Date.now() + 24 * 3600 * 1000; 
       user.authProvider = provider;
       user.verified = true;
       user.lastSync = new Date();

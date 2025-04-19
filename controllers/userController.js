@@ -9,6 +9,7 @@ import AiModel from "../models/AiModel.js";
 import SystemMessage from "../models/SystemMessage.js";
 import { safeCookie } from "../helper/cookieHelper.js";
 import { generateTokens } from "./authController.js";
+import { jwtHelper } from "../helper/jwtHelper.js";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const getIncome = catchAsync(async (req, res, next) => {
@@ -259,13 +260,13 @@ const createUser = catchAsync(async (req, res, next) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 24 * 60 * 60 * 1000,
+    maxAge: jwtHelper.getAccessTokenExpiryMs(),
   });
   safeCookie.set(res, "refreshToken", refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 30 * 24 * 60 * 60 * 1000,
+    maxAge: jwtHelper.getRefreshTokenExpiryMs(),
   });
 
   res

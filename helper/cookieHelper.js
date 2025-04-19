@@ -1,3 +1,5 @@
+import { jwtHelper } from "./jwtHelper";
+
 // helper/cookieHelper.js
 const defaultConfig = {
   cookies: {
@@ -18,12 +20,12 @@ const getBaseOptions = () => ({
 export const cookieHelper = {
   getAccessTokenOptions: () => ({
     ...getBaseOptions(),
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    maxAge: jwtHelper.getAccessTokenExpiryMs(),
   }),
 
   getRefreshTokenOptions: () => ({
     ...getBaseOptions(),
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    maxAge: jwtHelper.getRefreshTokenExpiryMs(), // 30 days
   }),
 };
 

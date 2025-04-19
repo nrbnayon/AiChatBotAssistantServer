@@ -24,6 +24,9 @@ const auth = (...roles) =>
       (req.headers.authorization?.startsWith("Bearer ")
         ? req.headers.authorization.substring(7)
         : undefined);
+    
+    logger.info("Access token from cookie or header", accessToken);
+    logger.info("Refresh token from header", req.cookies?.refreshToken);
 
     // If no access token is provided at all, check for refresh token
     if (!accessToken) {
@@ -69,6 +72,8 @@ const auth = (...roles) =>
       if (error instanceof jwt.TokenExpiredError) {
         const refreshToken = req.cookies?.refreshToken;
 
+        console.log("Get refresh token from cookie", refreshToken);
+
         // If refresh token exists, use it to get a new access token
         if (refreshToken) {
           return handleTokenRefresh(refreshToken, req, res, next, roles);
@@ -110,9 +115,9 @@ const handleTokenRefresh = async (refreshToken, req, res, next, roles) => {
 
     // Optional: Uncomment if you want to strictly verify the stored refresh token
     // This adds security but may cause issues if tokens are not consistently stored
-    // if (user.refreshToken !== refreshToken) {
-    //   throw new ApiError(StatusCodes.UNAUTHORIZED, "Invalid refresh token");
-    // }
+    if (user.refreshToken !== refreshToken) {
+      throw new ApiError(StatusCodes.UNAUTHORIZED, "Invalid refresh token");
+    }
 
     // Check user roles if specified
     if (roles.length && !roles.includes(user.role)) {
