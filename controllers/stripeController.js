@@ -117,9 +117,20 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
       const userId = session.client_reference_id;
+
+      // Retrieve the full subscription details from Stripe
       const subscription = await stripe.subscriptions.retrieve(
-        session.subscription
+        session.subscription,
+        { expand: ["latest_invoice"] }
       );
+
+      console.log("Stripe subscription details:", {
+        id: subscription.id,
+        status: subscription.status,
+        start_date: subscription.start_date,
+        current_period_end: subscription.current_period_end,
+      });
+
       const priceId = subscription.items.data[0].price.id;
       const plan = getPlanFromPriceId(priceId);
 
@@ -139,10 +150,18 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
         user.subscription.startDate = new Date(subscription.start_date * 1000);
       }
 
+      // Handle end date with fallback
       if (subscription.current_period_end) {
         user.subscription.endDate = new Date(
           subscription.current_period_end * 1000
         );
+      } else if (subscription.start_date) {
+        // Fallback: Add 30 days to the start date for monthly subscription
+        const startDate = new Date(subscription.start_date * 1000);
+        const endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + 30);
+        user.subscription.endDate = endDate;
+        console.log("Using fallback to calculate end date:", endDate);
       }
 
       user.subscription.stripeSubscriptionId = subscription.id;
@@ -151,7 +170,14 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
       if (user.inboxList.length > planLimits[plan].maxInboxes) {
         user.inboxList = user.inboxList.slice(0, planLimits[plan].maxInboxes);
       }
+
       await user.save();
+      console.log("User subscription updated successfully:", {
+        id: user._id,
+        plan: user.subscription.plan,
+        startDate: user.subscription.startDate,
+        endDate: user.subscription.endDate,
+      });
 
       await sendSubscriptionSuccessEmail(user);
     } else if (event.type === "customer.subscription.updated") {
@@ -159,7 +185,8 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
 
       // Retrieve the full subscription details from Stripe
       const subscription = await stripe.subscriptions.retrieve(
-        subscriptionEventData.id
+        subscriptionEventData.id,
+        { expand: ["latest_invoice"] }
       );
 
       console.log(
@@ -195,9 +222,22 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
         user.subscription.endDate = new Date(
           subscription.current_period_end * 1000
         );
+      } else if (user.subscription.startDate) {
+        // Fallback: Add 30 days to the start date for monthly subscription
+        const startDate = new Date(user.subscription.startDate);
+        const endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + 30);
+        user.subscription.endDate = endDate;
+        console.log("Using fallback to calculate end date on update:", endDate);
       }
 
       await user.save();
+      console.log("User subscription updated on update event:", {
+        id: user._id,
+        status: user.subscription.status,
+        autoRenew: user.subscription.autoRenew,
+        endDate: user.subscription.endDate,
+      });
     } else if (event.type === "customer.subscription.deleted") {
       const subscription = event.data.object;
       const user = await User.findOne({
@@ -211,7 +251,13 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
       user.subscription.status = "cancelled";
       user.subscription.endDate = new Date();
       user.subscription.autoRenew = false;
+      user.subscription.remainingQueries = 0;
       await user.save();
+      console.log("User subscription cancelled:", {
+        id: user._id,
+        status: user.subscription.status,
+        endDate: user.subscription.endDate,
+      });
 
       await sendSubscriptionCancelEmail(user);
     }
