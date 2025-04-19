@@ -416,7 +416,9 @@ class MCPServer {
                     e.subject || "No subject"
                   }\n**Date:** ${date}\n**ID:** ${e.id}${attachmentNote}\n${
                     e.snippet || "No preview available"
-                  }\n **Body:** ${e.body} || No preview available`;
+                  }\n 
+                  // **Body:** ${e.body} || No preview available
+                  `;
                 })
                 .join("\n");
             }
