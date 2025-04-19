@@ -129,7 +129,7 @@ router.post(
 router.post("/register", authRateLimit(), register);
 
 // Token refresh
-router.post("/refresh", authRateLimit(), refresh);
+router.post("/refresh", refresh);
 
 // User logout (requires authentication)
 router.get("/logout", auth(), logout);
