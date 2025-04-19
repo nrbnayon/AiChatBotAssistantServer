@@ -1,4 +1,4 @@
-import { jwtHelper } from "./jwtHelper";
+import { jwtHelper } from "./jwtHelper.js";
 
 // helper/cookieHelper.js
 const defaultConfig = {
