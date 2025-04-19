@@ -4,6 +4,7 @@ import {
   createCheckoutSession,
   cancelSubscription,
   cancelAutoRenew,
+  enableAutoRenew,
   adminCancelUserSubscription,
   adminTotalEarningByUserSubscription,
 } from "../controllers/stripeController.js";
@@ -17,13 +18,11 @@ router.post(
   "/create-checkout-session",
   auth(),
   setRefreshedTokenCookie,
-  rateLimitMiddleware(
-    {
-      windowMs: 5 * 60 * 1000, 
-      max: 3, 
-      message: "You can only create three checkout session every 5 minutes.",
-    }
-  ),
+  rateLimitMiddleware({
+    windowMs: 5 * 60 * 1000,
+    max: 3,
+    message: "You can only create three checkout session every 5 minutes.",
+  }),
   createCheckoutSession
 );
 
@@ -32,13 +31,11 @@ router.post(
   "/cancel-subscription",
   auth(),
   setRefreshedTokenCookie,
-  rateLimitMiddleware(
-    {
-      windowMs: 5 * 60 * 1000, 
-      max: 3, 
-      message: "You can only cancel subscription three times every 5 minutes.",
-    }
-  ),
+  rateLimitMiddleware({
+    windowMs: 5 * 60 * 1000,
+    max: 3,
+    message: "You can only cancel subscription three times every 5 minutes.",
+  }),
   cancelSubscription
 );
 
@@ -47,20 +44,30 @@ router.post(
   "/cancel-auto-renew",
   auth(),
   setRefreshedTokenCookie,
-  rateLimitMiddleware(
-    {
-      windowMs: 5 * 60 * 1000, 
-      max: 1, 
-      message: "You can only cancel auto-renew one times every 5 minutes.",
-    }
-  ),
+  rateLimitMiddleware({
+    windowMs: 5 * 60 * 1000,
+    max: 1,
+    message: "You can only cancel auto-renew one times every 5 minutes.",
+  }),
   cancelAutoRenew
+);
+
+router.post(
+  "/enable-auto-renew",
+  auth(),
+  setRefreshedTokenCookie,
+  rateLimitMiddleware({
+    windowMs: 5 * 60 * 1000,
+    max: 1,
+    message: "You can only enable auto-renew once every 5 minutes.",
+  }),
+  enableAutoRenew
 );
 
 // Admin/Super-Admin Cancel user subscription
 router.post(
   "/admin/cancel-user-subscription",
-  auth("admin", "super_admin"), 
+  auth("admin", "super_admin"),
   setRefreshedTokenCookie,
   rateLimitMiddleware(),
   adminCancelUserSubscription

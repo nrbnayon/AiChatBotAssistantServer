@@ -49,13 +49,38 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
     return next(new ApiError("Invalid plan", 400));
   }
 
+  // Check if the user already has an active subscription
   if (
     user.subscription.status === "active" &&
     user.subscription.endDate > new Date()
   ) {
-    return next(new ApiError("Subscription already active", 400));
+    // Check if the new plan is the same as the current plan
+    if (user.subscription.plan === plan) {
+      return next(new ApiError("You are already subscribed to this plan", 400));
+    }
+
+    // Cancel the existing subscription immediately
+    if (user.subscription.stripeSubscriptionId) {
+      try {
+        await stripe.subscriptions.cancel(
+          user.subscription.stripeSubscriptionId
+        );
+        user.subscription.status = "cancelled";
+        user.subscription.endDate = new Date();
+        user.subscription.autoRenew = false;
+        user.subscription.remainingQueries = 0;
+        await user.save();
+        await sendSubscriptionCancelEmail(user);
+      } catch (error) {
+        console.error("Error cancelling existing subscription:", error);
+        return next(
+          new ApiError("Failed to cancel existing subscription", 500)
+        );
+      }
+    }
   }
 
+  // Create a new checkout session for the selected plan
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ["card"],
     line_items: [{ price: getStripePriceId(plan), quantity: 1 }],
@@ -158,7 +183,7 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
 
       // Update subscription status based on both active status and cancellation flag
       if (subscription.cancel_at_period_end) {
-        user.subscription.status = "active"; 
+        user.subscription.status = "active";
         user.subscription.autoRenew = false;
       } else {
         user.subscription.status = subscription.status;
@@ -226,6 +251,44 @@ export const cancelSubscription = catchAsync(async (req, res, next) => {
   } catch (error) {
     console.error("Error cancelling subscription:", error);
     return next(new ApiError("Failed to cancel subscription", 500));
+  }
+});
+
+export const enableAutoRenew = catchAsync(async (req, res, next) => {
+  const user = await User.findById(req.user.id);
+  if (!user || !user.subscription.stripeSubscriptionId) {
+    return next(new ApiError("No active subscription found", 400));
+  }
+
+  try {
+    // If subscription is not active, it can't be renewed
+    if (user.subscription.status !== "active") {
+      return next(new ApiError("Subscription is not active", 400));
+    }
+
+    // Update the subscription to remove cancel_at_period_end flag
+    const subscription = await stripe.subscriptions.update(
+      user.subscription.stripeSubscriptionId,
+      { cancel_at_period_end: false }
+    );
+
+    // Update user data
+    user.subscription.autoRenew = true;
+    // Make sure to keep the end date accurate
+    user.subscription.endDate = new Date(
+      subscription.current_period_end * 1000
+    );
+    await user.save();
+
+    res.json({
+      success: true,
+      message:
+        "Auto-renew has been enabled. Your subscription will automatically renew at the end of the current billing period.",
+      renewalDate: user.subscription.endDate,
+    });
+  } catch (error) {
+    console.error("Error enabling auto-renew:", error);
+    return next(new ApiError("Failed to enable auto-renew", 500));
   }
 });
 
@@ -348,14 +411,14 @@ export const adminTotalEarningByUserSubscription = catchAsync(
       // Get all invoices for this subscription
       const invoices = await stripe.invoices.list({
         subscription: user.subscription.stripeSubscriptionId,
-        limit: 10000000, 
+        limit: 10000000,
       });
 
       // Calculate total paid amount
       let totalEarnings = 0;
       invoices.data.forEach((invoice) => {
         if (invoice.status === "paid") {
-          totalEarnings += invoice.amount_paid / 100; 
+          totalEarnings += invoice.amount_paid / 100;
         }
       });
 
@@ -363,7 +426,7 @@ export const adminTotalEarningByUserSubscription = catchAsync(
       const currentPlan = subscription.items.data[0].price;
       const planInfo = {
         name: currentPlan.nickname || getPlanFromPriceId(currentPlan.id),
-        amount: currentPlan.unit_amount / 100, 
+        amount: currentPlan.unit_amount / 100,
         currency: currentPlan.currency,
         interval: currentPlan.recurring
           ? currentPlan.recurring.interval
@@ -373,7 +436,7 @@ export const adminTotalEarningByUserSubscription = catchAsync(
       res.json({
         success: true,
         totalEarnings,
-        currency: "USD", 
+        currency: "USD",
         subscriptionDetails: {
           plan: planInfo,
           status: subscription.status,
