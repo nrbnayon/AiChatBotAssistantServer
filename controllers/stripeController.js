@@ -1,4 +1,5 @@
 // controllers/stripeController.js
+// controllers/stripeController.js
 import Stripe from "stripe";
 import User from "../models/User.js";
 import { ApiError, catchAsync } from "../utils/errorHandler.js";
@@ -26,27 +27,27 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
 
   // Check if request body exists
   if (!req.body || Object.keys(req.body).length === 0) {
-    return next(new ApiError("Missing request body", 400));
+    return next(new ApiError(400, "Missing request body"));
   }
 
   const { plan } = req.body;
 
   // Validate that plan is provided
   if (!plan) {
-    return next(new ApiError("Plan is required", 400));
+    return next(new ApiError(400, "Plan is required"));
   }
 
   const userId = req.user.id;
   const user = await User.findById(userId);
 
   if (!user) {
-    return next(new ApiError("User not found", 404));
+    return next(new ApiError(404, "User not found"));
   }
 
   console.log("Creating checkout session for plan:", plan);
 
   if (!["basic", "premium", "enterprise"].includes(plan)) {
-    return next(new ApiError("Invalid plan", 400));
+    return next(new ApiError(400, "Invalid plan"));
   }
 
   // Check if the user already has an active subscription
@@ -56,7 +57,7 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
   ) {
     // Check if the new plan is the same as the current plan
     if (user.subscription.plan === plan) {
-      return next(new ApiError("You are already subscribed to this plan", 400));
+      return next(new ApiError(400, "You are already subscribed to this plan"));
     }
 
     // Cancel the existing subscription immediately
@@ -74,7 +75,7 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
       } catch (error) {
         console.error("Error cancelling existing subscription:", error);
         return next(
-          new ApiError("Failed to cancel existing subscription", 500)
+          new ApiError(500, "Failed to cancel existing subscription")
         );
       }
     }
@@ -110,7 +111,7 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
     console.log("Webhook event received:", event.type);
   } catch (err) {
     console.error("Webhook signature verification failed:", err.message);
-    return next(new ApiError(`Webhook Error: ${err.message}`, 400));
+    return next(new ApiError(400, `Webhook Error: ${err.message}`));
   }
 
   try {
@@ -264,7 +265,7 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
   } catch (err) {
     console.error(`Error processing webhook event ${event.type}:`, err.message);
     console.error(err.stack);
-    return next(new ApiError(`Webhook processing error: ${err.message}`, 500));
+    return next(new ApiError(500, `Webhook processing error: ${err.message}`));
   }
 
   res.json({ received: true });
@@ -273,44 +274,68 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
 export const cancelSubscription = catchAsync(async (req, res, next) => {
   const user = await User.findById(req.user.id);
   if (!user || !user.subscription.stripeSubscriptionId) {
-    return next(new ApiError("No active subscription found", 400));
+    return next(new ApiError(400, "No active subscription found"));
   }
 
   try {
-    const subscription = await stripe.subscriptions.update(
+    const subscription = await stripe.subscriptions.retrieve(
+      user.subscription.stripeSubscriptionId
+    );
+
+    // Update the subscription to cancel at period end
+    const updatedSubscription = await stripe.subscriptions.update(
       user.subscription.stripeSubscriptionId,
       { cancel_at_period_end: true }
     );
 
+    // Validate the period end timestamp before using it
+    let endDate;
+    if (updatedSubscription.current_period_end) {
+      endDate = new Date(updatedSubscription.current_period_end * 1000);
+
+      // Additional validation to ensure we have a valid date
+      if (isNaN(endDate.getTime())) {
+        console.warn("Invalid date from Stripe, using fallback calculation");
+        endDate = calculateFallbackEndDate(user.subscription.startDate);
+      }
+    } else {
+      // Fallback if current_period_end is missing
+      endDate = calculateFallbackEndDate(user.subscription.startDate);
+    }
+
     // Keep status as active but mark as cancelled at period end
     user.subscription.autoRenew = false;
-    user.subscription.endDate = new Date(
-      subscription.current_period_end * 1000
-    );
+    user.subscription.endDate = endDate;
     await user.save();
 
     res.json({
       success: true,
       message:
         "Subscription will be cancelled at the end of the billing period",
+      endDate: endDate,
     });
   } catch (error) {
     console.error("Error cancelling subscription:", error);
-    return next(new ApiError("Failed to cancel subscription", 500));
+    return next(new ApiError(500, "Failed to cancel subscription"));
   }
 });
 
 export const enableAutoRenew = catchAsync(async (req, res, next) => {
   const user = await User.findById(req.user.id);
   if (!user || !user.subscription.stripeSubscriptionId) {
-    return next(new ApiError("No active subscription found", 400));
+    return next(new ApiError(400, "No active subscription found"));
   }
 
   try {
     // If subscription is not active, it can't be renewed
     if (user.subscription.status !== "active") {
-      return next(new ApiError("Subscription is not active", 400));
+      return next(new ApiError(400, "Subscription is not active"));
     }
+
+    // First, retrieve the full subscription details
+    const existingSubscription = await stripe.subscriptions.retrieve(
+      user.subscription.stripeSubscriptionId
+    );
 
     // Update the subscription to remove cancel_at_period_end flag
     const subscription = await stripe.subscriptions.update(
@@ -318,12 +343,23 @@ export const enableAutoRenew = catchAsync(async (req, res, next) => {
       { cancel_at_period_end: false }
     );
 
+    // Validate the period end timestamp before using it
+    let endDate;
+    if (subscription.current_period_end) {
+      endDate = new Date(subscription.current_period_end * 1000);
+
+      // Additional validation to ensure we have a valid date
+      if (isNaN(endDate.getTime())) {
+        console.warn("Invalid date from Stripe, using fallback calculation");
+        endDate = calculateFallbackEndDate(user.subscription.startDate);
+      }
+    } else {
+      endDate = calculateFallbackEndDate(user.subscription.startDate);
+    }
+
     // Update user data
     user.subscription.autoRenew = true;
-    // Make sure to keep the end date accurate
-    user.subscription.endDate = new Date(
-      subscription.current_period_end * 1000
-    );
+    user.subscription.endDate = endDate;
     await user.save();
 
     res.json({
@@ -334,14 +370,14 @@ export const enableAutoRenew = catchAsync(async (req, res, next) => {
     });
   } catch (error) {
     console.error("Error enabling auto-renew:", error);
-    return next(new ApiError("Failed to enable auto-renew", 500));
+    return next(new ApiError(500, "Failed to enable auto-renew"));
   }
 });
 
 export const cancelAutoRenew = catchAsync(async (req, res, next) => {
   const user = await User.findById(req.user.id);
   if (!user || !user.subscription.stripeSubscriptionId) {
-    return next(new ApiError("No active subscription found", 400));
+    return next(new ApiError(400, "No active subscription found"));
   }
 
   try {
@@ -365,48 +401,75 @@ export const cancelAutoRenew = catchAsync(async (req, res, next) => {
     });
   } catch (error) {
     console.error("Error cancelling auto-renew:", error);
-    return next(new ApiError("Failed to cancel auto-renew", 500));
+    return next(new ApiError(500, "Failed to cancel auto-renew"));
   }
 });
 
 export const adminCancelUserSubscription = catchAsync(
   async (req, res, next) => {
-    // Check if the requesting user is an admin
     if (req.user.role !== "admin" && req.user.role !== "super_admin") {
-      return next(new ApiError("Unauthorized access", 403));
+      return next(new ApiError(403, "Unauthorized access"));
     }
-
     const { userId } = req.body;
     if (!userId) {
-      return next(new ApiError("User ID is required", 400));
+      return next(new ApiError(400, "User ID is required"));
     }
 
     const user = await User.findById(userId);
     if (!user) {
-      return next(new ApiError("User not found", 404));
+      return next(new ApiError(404, "User not found"));
     }
 
     if (!user.subscription.stripeSubscriptionId) {
       return next(
-        new ApiError("No active subscription found for this user", 400)
+        new ApiError(400, "No active subscription found for this user")
       );
     }
 
     try {
-      // Immediately cancel the subscription
-      await stripe.subscriptions.del(user.subscription.stripeSubscriptionId);
+      // Step 1: Retrieve the subscription to check its status
+      const subscription = await stripe.subscriptions.retrieve(
+        user.subscription.stripeSubscriptionId
+      );
 
-      // Update user subscription details
-      user.subscription.status = "cancelled";
-      user.subscription.endDate = new Date();
-      user.subscription.autoRenew = false;
-      user.subscription.remainingQueries = 0;
-      await user.save();
+      // Step 2: If already canceled, inform the admin
+      if (subscription.status === "canceled") {
+        user.subscription.status = "cancelled";
+        user.subscription.endDate = new Date();
+        user.subscription.autoRenew = false;
+        user.subscription.remainingQueries = 0;
+        user.subscription.dailyQueries = 0;
+        user.subscription.dailyTokens = 0;
+        await user.save();
+        return next(new ApiError(400, "Subscription is already canceled"));
+      }
 
-      // Send cancellation email
+      // Step 3: Cancel the subscription
+      if (
+        subscription.status === "active" ||
+        subscription.status === "trialing"
+      ) {
+        const cancelResponse = await stripe.subscriptions.cancel(
+          user.subscription.stripeSubscriptionId
+        );
+        console.log("Cancel response:", cancelResponse);
+        if (cancelResponse.status !== "canceled") {
+          return next(new ApiError(500, "Failed to cancel subscription"));
+        }
+        // Step 4: Update user data
+        user.subscription.status = "cancelled";
+        user.subscription.endDate = new Date();
+        user.subscription.autoRenew = false;
+        user.subscription.remainingQueries = 0;
+        user.subscription.dailyQueries = 0;
+        user.subscription.dailyTokens = 0;
+        await user.save();
+      }
+
+      // Step 5: Send cancellation email
       await sendSubscriptionCancelEmail(user);
 
-      res.json({
+      return res.status(200).json({
         success: true,
         message: "User subscription cancelled successfully by admin",
         user: {
@@ -417,10 +480,19 @@ export const adminCancelUserSubscription = catchAsync(
         },
       });
     } catch (error) {
-      console.error("Error cancelling subscription:", error);
-      return next(
-        new ApiError(`Failed to cancel subscription: ${error.message}`, 500)
-      );
+      // Step 6: Handle specific Stripe errors
+      if (
+        error.type === "StripeInvalidRequestError" &&
+        error.message.includes("No such subscription")
+      ) {
+        console.error("Subscription not found in Stripe:", error.message);
+        return next(new ApiError(404, "Subscription not found in Stripe"));
+      } else {
+        console.error("Error cancelling subscription:", error);
+        return next(
+          new ApiError(500, `Failed to cancel subscription: ${error.message}`)
+        );
+      }
     }
   }
 );
@@ -487,3 +559,36 @@ const getStripePriceId = (plan) => {
 };
 
 const getPlanFromPriceId = (priceId) => priceIdToPlan[priceId] || "basic";
+
+// Helper function to calculate fallback end date
+function calculateFallbackEndDate(startDate) {
+  if (!startDate) {
+    // If no start date exists, use current date + 30 days
+    const now = new Date();
+    const endDate = new Date(now);
+    endDate.setDate(endDate.getDate() + 30);
+    return endDate;
+  }
+
+  // Try to parse the startDate if it's a string
+  let parsedStartDate;
+  if (typeof startDate === "string") {
+    parsedStartDate = new Date(startDate);
+  } else {
+    parsedStartDate = new Date(startDate);
+  }
+
+  // Validate the parsed date
+  if (isNaN(parsedStartDate.getTime())) {
+    // If invalid, use current date + 30 days
+    const now = new Date();
+    const endDate = new Date(now);
+    endDate.setDate(endDate.getDate() + 30);
+    return endDate;
+  }
+
+  // Calculate end date: start date + 30 days
+  const endDate = new Date(parsedStartDate);
+  endDate.setDate(endDate.getDate() + 30);
+  return endDate;
+}

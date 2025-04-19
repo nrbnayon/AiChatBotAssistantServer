@@ -30,11 +30,11 @@ const handleLocalLogin = async (email, password) => {
     }
 
     if (user.authProvider !== "local") {
-      throw new AppError(401, "Invalid authentication method");
+      throw new AppError("Invalid authentication method", 401);
     }
 
     if (!user.password) {
-      throw new AppError(401, "Password not set for this account");
+      throw new AppError("Password not set for this account", 401);
     }
 
     const isMatch = await user.comparePassword(password);
@@ -78,7 +78,7 @@ const updateProfile = async (userId, profileData, file) => {
   }
 
   if (Object.keys(updates).length === 0)
-    throw new ApiError("No valid fields to update", 400);
+    throw new ApiError(400, "No valid fields to update");
 
   const updatedUser = await User.findByIdAndUpdate(
     userId,
@@ -86,13 +86,13 @@ const updateProfile = async (userId, profileData, file) => {
     { new: true }
   );
 
-  if (!updatedUser) throw new ApiError("User not found or update failed", 404);
+  if (!updatedUser) throw new ApiError(404, "User not found or update failed");
   return updatedUser;
 };
 
 const updateSubscription = async (userId, { plan, autoRenew }) => {
   const user = await User.findById(userId);
-  if (!user) throw new ApiError("User not found", 404);
+  if (!user) throw new ApiError(404, "User not found");
 
   if (plan && planLimits[plan]) {
     user.subscription.plan = plan;
@@ -111,7 +111,7 @@ const updateSubscription = async (userId, { plan, autoRenew }) => {
 
 const deleteUser = async (userId) => {
   const user = await User.findByIdAndDelete(userId);
-  if (!user) throw new ApiError("User not found", 404);
+  if (!user) throw new ApiError(404, "User not found");
 };
 
 const getAllUsers = async (
@@ -224,7 +224,7 @@ const createUser = async ({
   returnDocument,
 }) => {
   const existingUser = await User.findOne({ email });
-  if (existingUser) throw new ApiError("User already exists", 400);
+  if (existingUser) throw new ApiError(400, "User already exists");
   const newUser = new User({
     name,
     email,

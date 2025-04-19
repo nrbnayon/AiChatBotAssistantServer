@@ -108,11 +108,11 @@ export const getAllWaitingList = catchAsync(async (req, res) => {
 
 const getMe = catchAsync(async (req, res, next) => {
   if (!req.user || !req.user.id)
-    return next(new ApiError("User not authenticated", 400));
+    return next(new ApiError(400, "User not authenticated"));
   const user = await User.findById(req.user.id).select(
     "-googleAccessToken -refreshToken -microsoftAccessToken -password"
   );
-  if (!user) return next(new ApiError("User not found", 404));
+  if (!user) return next(new ApiError(404, "User not found"));
   res.status(StatusCodes.OK).json({ success: true, data: user });
 });
 
@@ -150,7 +150,7 @@ const getKeywords = catchAsync(async (req, res, next) => {
   const user = await User.findById(req.user.id).select(
     "userImportantMailKeywords"
   );
-  if (!user) return next(new ApiError("User not found", 404));
+  if (!user) return next(new ApiError(404, "User not found"));
   res.status(StatusCodes.OK).json({
     success: true,
     keywords: user.userImportantMailKeywords,
@@ -161,11 +161,11 @@ const addKeyword = catchAsync(async (req, res, next) => {
   const { keyword } = req.body;
   if (!keyword || typeof keyword !== "string" || keyword.trim() === "") {
     return next(
-      new ApiError("Invalid keyword: must be a non-empty string", 400)
+      new ApiError(400, "Invalid keyword: must be a non-empty string")
     );
   }
   const user = await User.findById(req.user.id);
-  if (!user) return next(new ApiError("User not found", 404));
+  if (!user) return next(new ApiError(404, "User not found"));
   await user.addImportantKeyword(keyword);
   res.status(StatusCodes.CREATED).json({
     success: true,
@@ -178,11 +178,11 @@ const deleteKeyword = catchAsync(async (req, res, next) => {
   const { keyword } = req.params;
   if (!keyword || typeof keyword !== "string" || keyword.trim() === "") {
     return next(
-      new ApiError("Keyword is required and must be a non-empty string", 400)
+      new ApiError(400, "Keyword is required and must be a non-empty string")
     );
   }
   const user = await User.findById(req.user.id);
-  if (!user) return next(new ApiError("User not found", 404));
+  if (!user) return next(new ApiError(404, "User not found"));
   const lowerKeyword = keyword.toLowerCase();
   const index = user.userImportantMailKeywords.findIndex(
     (k) => k.toLowerCase() === lowerKeyword
@@ -202,12 +202,12 @@ const deleteKeyword = catchAsync(async (req, res, next) => {
 const updateKeywords = catchAsync(async (req, res, next) => {
   const { keywords } = req.body;
   if (!Array.isArray(keywords))
-    return next(new ApiError("Keywords must be an array", 400));
+    return next(new ApiError(400, "Keywords must be an array"));
   if (keywords.some((kw) => typeof kw !== "string" || kw.trim() === "")) {
-    return next(new ApiError("All keywords must be non-empty strings", 400));
+    return next(new ApiError(400, "All keywords must be non-empty strings"));
   }
   const user = await User.findById(req.user.id);
-  if (!user) return next(new ApiError("User not found", 404));
+  if (!user) return next(new ApiError(404, "User not found"));
   user.userImportantMailKeywords = keywords;
   await user.save();
   res.status(StatusCodes.OK).json({
@@ -221,21 +221,21 @@ const createUser = catchAsync(async (req, res, next) => {
 
   console.log("Get User Body:::", req.body);
   if (!name || !email || !password) {
-    return next(new ApiError("Name, email, and password are required", 400));
+    return next(new ApiError(400, "Name, email, and password are required"));
   }
 
   const requesterRole = req.user.role || "admin";
 
   if (requesterRole === "super_admin") {
     if (role && !["user", "admin", "super_admin"].includes(role)) {
-      return next(new ApiError("Invalid role", 400));
+      return next(new ApiError(400, "Invalid User role"));
     }
   } else if (requesterRole === "admin") {
     if (role && !["user", "admin"].includes(role)) {
-      return next(new ApiError("Admins cannot create Super Admins", 403));
+      return next(new ApiError(403, "Admins cannot create Super Admins"));
     }
   } else {
-    return next(new ApiError("Unauthorized to create users", 403));
+    return next(new ApiError(403, "Unauthorized to create users"));
   }
 
   // Create the user without converting to object
@@ -269,14 +269,12 @@ const createUser = catchAsync(async (req, res, next) => {
     maxAge: jwtHelper.getRefreshTokenExpiryMs(),
   });
 
-  res
-    .status(StatusCodes.CREATED)
-    .json({
-      success: true,
-      data: newUser.toObject(),
-      accessToken,
-      refreshToken,
-    });
+  res.status(StatusCodes.CREATED).json({
+    success: true,
+    data: newUser.toObject(),
+    accessToken,
+    refreshToken,
+  });
 });
 
 const updateUser = catchAsync(async (req, res, next) => {
@@ -374,12 +372,12 @@ const deleteUser = catchAsync(async (req, res, next) => {
 const addInbox = catchAsync(async (req, res, next) => {
   const { inbox } = req.body;
   const user = await User.findById(req.user.id);
-  if (!user) return next(new ApiError("User not found", 404));
+  if (!user) return next(new ApiError(404, "User not found"));
   const maxInboxes = { basic: 1, premium: 3, enterprise: 10 }[
     user.subscription.plan
   ];
   if (user.inboxList.length >= maxInboxes) {
-    return next(new ApiError("Inbox limit reached for your plan", 400));
+    return next(new ApiError(400, "Inbox limit reached for your plan"));
   }
   if (!user.inboxList.includes(inbox)) {
     user.inboxList.push(inbox);
@@ -398,14 +396,14 @@ const getSystemMessage = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const systemMessage = await SystemMessage.findById(id);
   if (!systemMessage) {
-    return next(new ApiError("System message not found", 404));
+    return next(new ApiError(404, "System message not found"));
   }
   res.json({ success: true, systemMessage });
 });
 
 const createSystemMessage = catchAsync(async (req, res) => {
   const { content, isDefault } = req.body;
-  if (!content) throw new ApiError("Content is required", 400);
+  if (!content) throw new ApiError(400, "Content is required");
 
   if (isDefault) {
     await SystemMessage.updateMany({}, { isDefault: false });
@@ -428,7 +426,7 @@ const updateSystemMessage = catchAsync(async (req, res, next) => {
     { new: true }
   );
   if (!systemMessage) {
-    return next(new ApiError("System message not found", 404));
+    return next(new ApiError(404, "System message not found"));
   }
   res.json({ success: true, systemMessage });
 });
@@ -437,13 +435,13 @@ const deleteSystemMessage = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const systemMessage = await SystemMessage.findById(id);
   if (!systemMessage) {
-    return next(new ApiError("System message not found", 404));
+    return next(new ApiError(404, "System message not found"));
   }
   if (systemMessage.isDefault) {
     const totalMessages = await SystemMessage.countDocuments();
     if (totalMessages <= 1) {
       return next(
-        new ApiError("Cannot delete the only default system message", 403)
+        new ApiError(403, "Cannot delete the only default system message")
       );
     }
   }
@@ -461,7 +459,7 @@ const getAiModel = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const aiModel = await AiModel.findById(id);
   if (!aiModel) {
-    return next(new ApiError("AI model not found", 404));
+    return next(new ApiError(404, "AI model not found"));
   }
   res.json({ success: true, aiModel });
 });
@@ -470,11 +468,11 @@ const createAiModel = catchAsync(async (req, res) => {
   const { modelId, name, developer, contextWindow, description, isDefault } =
     req.body;
   if (!modelId || !name || !developer || !contextWindow || !description) {
-    throw new ApiError("All fields are required", 400);
+    throw new ApiError(400, "All fields are required");
   }
   const existingModel = await AiModel.findOne({ modelId });
   if (existingModel) {
-    throw new ApiError("Model with this ID already exists", 400);
+    throw new ApiError(400, "Model with this ID already exists");
   }
   if (isDefault) {
     await AiModel.updateMany({}, { isDefault: false });
@@ -497,7 +495,7 @@ const updateAiModel = catchAsync(async (req, res, next) => {
     req.body;
   const aiModel = await AiModel.findById(id);
   if (!aiModel) {
-    return next(new ApiError("AI model not found", 404));
+    return next(new ApiError(404, "AI model not found"));
   }
   if (isDefault) {
     await AiModel.updateMany({}, { isDefault: false });
@@ -517,12 +515,12 @@ const deleteAiModel = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const aiModel = await AiModel.findById(id);
   if (!aiModel) {
-    return next(new ApiError("AI model not found", 404));
+    return next(new ApiError(404, "AI model not found"));
   }
   if (aiModel.isDefault) {
     const totalModels = await AiModel.countDocuments();
     if (totalModels <= 1) {
-      return next(new ApiError("Cannot delete the only default AI model", 403));
+      return next(new ApiError(403, "Cannot delete the only default AI model"));
     }
   }
   await aiModel.remove();
@@ -535,8 +533,8 @@ export {
   updateSubscription,
   deleteMe,
   getAllUsers,
-  getKeywords, 
-  addKeyword, 
+  getKeywords,
+  addKeyword,
   deleteKeyword,
   updateKeywords,
   createUser,

@@ -120,7 +120,6 @@ const getFunnyErrorMessage = (statusCode) => {
  * Global error handler middleware
  */
 const globalErrorHandler = (err, req, res, next) => {
-  console.error("Global Error:", err.stack);
   try {
     err = handleMongoErrors(err);
 
@@ -146,6 +145,7 @@ const globalErrorHandler = (err, req, res, next) => {
     console.error("Error in error handler:", handlerError);
     res.status(500).json({
       success: false,
+      statusCode: err.statusCode,
       status: "error",
       message: "Internal server error occurred",
     });
@@ -164,12 +164,13 @@ const handleDevelopmentError = (err, res) => {
   console.log(`${funnyMessage}`);
   console.log("------------------------\n");
 
-  return res.status(err.statusCode).json({
+  return res.json({
     success: false,
     status: err.status,
+    statusCode: err.statusCode,
     message: err.message,
     funnyMessage: funnyMessage,
-    stack: err.stack,
+    // stack: err.stack,
     error: err,
   });
 };
@@ -179,10 +180,12 @@ const handleDevelopmentError = (err, res) => {
  */
 const handleProductionError = (err, res) => {
   if (err.isOperational) {
-    return res.status(err.statusCode).json({
+    return res.json({
       success: false,
       status: err.status,
+      statusCode: err.statusCode,
       message: err.message,
+      funnyMessage: funnyMessage,
     });
   }
 

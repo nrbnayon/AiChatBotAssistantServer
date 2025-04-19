@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import User from "../models/User.js";
 import userService from "../services/userService.js";
 import { safeCookie } from "../helper/cookieHelper.js";
-import { AppError, catchAsync } from "../utils/errorHandler.js";
+import { ApiError, AppError, catchAsync } from "../utils/errorHandler.js";
 import { jwtHelper } from "./../helper/jwtHelper.js";
 import { sendFirstLoginConfirmation } from "../helper/notifyByEmail.js";
 
@@ -132,7 +132,7 @@ const localLogin = catchAsync(async (req, res, next) => {
   } catch (error) {
     console.error("Login Error:", error);
     next(
-      new AppError(error.message || "Login failed", error.statusCode || 401)
+      new AppError(error.message || "Login failed", error?.statusCode || 401)
     );
   }
 });
@@ -196,7 +196,7 @@ const refresh = catchAsync(async (req, res, next) => {
     const user = await User.findById(decoded.id);
 
     if (!user) {
-      return next(new AppError("User not found", 401));
+      return next(new ApiError(401, "User not found"));
     }
 
     // Generate new tokens

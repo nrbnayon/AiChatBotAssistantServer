@@ -65,7 +65,7 @@ router.post(
 );
 
 // Admin/Super-Admin Cancel user subscription
-router.post(
+router.put(
   "/admin/cancel-user-subscription",
   auth("admin", "super_admin"),
   setRefreshedTokenCookie,
