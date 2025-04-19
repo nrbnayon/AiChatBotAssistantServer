@@ -341,7 +341,7 @@ class MCPServer {
           text = `${intro}\n\n${analyzedData.table}\n\n${followUp}`;
         } else {
           const count = emails.messages.length;
-          const previewCount = Math.min(count, 10);
+          const previewCount = Math.min(count, 20);
           if (count === 0) {
             const noEmailResponses = [
               "**No matching emails found**\n\nI couldn't find any emails that match your search criteria. You could try:\n• Using different keywords\n• Broadening your date range\n• Checking a different folder",
@@ -392,7 +392,7 @@ class MCPServer {
                 .map((e, i) => {
                   const date = new Date(e.date).toLocaleDateString();
                   const attachmentNote = e.hasAttachments
-                    ? "\n**Attachments:** Yes (say **'show attachments for email** " +
+                    ? "\n**Attachments:** Yes (say **show attachments for email** " +
                       (i + 1) +
                       "' to see them)"
                     : "";
@@ -408,7 +408,7 @@ class MCPServer {
                 .map((e, i) => {
                   const date = new Date(e.date).toLocaleDateString();
                   const attachmentNote = e.hasAttachments
-                    ? "\n**Attachments:** Yes (say **'show attachments for email **" +
+                    ? "\n**Attachments:** Yes (say **show attachments for email**" +
                       (i + 1) +
                       "' to see them)"
                     : "";
@@ -592,7 +592,7 @@ class MCPServer {
           try {
             const recentEmails = await this.emailService.fetchEmails({
               query: "meeting OR event OR calendar",
-              limit: 10,
+              limit: 20,
             });
 
             if (recentEmails.messages.length === 0) {
@@ -1113,7 +1113,7 @@ class MCPServer {
       };
     } else {
       return {
-        list: this.buildDetailedList(relevantEmails), 
+        list: this.buildDetailedList(relevantEmails),
         summary: `Found ${relevantEmails.length} emails matching "${query}"`,
       };
     }
@@ -1205,7 +1205,14 @@ class MCPServer {
       : text;
   }
 
-  async chatWithBot(req, message, history = [], context = {}, modelId = null) {
+  async chatWithBot(
+    req,
+    message,
+    history = [],
+    context = {},
+    modelId = null,
+    maxResults
+  ) {
     const userId = req.user.id;
     const userName = req.user.name || "User";
     console.log("User name:", userName);
@@ -1262,7 +1269,7 @@ class MCPServer {
         .replace(/{{TIME_CONTEXT}}/g, timeContext)
         .replace(/{{EMAIL_COUNT}}/g, emailCount.toString())
         .replace(/{{UNREAD_COUNT}}/g, unreadCount.toString()) +
-      "\n\nWhen there's a pending email draft, interpret affirmative responses like 'confirm sent', 'yes', or 'send it' as a command to send the email, returning {\"action\": \"send-email\", \"params\": {...}}. If the user says  'send draft 1' or 'send draft 2' after a list of drafts, select the corresponding draft (1 for the most recent, 2 for the second most recent) and return the same action." +
+      "\n\nWhen there's a pending email draft, interpret affirmative responses like 'confirm sent', 'yes', or 'send it' as a command to send the email, returning {\"action\": \"send-email\", \"params\": {...}}. If the user latest draft: say **'send draft 1'** or Old draft: say **'send draft 2'** after a list of drafts, select the corresponding draft (1 for the most recent, 2 for the second most recent) and return the same action." +
       "\n\nWhen the user uploads a file, the file content is included in the message. Analyze it directly and provide responses based on its text. Do not attempt to fetch emails or use undefined tools unless explicitly requested.";
 
     if (
@@ -1431,8 +1438,8 @@ class MCPServer {
           const score = Math.round(email.score);
           const snippet = email.snippet ? `\nSnippet: ${email.snippet}` : "";
           const body = email.body
-            ? `\nContent: ${email.body.substring(0, 200)}${
-                email.body.length > 200 ? "..." : ""
+            ? `\nContent: ${email.body.substring(0, 500)}${
+                email.body.length > 500 ? "..." : ""
               }`
             : "";
           return `**${index + 1}.** From: ${email.from}\nSubject: ${

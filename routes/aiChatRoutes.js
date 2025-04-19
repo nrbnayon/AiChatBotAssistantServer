@@ -132,7 +132,8 @@ router.post(
           emailCount: inboxStats.totalEmails,
           unreadCount: inboxStats.unreadEmails,
         },
-        modelId
+        modelId,
+        maxResults
       );
 
       const user = await User.findById(userId);
