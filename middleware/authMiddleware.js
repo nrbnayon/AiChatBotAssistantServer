@@ -25,8 +25,6 @@ const auth = (...roles) =>
         ? req.headers.authorization.substring(7)
         : undefined);
     
-    logger.info("Access token from cookie or header", accessToken);
-    logger.info("Refresh token from header", req.cookies?.refreshToken);
 
     // If no access token is provided at all, check for refresh token
     if (!accessToken) {

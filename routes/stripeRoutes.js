@@ -74,7 +74,7 @@ router.post(
 );
 
 // Admin/Super-Admin total earning by user subscription
-router.post(
+router.get(
   "/admin/total-earning-by-user-subscription",
   auth("admin", "super_admin"),
   setRefreshedTokenCookie,

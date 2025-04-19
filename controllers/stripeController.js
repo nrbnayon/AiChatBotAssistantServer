@@ -427,83 +427,53 @@ export const adminCancelUserSubscription = catchAsync(
 
 export const adminTotalEarningByUserSubscription = catchAsync(
   async (req, res, next) => {
-    // Check if the requesting user is an admin
-    if (req.user.role !== "admin" && req.user.role !== "super_admin") {
-      return next(new ApiError("Unauthorized access", 403));
-    }
+    // auth middleware ensures req.user.role is admin/super_admin
 
-    const { userId } = req.body;
-    if (!userId) {
-      return next(new ApiError("User ID is required", 400));
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return next(new ApiError("User not found", 404));
-    }
-
-    if (!user.subscription.stripeSubscriptionId) {
-      return next(
-        new ApiError("No active subscription found for this user", 400)
-      );
-    }
+    let totalIncome = 0;
+    const paymentHistory = [];
 
     try {
-      // Get subscription details
-      const subscription = await stripe.subscriptions.retrieve(
-        user.subscription.stripeSubscriptionId
-      );
+      // Manual pagination params
+      let params = { limit: 100 };
+      let invoices;
 
-      // Get all invoices for this subscription
-      const invoices = await stripe.invoices.list({
-        subscription: user.subscription.stripeSubscriptionId,
-        limit: 10000000,
-      });
+      do {
+        invoices = await stripe.invoices.list(params);
 
-      // Calculate total paid amount
-      let totalEarnings = 0;
-      invoices.data.forEach((invoice) => {
-        if (invoice.status === "paid") {
-          totalEarnings += invoice.amount_paid / 100;
+        // Process this page
+        for (const inv of invoices.data) {
+          if (inv.status === "paid") {
+            const amount = inv.amount_paid / 100;
+            totalIncome += amount;
+            paymentHistory.push({
+              id: inv.id,
+              date: new Date(inv.created * 1000),
+              amount,
+              status: inv.status,
+            });
+          }
         }
-      });
 
-      // Get current plan details
-      const currentPlan = subscription.items.data[0].price;
-      const planInfo = {
-        name: currentPlan.nickname || getPlanFromPriceId(currentPlan.id),
-        amount: currentPlan.unit_amount / 100,
-        currency: currentPlan.currency,
-        interval: currentPlan.recurring
-          ? currentPlan.recurring.interval
-          : "unknown",
-      };
+        // Prepare next page
+        if (invoices.has_more) {
+          params.starting_after = invoices.data[invoices.data.length - 1].id;
+        } else {
+          break;
+        }
+      } while (true);
 
-      res.json({
+      return res.status(200).json({
         success: true,
-        totalEarnings,
+        totalIncome,
         currency: "USD",
-        subscriptionDetails: {
-          plan: planInfo,
-          status: subscription.status,
-          currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-          cancelAtPeriodEnd: subscription.cancel_at_period_end,
-        },
-        paymentHistory: invoices.data.map((invoice) => ({
-          id: invoice.id,
-          date: new Date(invoice.created * 1000),
-          amount: invoice.amount_paid / 100,
-          status: invoice.status,
-        })),
+        paymentHistory,
       });
-    } catch (error) {
-      console.error("Error retrieving subscription data:", error);
-      return next(
-        new ApiError(
-          `Failed to retrieve subscription data: ${error.message}`,
-          500
-        )
-      );
+    } catch (err) {
+      console.error("Error fetching total earnings:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to retrieve total earnings. Please try again later.",
+      });
     }
   }
 );
