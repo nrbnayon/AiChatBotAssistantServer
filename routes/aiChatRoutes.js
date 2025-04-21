@@ -86,6 +86,7 @@ router.post(
           req.file.path,
           req.file.mimetype
         );
+        fileText = fileText.replace(/\s+/g, " ").trim();
         userMessage = userMessage
           ? `Analyze this given file ${userMessage}\n\nContent from file ${req.file.originalname}:\n${fileText}`
           : `Analyze this file and summarize and provide corrected information'${req.file.originalname}':\n${fileText}`;
@@ -264,6 +265,7 @@ router.post(
           req.file.path,
           req.file.mimetype
         );
+        fileText = fileText.replace(/\s+/g, " ").trim();
         userMessage = userMessage
           ? `${userMessage}\n\nFile content: ${fileText}`
           : fileText;

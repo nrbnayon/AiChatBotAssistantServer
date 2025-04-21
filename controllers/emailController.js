@@ -64,6 +64,7 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
   }
 
   const messages = emailsData.messages || [];
+
   const responseData = {
     success: true,
     totalEmails:
