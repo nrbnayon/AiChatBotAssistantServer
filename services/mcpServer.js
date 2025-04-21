@@ -101,7 +101,7 @@ class ModelProvider {
 
     const primaryModel = await getModelById(primaryModelId);
     if (primaryModel) {
-      console.log(`Attempting to use primary model: ${primaryModel.name}`);
+      // console.log(`Attempting to use primary model: ${primaryModel.name}`);
       let attemptCount = 0;
       let currentRetryDelay = this.retryDelay;
       while (attemptCount < this.retryCount) {
@@ -110,7 +110,7 @@ class ModelProvider {
             primaryModel,
             options
           );
-          console.log(`Successfully used primary model: ${primaryModel.name}`);
+          // console.log(`Successfully used primary model: ${primaryModel.name}`);
           return {
             result,
             tokenCount,
@@ -123,9 +123,9 @@ class ModelProvider {
             error.message?.includes("429") ||
             error.message?.includes("rate_limit_exceeded")
           ) {
-            console.log(
-              "Rate limit error detected, stopping retries for primary model"
-            );
+            // console.log(
+            //   "Rate limit error detected, stopping retries for primary model"
+            // );
             break;
           }
           attemptCount++;
@@ -150,12 +150,12 @@ class ModelProvider {
           console.warn(`Model ${currentModelId} not found, skipping`);
           continue;
         }
-        console.log(`Attempting to use fallback model: ${model.name}`);
+        // console.log(`Attempting to use fallback model: ${model.name}`);
         const { result, tokenCount } = await this.callModelWithRetry(
           model,
           options
         );
-        console.log(`Successfully used fallback model: ${model.name}`);
+        // console.log(`Successfully used fallback model: ${model.name}`);
         return {
           result,
           tokenCount,
@@ -284,6 +284,163 @@ class MCPServer {
         ];
       }
 
+      // case "fetch-emails": {
+      //   const {
+      //     filter = "all",
+      //     query = "",
+      //     maxResults,
+      //     pageToken,
+      //     timeFilter,
+      //     summarize = false,
+      //   } = args;
+
+      //   // console.log(`[DEBUG] maxResults: ${maxResults}, parsed: ${maxResults}`);
+
+      //   let processedQuery = query ? this.processQuery(query) : "";
+      //   const emails = await this.emailService.fetchEmails({
+      //     filter,
+      //     query: processedQuery,
+      //     maxResults,
+      //     pageToken,
+      //     timeFilter,
+      //   });
+
+      //   if (!emails || !Array.isArray(emails.messages)) {
+      //     console.error("[ERROR] fetchEmails returned invalid data:", emails);
+      //     return [
+      //       {
+      //         type: "text",
+      //         text: "Sorry, I couldn't fetch your emails right now. Want to try again?",
+      //       },
+      //     ];
+      //   }
+
+      //   const analyzedData = this.analyzeEmails(
+      //     emails,
+      //     processedQuery || filter || ""
+      //   );
+
+      //   let text = "";
+      //   if (analyzedData.table) {
+      //     const introTexts = [
+      //       "Here's what I dug up from your emails:",
+      //       "I've sifted through your inbox and found this:",
+      //       "Check out what I discovered in your emails:",
+      //       "Here's the scoop from your inbox:",
+      //     ];
+      //     const followUpTexts = [
+      //       "What do you want to do with these?",
+      //       "Anything catch your eye here?",
+      //       "Need help with any of these?",
+      //       "What's next on your mind?",
+      //     ];
+      //     const intro =
+      //       introTexts[Math.floor(Math.random() * introTexts.length)];
+      //     const followUp =
+      //       followUpTexts[Math.floor(Math.random() * followUpTexts.length)];
+      //     text = `${intro}\n\n${analyzedData.table}\n\n${followUp}`;
+      //   } else {
+      //     const count = emails.messages.length;
+      //     const previewCount = Math.min(count, 20);
+      //     if (count === 0) {
+      //       const noEmailResponses = [
+      //         "**No matching emails found**\n\nI couldn't find any emails that match your search criteria. You could try:\n• Using different keywords\n• Broadening your date range\n• Checking a different folder",
+
+      //         "**Your search returned no results**\n\nPossible next steps:\n• Try different search terms\n• Remove some filters\n• Check for typos in names or email addresses",
+
+      //         "**No emails match this query**\n\nSuggestions:\n1. Use broader search terms\n2. Check a different time period\n3. Try searching in 'All Mail' instead",
+
+      //         "**I couldn't find any matching emails**\n\nThis might be because:\n• Your search was too specific\n• There might be a connection issue\n• The emails might be in another folder",
+
+      //         "**No results for this search**\n\nLet's try a different approach:\n• Search for `from:[sender]` to find emails from specific people\n• Use `after:yesterday` to find recent emails\n• Try `has:attachment` to find emails with files",
+      //       ];
+
+      //       text =
+      //         noEmailResponses[
+      //           Math.floor(Math.random() * noEmailResponses.length)
+      //         ];
+      //     } else {
+      //       const foundEmailsTexts = [
+      //         `Found **${count} emails** that match. Here's a peek at the latest **${previewCount}**:`,
+      //         `Got **${count} emails** for you. Here are the top **${previewCount}**:`,
+      //         `I've tracked down **${count} emails**. Check out the most recent **${previewCount}**:`,
+      //       ];
+      //       text =
+      //         foundEmailsTexts[
+      //           Math.floor(Math.random() * foundEmailsTexts.length)
+      //         ] + "\n\n";
+      //       const previewEmails = emails.messages.slice(0, previewCount);
+
+      //       if (summarize) {
+      //         const summaryPromises = previewEmails.map(async (email) => {
+      //           const summaryResponse = await this.callTool(
+      //             "summarize-email",
+      //             { email_id: email.id },
+      //             userId,
+      //             modelId
+      //           );
+      //           const summaryText = summaryResponse[0].text;
+      //           const parts = summaryText.split(": **");
+      //           if (parts.length > 1) {
+      //             return parts[1].replace("**", "").trim();
+      //           } else {
+      //             return "No summary available.";
+      //           }
+      //         });
+      //         const summaries = await Promise.all(summaryPromises);
+      //         text += previewEmails
+      //           .map((e, i) => {
+      //             const date = new Date(e.date).toLocaleDateString();
+      //             const attachmentNote = e.hasAttachments
+      //               ? "\n**Attachments:** Yes (say **show attachments for email** " +
+      //                 (i + 1) +
+      //                 "' to see them)"
+      //               : "";
+      //             return `**${i + 1}.** **From:** ${e.from}\n**Subject:** ${
+      //               e.subject || "No subject"
+      //             }\n**Date:** ${date}\n**ID:** ${
+      //               e.id
+      //             }${attachmentNote}\n**Summary:** ${summaries[i]}\n`;
+      //           })
+      //           .join("\n");
+      //       } else {
+      //         text += previewEmails
+      //           .map((e, i) => {
+      //             const date = new Date(e.date).toLocaleDateString();
+      //             const attachmentNote = e.hasAttachments
+      //               ? "\n**Attachments:** Yes (say **show attachments for email**" +
+      //                 (i + 1) +
+      //                 "' to see them)"
+      //               : "";
+      //             return `**${i + 1}.** **From:** ${e.from}\n**Subject:** ${
+      //               e.subject || "No subject"
+      //             }\n**Date:** ${date}\n**ID:** ${e.id}${attachmentNote}\n${
+      //               e.snippet || "No preview available"
+      //             }\n
+      //             // **Body:** ${e.body} || No preview available
+      //             `;
+      //           })
+      //           .join("\n");
+      //       }
+
+      //       const followUps = [
+      //         summarize
+      //           ? "Anything else I can help with?"
+      //           : "Want me to summarize any of these for you?",
+      //         "Should I open one up or refine the search?",
+      //         "Anything here you'd like to explore further?",
+      //       ];
+      //       text += `\n\n${
+      //         followUps[Math.floor(Math.random() * followUps.length)]
+      //       }`;
+      //       this.lastListedEmails.set(userId, previewEmails);
+      //     }
+      //   }
+      //   return [
+      //     { type: "text", text, artifact: { type: "json", data: emails } },
+      //   ];
+      // }
+
       case "fetch-emails": {
         const {
           filter = "all",
@@ -293,8 +450,6 @@ class MCPServer {
           timeFilter,
           summarize = false,
         } = args;
-
-        console.log(`[DEBUG] maxResults: ${maxResults}, parsed: ${maxResults}`);
 
         let processedQuery = query ? this.processQuery(query) : "";
         const emails = await this.emailService.fetchEmails({
@@ -345,16 +500,11 @@ class MCPServer {
           if (count === 0) {
             const noEmailResponses = [
               "**No matching emails found**\n\nI couldn't find any emails that match your search criteria. You could try:\n• Using different keywords\n• Broadening your date range\n• Checking a different folder",
-
               "**Your search returned no results**\n\nPossible next steps:\n• Try different search terms\n• Remove some filters\n• Check for typos in names or email addresses",
-
               "**No emails match this query**\n\nSuggestions:\n1. Use broader search terms\n2. Check a different time period\n3. Try searching in 'All Mail' instead",
-
               "**I couldn't find any matching emails**\n\nThis might be because:\n• Your search was too specific\n• There might be a connection issue\n• The emails might be in another folder",
-
               "**No results for this search**\n\nLet's try a different approach:\n• Search for `from:[sender]` to find emails from specific people\n• Use `after:yesterday` to find recent emails\n• Try `has:attachment` to find emails with files",
             ];
-
             text =
               noEmailResponses[
                 Math.floor(Math.random() * noEmailResponses.length)
@@ -391,33 +541,58 @@ class MCPServer {
               text += previewEmails
                 .map((e, i) => {
                   const date = new Date(e.date).toLocaleDateString();
-                  const attachmentNote = e.hasAttachments
-                    ? "\n**Attachments:** Yes (say **show attachments for email** " +
-                      (i + 1) +
-                      "' to see them)"
-                    : "";
+                  let attachmentNote = "";
+                  if (e.hasAttachments) {
+                    if (e.attachments && e.attachments.length > 0) {
+                      // For Gmail, where attachments are available
+                      const attachmentLinks = e.attachments
+                        .map(
+                          (att) =>
+                            `[${att.filename}](http://192.168.10.32:4000/api/v1/emails/download/attachment?emailId=${e.id}&attachmentId=${att.id})`
+                        )
+                        .join(", ");
+                      attachmentNote = `\n**Attachments:** **${attachmentLinks} **`;
+                    } else {
+                      // For Outlook or when attachments aren't fetched
+                      attachmentNote = `\n**Attachments:** Yes (say **show attachments for email ${
+                        i + 1
+                      }** to this are the download links just click on it to see them)`;
+                    }
+                  }
                   return `**${i + 1}.** **From:** ${e.from}\n**Subject:** ${
                     e.subject || "No subject"
-                  }\n**Date:** ${date}\n**ID:** ${
-                    e.id
-                  }${attachmentNote}\n**Summary:** ${summaries[i]}\n`;
+                  }\n**Date:** ${date}\n ${attachmentNote}\n**Summary:** ${
+                    summaries[i]
+                  }\n`;
                 })
                 .join("\n");
             } else {
               text += previewEmails
                 .map((e, i) => {
                   const date = new Date(e.date).toLocaleDateString();
-                  const attachmentNote = e.hasAttachments
-                    ? "\n**Attachments:** Yes (say **show attachments for email**" +
-                      (i + 1) +
-                      "' to see them)"
-                    : "";
+                  let attachmentNote = "";
+                  if (e.hasAttachments) {
+                    if (e.attachments && e.attachments.length > 0) {
+                      // For Gmail, where attachments are available
+                      const attachmentLinks = e.attachments
+                        .map(
+                          (att) =>
+                            `[${att.filename}](http://192.168.10.32:4000/api/v1/emails/download/attachment?emailId=${e.id}&attachmentId=${att.id})`
+                        )
+                        .join(", ");
+                      attachmentNote = `\n Here have **Attachments for Download click:** **${attachmentLinks}**`;
+                    } else {
+                      // For Outlook or when attachments aren't fetched
+                      attachmentNote = `\n**Attachments:** Yes (say **show attachments for email ${
+                        i + 1
+                      }** to see them)`;
+                    }
+                  }
                   return `**${i + 1}.** **From:** ${e.from}\n**Subject:** ${
                     e.subject || "No subject"
-                  }\n**Date:** ${date}\n**ID:** ${e.id}${attachmentNote}\n${
+                  }\n**Date:** ${date}\n ${attachmentNote}\n${
                     e.snippet || "No preview available"
                   }\n 
-                  // **Body:** ${e.body} || No preview available
                   `;
                 })
                 .join("\n");
@@ -450,7 +625,7 @@ class MCPServer {
         }
         const attachmentList = attachments
           .map((att, index) => {
-            const downloadLink = `https://indexai-chatbot.vercel.app/api/v1/emails/download/attachment?emailId=${email_id}&attachmentId=${att.id}`;
+            const downloadLink = `http://172.16.0.2:3000/api/v1/emails/download/attachment?emailId=${email_id}&attachmentId=${att.id}`;
             return `${index + 1}. [${att.filename}](${downloadLink})`;
           })
           .join("\n");
@@ -543,15 +718,18 @@ class MCPServer {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID parameter");
         const emailContent = await this.emailService.getEmail(email_id);
+        const emailText = `**From:** ${emailContent.from}\n**To:** ${emailContent.to}\n**Subject:** ${emailContent.subject}\n**Date:** ${emailContent.date}\n\n${emailContent.body}`;
         const readIntros = [
-          "Here’s that email you wanted:",
+          "Here’s the full email:",
           "Pulled up the email for you:",
           "Got the email right here:",
         ];
         return [
           {
             type: "text",
-            text: readIntros[Math.floor(Math.random() * readIntros.length)],
+            text: `${
+              readIntros[Math.floor(Math.random() * readIntros.length)]
+            }\n\n${emailText}`,
             artifact: { type: "json", data: emailContent },
           },
         ];
@@ -1217,43 +1395,9 @@ class MCPServer {
   ) {
     const userId = req.user.id;
     const userName = req.user.name || "User";
-    console.log("User name:", userName);
-    console.log("User Send Message:", message);
+    // console.log("User name:", userName);
+    // console.log("User Send Message:", message);
     const userEmail = req.user.email;
-
-    // const [emails, inboxStats] = await Promise.all([
-    //   this.emailService
-    //     .fetchEmails({ query: message, maxResults: 50 })
-    //     .catch((err) => {
-    //       console.error("Error fetching emails:", err);
-    //       return { messages: [] };
-    //     }),
-    //   this.emailService.getInboxStats().catch((err) => {
-    //     console.error("Error fetching inbox stats:", err);
-    //     return { total: 0, unread: 0 };
-    //   }),
-    // ]);
-
-    // // Analyze emails using updated function
-    // const analyzed = this.analyzeEmails(emails, message);
-    // if (analyzed.table) {
-    //   return {
-    //     type: "text",
-    //     text: `Here’s what I found:\n\n${this.formatTable(
-    //       analyzed.table
-    //     )}\n\nWhat do you want to do next?`,
-    //     modelUsed: "N/A",
-    //     fallbackUsed: false,
-    //   };
-    // } else if (analyzed.list) {
-    //   this.lastListedEmails.set(userId, emails.messages.slice(0, 10));
-    //   return {
-    //     type: "text",
-    //     text: `Found some emails:\n\n${analyzed.list}\n\nNeed summaries or more details?`,
-    //     modelUsed: "N/A",
-    //     fallbackUsed: false,
-    //   };
-    // }
 
     const {
       timeContext = "",
@@ -1262,6 +1406,58 @@ class MCPServer {
       importantCount = 0,
       topImportantEmails = [],
     } = context;
+
+    const attachmentMatch = message.match(/show attachments for email (\d+)/i);
+    if (attachmentMatch) {
+      const emailNumber = parseInt(attachmentMatch[1], 10);
+      const lastListed = this.lastListedEmails.get(userId);
+      if (lastListed && emailNumber > 0 && emailNumber <= lastListed.length) {
+        const emailId = lastListed[emailNumber - 1].id;
+        const toolResponse = await this.callTool(
+          "list-attachments",
+          { email_id: emailId },
+          userId
+        );
+        return {
+          ...toolResponse[0],
+          modelUsed: "N/A",
+          fallbackUsed: false,
+        };
+      } else {
+        return {
+          type: "text",
+          text: "Sorry, I couldn’t find that email. Please make sure you’re referring to a recently listed email.",
+          modelUsed: "N/A",
+          fallbackUsed: false,
+        };
+      }
+    }
+
+    const readEmailMatch = message.match(/show email (\d+)/i);
+    if (readEmailMatch) {
+      const emailNumber = parseInt(readEmailMatch[1], 10);
+      const lastListed = this.lastListedEmails.get(userId);
+      if (lastListed && emailNumber > 0 && emailNumber <= lastListed.length) {
+        const emailId = lastListed[emailNumber - 1].id;
+        const toolResponse = await this.callTool(
+          "read-email",
+          { email_id: emailId },
+          userId
+        );
+        return {
+          ...toolResponse[0],
+          modelUsed: "N/A",
+          fallbackUsed: false,
+        };
+      } else {
+        return {
+          type: "text",
+          text: "Sorry, I couldn’t find that email. Please make sure you’re referring to a recently listed email.",
+          modelUsed: "N/A",
+          fallbackUsed: false,
+        };
+      }
+    }
 
     const systemPrompt = await this.getDefaultSystemMessage();
     const personalizedSystemPrompt =

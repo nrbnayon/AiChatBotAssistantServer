@@ -123,9 +123,9 @@ class ModelProvider {
     const completeChain = [modelId, ...fallbackChain];
     let lastError = null;
 
-    console.log(
-      `Starting model call with fallback chain: [${completeChain.join(", ")}]`
-    );
+    // console.log(
+    //   `Starting model call with fallback chain: [${completeChain.join(", ")}]`
+    // );
 
     for (const currentModelId of completeChain) {
       try {
@@ -137,15 +137,15 @@ class ModelProvider {
           continue;
         }
 
-        console.log(`Attempting to use model: ${model.name}`);
+        // console.log(`Attempting to use model: ${model.name}`);
         const result = await this.callModelWithRetry(model, requestData);
 
-        console.log(`Successfully used model: ${model.name}`);
-        return {
-          result,
-          modelUsed: model,
-          fallbackUsed: currentModelId !== modelId,
-        };
+        // console.log(`Successfully used model: ${model.name}`);
+        // return {
+        //   result,
+        //   modelUsed: model,
+        //   fallbackUsed: currentModelId !== modelId,
+        // };
       } catch (error) {
         lastError = error;
         logErrorWithStyle(error);

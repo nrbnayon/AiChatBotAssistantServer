@@ -1,10 +1,6 @@
-// routes/aiChatRoutes.js
 import express from "express";
 import auth from "../middleware/authMiddleware.js";
-import {
-  createEmailService,
-  getEmailService,
-} from "../services/emailService.js";
+import { getEmailService } from "../services/emailService.js";
 import { catchAsync } from "../utils/errorHandler.js";
 import MCPServer from "../services/mcpServer.js";
 import multer from "multer";
@@ -33,6 +29,10 @@ if (!Promise.withResolvers) {
   };
 }
 
+// Set the path to CMAP files for PDF.js
+const cMapUrl =
+  path.join(__dirname, "..", "node_modules", "pdfjs-dist", "cmaps") + "/";
+
 const router = express.Router();
 
 // File Upload Configuration
@@ -51,8 +51,6 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-
-
 // Legacy endpoint (without chat ID, creates a new chat)
 router.post(
   "/",
@@ -62,10 +60,14 @@ router.post(
   catchAsync(async (req, res) => {
     const emailService = await getEmailService(req);
     const mcpServer = new MCPServer(emailService);
-    const { message, maxResults = 1000, modelId, history: providedHistory } = req.body;
+    const {
+      message,
+      maxResults = 1000,
+      modelId,
+      history: providedHistory,
+    } = req.body;
     const userId = req.user.id;
 
-    
     if (!modelId) {
       return res.status(400).json({ error: "modelId is required" });
     }
@@ -193,32 +195,36 @@ router.post(
   chatRateLimit(),
   upload.single("file"),
   catchAsync(async (req, res) => {
-    
     const startTime = Date.now();
     const emailService = await getEmailService(req);
     const serviceTime = Date.now() - startTime;
-    console.log(
-      `Email service ${
-        serviceTime < 100 ? "retrieved from cache" : "created"
-      } in ${serviceTime}ms`
-    );
+    // console.log(
+    //   `Email service ${
+    //     serviceTime < 100 ? "retrieved from cache" : "created"
+    //   } in ${serviceTime}ms`
+    // );
 
     const mcpServer = new MCPServer(emailService);
     const { chatId } = req.params;
     const userId = req.user.id;
 
-    const { message, maxResults = 1000, modelId, history: providedHistory } = req.body;
-
-    console.log(
-      "Model ID:",
+    const {
+      message,
+      maxResults = 1000,
       modelId,
-      "Max Results:",
-      maxResults,
-      "Chat ID:",
-      chatId,
-      "Message:",
-      message
-    );
+      history: providedHistory,
+    } = req.body;
+
+    // console.log(
+    //   "Model ID:",
+    //   modelId,
+    //   "Max Results:",
+    //   maxResults,
+    //   "Chat ID:",
+    //   chatId,
+    //   "Message:",
+    //   message
+    // );
     if (!modelId) {
       return res.status(400).json({ error: "modelId is required" });
     }
@@ -285,7 +291,7 @@ router.post(
         userMessage.toLowerCase().includes(keyword.toLowerCase())
       );
 
-      console.log("Has Important Keyword:", hasImportantKeyword);
+      // console.log("Has Important Keyword:", hasImportantKeyword);
       const importantTriggers = ["important", "priority", "urgent"];
       const isImportantQuery = importantTriggers.some((trigger) =>
         userMessage.includes(trigger)
@@ -297,7 +303,7 @@ router.post(
           const emails = (await emailService.fetchEmails({ maxResults }))
             .messages;
           const fetchTime = Date.now() - fetchStart;
-          console.log(`Fetched ${emails.length} emails in ${fetchTime}ms`);
+          // console.log(`Fetched ${emails.length} emails in ${fetchTime}ms`);
           const analysisStart = Date.now();
           importantEmails = await emailService.filterImportantEmails(
             emails,
@@ -305,11 +311,11 @@ router.post(
             "daily",
             modelId
           );
-          console.log(
-            `Analyzed important emails in ${
-              Date.now() - analysisStart
-            }ms. Found ${importantEmails.length} important emails.`
-          );
+          // console.log(
+          //   `Analyzed important emails in ${
+          //     Date.now() - analysisStart
+          //   }ms. Found ${importantEmails.length} important emails.`
+          // );
         } catch (error) {
           console.error("Error filtering important emails:", error);
           importantEmails = []; // Ensure we have a fallback
@@ -443,14 +449,17 @@ function extractContextKeywords(message) {
 // Extract Text from Uploaded File
 async function extractTextFromFile(filePath, mimeType) {
   try {
-    let text;
+    let text = ""; // Declare text here to ensure it’s always defined
     if (mimeType === "text/plain") {
       text = fs.readFileSync(filePath, "utf-8");
     } else if (mimeType === "application/pdf") {
       const data = new Uint8Array(fs.readFileSync(filePath));
-      const loadingTask = pdfjsLib.getDocument({ data });
+      const loadingTask = pdfjsLib.getDocument({
+        data,
+        cMapUrl, // Provide CMAP URL for text extraction
+        cMapPacked: true,
+      });
       const pdf = await loadingTask.promise;
-      let text = "";
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();

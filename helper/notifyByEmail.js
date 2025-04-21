@@ -397,7 +397,7 @@ export const sendWaitingListConfirmation = async (user) => {
       html,
       text,
     });
-    console.log(`Waiting list confirmation sent to ${user.email}`);
+    // console.log(`Waiting list confirmation sent to ${user.email}`);
   } catch (error) {
     console.error(
       `Failed to send waiting list confirmation to ${user.email}:`,
@@ -427,7 +427,7 @@ export const sendAdminNotification = async (user) => {
       html,
       text,
     });
-    console.log(`Admin notification sent to ${adminEmails.join(", ")}`);
+    // console.log(`Admin notification sent to ${adminEmails.join(", ")}`);
   } catch (error) {
     console.error(`Failed to send admin notification:`, error);
   }
@@ -447,7 +447,7 @@ export const sendApprovalConfirmation = async (user, loginLink) => {
       html,
       text,
     });
-    console.log(`Approval confirmation sent to ${user.email}`);
+    // console.log(`Approval confirmation sent to ${user.email}`);
   } catch (error) {
     console.error(
       `Failed to send approval confirmation to ${user.email}:`,
@@ -469,7 +469,7 @@ export const sendFirstLoginConfirmation = async (user) => {
       html,
       text,
     });
-    console.log(`First login confirmation sent to ${user.email}`);
+    // console.log(`First login confirmation sent to ${user.email}`);
   } catch (error) {
     console.error(
       `Failed to send first login confirmation to ${user.email}:`,
@@ -497,7 +497,7 @@ export const sendSubscriptionSuccessEmail = async (user) => {
       html,
       text,
     });
-    console.log(`Subscription success email sent to ${user.email}`);
+    // console.log(`Subscription success email sent to ${user.email}`);
   } catch (error) {
     console.error(
       `Failed to send subscription success email to ${user.email}:`,
@@ -520,7 +520,7 @@ export const sendSubscriptionCancelEmail = async (user) => {
       html,
       text,
     });
-    console.log(`Subscription cancellation email sent to ${user.email}`);
+    // console.log(`Subscription cancellation email sent to ${user.email}`);
   } catch (error) {
     console.error(
       `Failed to send subscription cancellation email to ${user.email}:`,

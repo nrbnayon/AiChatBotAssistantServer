@@ -16,7 +16,7 @@ const seedAdmin = async () => {
         content: SYSTEM_PROMPT.trim(),
         isDefault: true,
       });
-      console.log("Default system message added.");
+      // console.log("Default system message added.");
     }
 
     // Seed AiModel
@@ -95,7 +95,7 @@ const seedAdmin = async () => {
             "Meta's efficient 8B parameter model with 8K context window",
         },
       ]);
-      console.log("Initial AI models added.");
+      // console.log("Initial AI models added.");
     }
 
     // Check if admin already exists
@@ -105,7 +105,7 @@ const seedAdmin = async () => {
     });
 
     if (adminExists) {
-      console.log("Admin user already exists, skipping creation");
+      // console.log("Admin user already exists, skipping creation");
       return adminExists;
     }
 
@@ -115,9 +115,9 @@ const seedAdmin = async () => {
     });
 
     if (emailExists) {
-      console.log(
-        "Email already exists with different role, skipping admin creation"
-      );
+      // console.log(
+      //   "Email already exists with different role, skipping admin creation"
+      // );
       return null;
     }
 
@@ -141,7 +141,7 @@ const seedAdmin = async () => {
       },
     });
 
-    console.log("✅ Admin user created successfully");
+    // console.log("✅ Admin user created successfully");
     return superAdminUser;
   } catch (error) {
     console.error("Error creating admin user:", error);

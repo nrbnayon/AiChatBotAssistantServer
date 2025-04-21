@@ -48,7 +48,7 @@ const router = express.Router();
  * ╚═══════════════════════════════════════╝
  */
 router.post("/add-to-waiting-list", async (req, res) => {
-  console.log("New waiting list entry:", req.body);
+  // console.log("New waiting list entry:", req.body);
   const { email, name, inbox, description } = req.body;
 
   try {

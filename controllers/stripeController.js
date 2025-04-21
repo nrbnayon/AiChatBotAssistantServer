@@ -23,7 +23,7 @@ const planLimits = {
 };
 
 export const createCheckoutSession = catchAsync(async (req, res, next) => {
-  console.log("Request body:", req.body);
+  // console.log("Request body:", req.body);
 
   // Check if request body exists
   if (!req.body || Object.keys(req.body).length === 0) {
@@ -44,7 +44,7 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
     return next(new ApiError(404, "User not found"));
   }
 
-  console.log("Creating checkout session for plan:", plan);
+  // console.log("Creating checkout session for plan:", plan);
 
   if (!["basic", "premium", "enterprise"].includes(plan)) {
     return next(new ApiError(400, "Invalid plan"));
@@ -108,7 +108,7 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
       sig,
       process.env.STRIPE_WEBHOOK_SECRET
     );
-    console.log("Webhook event received:", event.type);
+    // console.log("Webhook event received:", event.type);
   } catch (err) {
     console.error("Webhook signature verification failed:", err.message);
     return next(new ApiError(400, `Webhook Error: ${err.message}`));
@@ -125,12 +125,12 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
         { expand: ["latest_invoice"] }
       );
 
-      console.log("Stripe subscription details:", {
-        id: subscription.id,
-        status: subscription.status,
-        start_date: subscription.start_date,
-        current_period_end: subscription.current_period_end,
-      });
+      // console.log("Stripe subscription details:", {
+      //   id: subscription.id,
+      //   status: subscription.status,
+      //   start_date: subscription.start_date,
+      //   current_period_end: subscription.current_period_end,
+      // });
 
       const priceId = subscription.items.data[0].price.id;
       const plan = getPlanFromPriceId(priceId);
@@ -162,7 +162,7 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
         const endDate = new Date(startDate);
         endDate.setDate(endDate.getDate() + 30);
         user.subscription.endDate = endDate;
-        console.log("Using fallback to calculate end date:", endDate);
+        // console.log("Using fallback to calculate end date:", endDate);
       }
 
       user.subscription.stripeSubscriptionId = subscription.id;
@@ -173,12 +173,12 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
       }
 
       await user.save();
-      console.log("User subscription updated successfully:", {
-        id: user._id,
-        plan: user.subscription.plan,
-        startDate: user.subscription.startDate,
-        endDate: user.subscription.endDate,
-      });
+      // console.log("User subscription updated successfully:", {
+      //   id: user._id,
+      //   plan: user.subscription.plan,
+      //   startDate: user.subscription.startDate,
+      //   endDate: user.subscription.endDate,
+      // });
 
       await sendSubscriptionSuccessEmail(user);
     } else if (event.type === "customer.subscription.updated") {
@@ -190,15 +190,15 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
         { expand: ["latest_invoice"] }
       );
 
-      console.log(
-        "Full subscription data:",
-        JSON.stringify({
-          id: subscription.id,
-          status: subscription.status,
-          current_period_end: subscription.current_period_end,
-          cancel_at_period_end: subscription.cancel_at_period_end,
-        })
-      );
+      // console.log(
+      //   "Full subscription data:",
+      //   JSON.stringify({
+      //     id: subscription.id,
+      //     status: subscription.status,
+      //     current_period_end: subscription.current_period_end,
+      //     cancel_at_period_end: subscription.cancel_at_period_end,
+      //   })
+      // );
 
       const user = await User.findOne({
         "subscription.stripeSubscriptionId": subscription.id,
@@ -229,16 +229,16 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
         const endDate = new Date(startDate);
         endDate.setDate(endDate.getDate() + 30);
         user.subscription.endDate = endDate;
-        console.log("Using fallback to calculate end date on update:", endDate);
+        // console.log("Using fallback to calculate end date on update:", endDate);
       }
 
       await user.save();
-      console.log("User subscription updated on update event:", {
-        id: user._id,
-        status: user.subscription.status,
-        autoRenew: user.subscription.autoRenew,
-        endDate: user.subscription.endDate,
-      });
+      // console.log("User subscription updated on update event:", {
+      //   id: user._id,
+      //   status: user.subscription.status,
+      //   autoRenew: user.subscription.autoRenew,
+      //   endDate: user.subscription.endDate,
+      // });
     } else if (event.type === "customer.subscription.deleted") {
       const subscription = event.data.object;
       const user = await User.findOne({
@@ -254,11 +254,11 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
       user.subscription.autoRenew = false;
       user.subscription.remainingQueries = 0;
       await user.save();
-      console.log("User subscription cancelled:", {
-        id: user._id,
-        status: user.subscription.status,
-        endDate: user.subscription.endDate,
-      });
+      // console.log("User subscription cancelled:", {
+      //   id: user._id,
+      //   status: user.subscription.status,
+      //   endDate: user.subscription.endDate,
+      // });
 
       await sendSubscriptionCancelEmail(user);
     }
@@ -452,7 +452,7 @@ export const adminCancelUserSubscription = catchAsync(
         const cancelResponse = await stripe.subscriptions.cancel(
           user.subscription.stripeSubscriptionId
         );
-        console.log("Cancel response:", cancelResponse);
+        // console.log("Cancel response:", cancelResponse);
         if (cancelResponse.status !== "canceled") {
           return next(new ApiError(500, "Failed to cancel subscription"));
         }

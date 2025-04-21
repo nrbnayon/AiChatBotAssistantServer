@@ -219,10 +219,10 @@ const updateKeywords = catchAsync(async (req, res, next) => {
 const createUser = catchAsync(async (req, res, next) => {
   const { name, email, password, role, status } = req.body;
 
-  console.log("Get User Body:::", req.body);
-  if (!name || !email || !password) {
-    return next(new ApiError(400, "Name, email, and password are required"));
-  }
+  // console.log("Get User Body:::", req.body);
+  // if (!name || !email || !password) {
+  //   return next(new ApiError(400, "Name, email, and password are required"));
+  // }
 
   const requesterRole = req.user.role || "admin";
 

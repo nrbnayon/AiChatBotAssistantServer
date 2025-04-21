@@ -33,26 +33,26 @@ export const safeCookie = {
   set: (res, name, value, options) => {
     try {
       res.cookie(name, value, options);
-      console.log(`Cookie '${name}' set successfully`);
+      // console.log(`Cookie '${name}' set successfully`);
     } catch (error) {
       console.error(`Failed to set cookie '${name}':`, error.message);
       const simpleOptions = { ...options };
       delete simpleOptions.domain;
       res.cookie(name, value, simpleOptions);
-      console.log(`Cookie '${name}' set with fallback options`);
+      // console.log(`Cookie '${name}' set with fallback options`);
     }
   },
 
   clear: (res, name, options) => {
     try {
       res.clearCookie(name, options);
-      console.log(`Cookie '${name}' cleared successfully`);
+      // console.log(`Cookie '${name}' cleared successfully`);
     } catch (error) {
       console.error(`Failed to clear cookie '${name}':`, error.message);
       const simpleOptions = { ...options };
       delete simpleOptions.domain;
       res.clearCookie(name, simpleOptions);
-      console.log(`Cookie '${name}' cleared with fallback options`);
+      // console.log(`Cookie '${name}' cleared with fallback options`);
     }
   },
 };

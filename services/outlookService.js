@@ -74,7 +74,7 @@ class OutlookService extends EmailService {
         }
         this.user.microsoftAccessTokenExpires = Date.now() + expires_in * 1000;
         await this.user.save();
-        console.log("[DEBUG] Microsoft token refreshed");
+        // console.log("[DEBUG] Microsoft token refreshed");
       } catch (error) {
         if (error instanceof ApiError) throw error;
         throw new ApiError(
@@ -223,11 +223,12 @@ class OutlookService extends EmailService {
         pageTokenCache.length > 1
           ? pageTokenCache[pageTokenCache.length - 2]
           : null,
+      totalCount: data["@odata.count"] || 0,
     };
 
-    console.log(
-      `[DEBUG] Fetched ${result.messages.length} emails with pageToken: ${pageToken}, nextPageToken: ${result.nextPageToken}, prevPageToken: ${result.prevPageToken}`
-    );
+    // console.log(
+    //   `[DEBUG] Fetched ${result.messages.length} emails with pageToken: ${pageToken}, nextPageToken: ${result.nextPageToken}, prevPageToken: ${result.prevPageToken}`
+    // );
     // console.log(
     //   `[DEBUG] Email IDs: ${result.messages.map((e) => e.id).join(", ")}`
     // );

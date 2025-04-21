@@ -7,7 +7,7 @@ import { ApiError, catchAsync } from "../utils/errorHandler.js";
 import { jwtHelper } from "../helper/jwtHelper.js";
 
 const logger = {
-  info: (message, meta) => console.log(`[INFO] ${message}`, meta || ""),
+  info: (message, meta) => console.log(`[INFO] message log---`),
   error: (message, meta) => console.error(`[ERROR] ${message}`, meta || ""),
 };
 
@@ -69,8 +69,6 @@ const auth = (...roles) =>
       // Handle expired tokens
       if (error instanceof jwt.TokenExpiredError) {
         const refreshToken = req.cookies?.refreshToken;
-
-        console.log("Get refresh token from cookie", refreshToken);
 
         // If refresh token exists, use it to get a new access token
         if (refreshToken) {

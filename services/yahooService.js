@@ -38,7 +38,6 @@ class YahooService extends EmailService {
         refresh_token || this.user.yahooRefreshToken;
       this.user.yahooAccessTokenExpires = Date.now() + expires_in * 1000;
       await this.user.save();
-      console.log("[DEBUG] Yahoo token refreshed");
     }
     return {
       accessToken: this.user.yahooAccessToken,

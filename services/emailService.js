@@ -223,9 +223,9 @@ class EmailService {
     timeFilter = "daily",
     modelId = null
   ) {
-    console.log(
-      `Filtering ${emails.length} emails for importance, time range ${timeFilter}`
-    );
+    // console.log(
+    //   `Filtering ${emails.length} emails for importance, time range ${timeFilter}`
+    // );
 
     // Validate and process timeFilter
     let startDate, endDate;
@@ -268,7 +268,7 @@ class EmailService {
 
     const userKeywords = this.user.userImportantMailKeywords || [];
     const keywords = [...new Set([...userKeywords, ...customKeywords])];
-    console.log("Using keywords for filtering:", keywords);
+    // console.log("Using keywords for filtering:", keywords);
 
     const recentEmails =
       startDate && endDate
@@ -278,9 +278,9 @@ class EmailService {
           })
         : emails;
 
-    console.log(
-      `Found ${recentEmails.length} emails within the ${timeFilter} time frame`
-    );
+    // console.log(
+    //   `Found ${recentEmails.length} emails within the ${timeFilter} time frame`
+    // );
 
     const emailsToAnalyze = [];
     const processedEmails = [];
@@ -313,9 +313,9 @@ class EmailService {
       }
     }
 
-    console.log(
-      `Found ${emailsToAnalyze.length} emails containing keywords that need analysis`
-    );
+    // console.log(
+    //   `Found ${emailsToAnalyze.length} emails containing keywords that need analysis`
+    // );
 
     if (emailsToAnalyze.length === 0) {
       return processedEmails
@@ -341,11 +341,11 @@ class EmailService {
       try {
         const modelResponse = await this.callModelWithFallback(prompt, modelId);
         const responseText = modelResponse.content || "";
-        console.log(
-          `Model response for email (${
-            email.id
-          }) analysis (first 50 chars): ${responseText.substring(0, 50)}...`
-        );
+        // console.log(
+        //   `Model response for email (${
+        //     email.id
+        //   }) analysis (first 50 chars): ${responseText.substring(0, 50)}...`
+        // );
 
         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
         const jsonStr = jsonMatch
@@ -399,9 +399,9 @@ class EmailService {
       .filter((email) => email.isImportant)
       .sort((a, b) => b.importanceScore - a.importanceScore);
 
-    console.log(
-      `Found ${importantEmails.length} important emails after analysis`
-    );
+    // console.log(
+    //   `Found ${importantEmails.length} important emails after analysis`
+    // );
 
     return importantEmails.map((email) => ({
       ...email,
@@ -412,242 +412,6 @@ class EmailService {
       body: email.body,
     }));
   }
-
-  // async filterImportantEmails(
-  //   emails,
-  //   customKeywords = [],
-  //   timeRange = "weekly",
-  //   modelId = null
-  // ) {
-  //   const validTimeRanges = ["daily", "weekly", "monthly"];
-  //   if (!validTimeRanges.includes(timeRange)) {
-  //     throw new ApiError(400, `Invalid timeRange: ${timeRange}`);
-  //   }
-
-  //   const cacheKey = `${this.user.id}-${customKeywords.join(",")}-${timeRange}`;
-  //   const cached = this.analysisCache.get(cacheKey);
-  //   if (cached) return cached;
-
-  //   // Filter emails by time range
-  //   const timeFrames = {
-  //     daily: 1 * 24 * 60 * 60 * 1000,
-  //     weekly: 7 * 24 * 60 * 60 * 1000,
-  //     monthly: 30 * 24 * 60 * 60 * 1000,
-  //   };
-  //   const cutoffDate = new Date(Date.now() - timeFrames[timeRange]);
-  //   const recentEmails = emails.filter(
-  //     (email) => new Date(email.date) >= cutoffDate
-  //   );
-
-  //   if (recentEmails.length === 0) {
-  //     this.analysisCache.set(cacheKey, []);
-  //     return [];
-  //   }
-
-  //   // Batch analysis
-  //   const batchPrompt =
-  //     recentEmails
-  //       .map(
-  //         (e, i) =>
-  //           `Email ${i}: Subject: "${e.subject || "No subject"}", Snippet: "${
-  //             e.snippet || ""
-  //           }"`
-  //       )
-  //       .join("\n") +
-  //     `\n\nAnalyze these emails for importance based on keywords: ${
-  //       customKeywords.join(", ") || "none"
-  //     }. ` +
-  //     `Return a JSON array ONLY, without any wrapping object: [{index: NUMBER, score: NUMBER, isImportant: BOOLEAN}]`;
-
-  //   try {
-  //     const response = await this.callModelWithFallback(batchPrompt, modelId);
-  //     let results = JSON.parse(response.content || "[]");
-
-  //     // Handle cases where results is an object with importance_analysis or emails
-  //     if (!Array.isArray(results)) {
-  //       if (
-  //         results &&
-  //         typeof results === "object" &&
-  //         Array.isArray(results.importance_analysis)
-  //       ) {
-  //         console.log(
-  //           "Extracted array from importance_analysis:",
-  //           results.importance_analysis
-  //         );
-  //         results = results.importance_analysis;
-  //       } else if (
-  //         results &&
-  //         typeof results === "object" &&
-  //         Array.isArray(results.emails)
-  //       ) {
-  //         console.log("Extracted array from emails:", results.emails);
-  //         results = results.emails;
-  //       } else {
-  //         console.error("Model did not return a valid array:", results);
-  //         results = []; // Fallback to empty array
-  //       }
-  //     }
-
-  //     const analyzedEmails = recentEmails
-  //       .map((e, i) => {
-  //         const result = results.find((r) => r.index === i) || {
-  //           score: 0,
-  //           isImportant: false,
-  //         };
-  //         return {
-  //           ...e,
-  //           importanceScore: result.score || 0,
-  //           isImportant: result.isImportant || false,
-  //         };
-  //       })
-  //       .filter((e) => e.isImportant)
-  //       .sort((a, b) => b.importanceScore - a.importanceScore);
-
-  //     this.analysisCache.set(cacheKey, analyzedEmails);
-  //     return analyzedEmails;
-  //   } catch (error) {
-  //     console.error("Error analyzing emails:", error);
-  //     return [];
-  //   }
-  // }
-
-  // async filterImportantEmails(
-  //   emails,
-  //   customKeywords = [],
-  //   timeRange = "weekly",
-  //   modelId = null
-  // ) {
-  //   console.log(
-  //     "Filtering important emails with keywords:",
-  //     // emails,
-  //     customKeywords,
-  //     timeRange,
-  //     modelId
-  //   );
-  //   const validTimeRanges = ["daily", "weekly", "monthly"];
-  //   if (!validTimeRanges.includes(timeRange)) {
-  //     throw new ApiError(
-  //       StatusCodes.BAD_REQUEST,
-  //       `Invalid timeRange: ${timeRange}`
-  //     );
-  //   }
-
-  //   const cacheKey = `${this.user.id}-${customKeywords.join(",")}-${timeRange}`;
-  //   const cached = this.analysisCache.get(cacheKey);
-  //   if (cached) return cached;
-
-  //   // Filter emails by time range
-  //   const timeFrames = {
-  //     daily: 1 * 24 * 60 * 60 * 1000,
-  //     weekly: 7 * 24 * 60 * 60 * 1000,
-  //     monthly: 30 * 24 * 60 * 60 * 1000,
-  //   };
-  //   const cutoffDate = new Date(Date.now() - timeFrames[timeRange]);
-  //   const recentEmails = emails.filter(
-  //     (email) => new Date(email.date) >= cutoffDate
-  //   );
-
-  //   if (recentEmails.length === 0) {
-  //     this.analysisCache.set(cacheKey, []);
-  //     return [];
-  //   }
-
-  //   // Batch analysis with clearer instructions for response format
-  //   const batchPrompt =
-  //     recentEmails
-  //       .map(
-  //         (e, i) =>
-  //           `Email ${i}: Subject: "${e.subject || "No subject"}", Snippet: "${
-  //             e.snippet || ""
-  //           }"`
-  //       )
-  //       .join("\n") +
-  //     `\n\nAnalyze these emails for importance based on keywords: ${
-  //       customKeywords.join(", ") || "none"
-  //     }. ` +
-  //     `Return ONLY a JSON array at the top level (not nested in an object): [{index: NUMBER, score: NUMBER, isImportant: BOOLEAN}]`;
-
-  //   try {
-  //     const response = await this.callModelWithFallback(batchPrompt, modelId);
-  //     const parsedContent = JSON.parse(response.content || "[]");
-
-  //     // Extract the array, whether it's directly returned or nested
-  //     let results = [];
-  //     if (Array.isArray(parsedContent)) {
-  //       // Direct array response
-  //       results = parsedContent;
-  //     } else if (typeof parsedContent === "object") {
-  //       // Handle nested structure - check for any array property
-  //       // First look for common pattern names
-  //       const possibleArrayProps = [
-  //         "importance_analysis",
-  //         "results",
-  //         "emails",
-  //         "data",
-  //         "items",
-  //       ];
-
-  //       // Try to find arrays using the common names first
-  //       for (const propName of possibleArrayProps) {
-  //         if (
-  //           parsedContent[propName] &&
-  //           Array.isArray(parsedContent[propName])
-  //         ) {
-  //           results = parsedContent[propName];
-  //           break;
-  //         }
-  //       }
-
-  //       // If still no results, try to find any array in the response
-  //       if (results.length === 0) {
-  //         const arrayProp = Object.values(parsedContent).find((val) =>
-  //           Array.isArray(val)
-  //         );
-  //         if (arrayProp) {
-  //           results = arrayProp;
-  //         }
-  //       }
-  //     }
-
-  //     // Normalize entries to ensure they have the expected format
-  //     const normalizedResults = results.map((item) => {
-  //       // Ensure all entries have index, score, and isImportant properties
-  //       return {
-  //         index: typeof item.index === "number" ? item.index : 0,
-  //         score: typeof item.score === "number" ? item.score : 0,
-  //         isImportant: Boolean(item.isImportant),
-  //       };
-  //     });
-
-  //     const analyzedEmails = recentEmails
-  //       .map((e, i) => {
-  //         // Find matching result by index, or use default values
-  //         const result = normalizedResults.find((r) => r.index === i) || {
-  //           score: 0,
-  //           isImportant: false,
-  //         };
-
-  //         return {
-  //           ...e,
-  //           importanceScore: result.score || 0,
-  //           isImportant: result.isImportant || false,
-  //         };
-  //       })
-  //       .filter((e) => e.isImportant)
-  //       .sort((a, b) => b.importanceScore - a.importanceScore);
-
-  //     this.analysisCache.set(cacheKey, analyzedEmails);
-  //     return analyzedEmails;
-  //   } catch (error) {
-  //     console.error("Error analyzing emails:", error);
-  //     // Log more details about the error
-  //     if (error.response) {
-  //       console.error("API error response:", error.response.data);
-  //     }
-  //     // Return empty array as fallback
-  //     return [];
-  //   }
-  // }
 
   clearCache() {
     this.analysisCache.clear();

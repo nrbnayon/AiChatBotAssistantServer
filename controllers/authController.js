@@ -52,7 +52,7 @@ const oauthCallback = catchAsync(async (req, res) => {
     (req.session && req.session.messages && req.session.messages[0]);
 
   if (errorMsg) {
-    console.log("OAuth callback error:", errorMsg);
+    // console.log("OAuth callback error:", errorMsg);
     return res.redirect(
       `${getFrontendUrl}/login?error=${encodeURIComponent(errorMsg)}`
     );

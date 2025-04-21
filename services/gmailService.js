@@ -45,7 +45,7 @@ class GmailService extends EmailService {
           : this.user.googleRefreshToken;
         this.user.googleAccessTokenExpires = credentials.expiry_date;
         await this.user.save();
-        console.log("[DEBUG] Google token refreshed");
+        // console.log("[DEBUG] Google token refreshed");
       } catch (error) {
         console.error("[ERROR] Google token refresh failed:", error);
         if (error.response?.data?.error === "invalid_grant") {
@@ -84,10 +84,10 @@ class GmailService extends EmailService {
       pageToken,
     };
 
-    console.log(
-      `[DEBUG] Parameters sent to Gmail API:`,
-      JSON.stringify(params)
-    );
+    // console.log(
+    //   `[DEBUG] Parameters sent to Gmail API:`,
+    //   JSON.stringify(params)
+    // );
 
     const response = await client.users.messages.list(params);
     // console.log(`[DEBUG] Gmail API response:`, JSON.stringify(response.data));
@@ -189,7 +189,7 @@ class GmailService extends EmailService {
       }
 
       const messages = response.data.messages || [];
-      console.log(`[DEBUG] Applied query: ${filteredParams.q}`);
+      // console.log(`[DEBUG] Applied query: ${filteredParams.q}`);
       const emails = await Promise.all(
         messages.map(async (msg) => {
           try {
@@ -222,11 +222,12 @@ class GmailService extends EmailService {
           pageTokenCache.length > 1
             ? pageTokenCache[pageTokenCache.length - 2]
             : null,
+        totalCount: response.data.resultSizeEstimate || 0,
       };
 
-      console.log(
-        `[DEBUG] Fetched ${result.messages.length} emails with pageToken: ${pageToken}, nextPageToken: ${result.nextPageToken}, prevPageToken: ${result.prevPageToken}`
-      );
+      // console.log(
+      //   `[DEBUG] Fetched ${result.messages.length} emails with pageToken: ${pageToken}, nextPageToken: ${result.nextPageToken}, prevPageToken: ${result.prevPageToken}`
+      // );
       // console.log(
       //   `[DEBUG] Email IDs: ${result.messages.map((e) => e.id).join(", ")}`
       // );
@@ -265,36 +266,6 @@ class GmailService extends EmailService {
     };
   }
 
-  //   function getDateRange(timeFilter) {
-  //   const now = new Date();
-  //   const year = now.getFullYear();
-  //   const month = now.getMonth();
-  //   const day = now.getDate();
-  //   const startOfToday = new Date(year, month, day);
-  //   startOfToday.setUTCHours(0, 0, 0, 0); // Use UTC for consistency
-
-  //   switch (timeFilter) {
-  //     case "today":
-  //       return { after: startOfToday };
-  //     case "yesterday":
-  //       const startOfYesterday = new Date(startOfToday);
-  //       startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-  //       return { after: startOfYesterday, before: startOfToday };
-  //     case "this week":
-  //       const startOfWeek = new Date(startOfToday);
-  //       startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-  //       return { after: startOfWeek };
-  //     // ... other cases ...
-  //     default:
-  //       if (timeFilter && timeFilter.match(/^\d{4}\/\d{2}\/\d{2}$/)) {
-  //         const specificDate = new Date(timeFilter);
-  //         const nextDay = new Date(specificDate);
-  //         nextDay.setDate(specificDate.getDate() + 1);
-  //         return { after: specificDate, before: nextDay };
-  //       }
-  //       return {};
-  //   }
-  // }
 
   getEmailBody(payload) {
     if (!payload) return "";

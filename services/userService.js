@@ -17,14 +17,6 @@ const handleLocalLogin = async (email, password) => {
 
     const user = await User.findOne({ email: normalizedEmail });
 
-    // Detailed logging for debugging
-    console.log("Login Attempt:", {
-      email: normalizedEmail,
-      userFound: !!user,
-      authProvider: user?.authProvider,
-      passwordSet: !!user?.password,
-    });
-
     if (!user) {
       throw new AppError("User Does Not Exist Try With Correct Email", 401);
     }
@@ -38,12 +30,6 @@ const handleLocalLogin = async (email, password) => {
     }
 
     const isMatch = await user.comparePassword(password);
-
-    console.log("Password Match Result:", {
-      isMatch,
-      providedPassword: password,
-      storedPasswordHash: user.password,
-    });
 
     if (!isMatch) {
       throw new ApiError(401, "Invalid credentials");

@@ -78,7 +78,7 @@ const oauthCallback = async (
       email,
     });
 
-    console.log(`[INFO] Waiting list entry for ${email}:`, waitingListEntry);
+    // console.log(`[INFO] Waiting list entry for ${email}:`, waitingListEntry);
 
     if (!waitingListEntry) {
       return done(null, false, {
@@ -92,7 +92,7 @@ const oauthCallback = async (
       });
     }
 
-    console.log(`[INFO] ${provider} OAuth login attempt for: ${email}`);
+    // console.log(`[INFO] ${provider} OAuth login attempt for: ${email}`);
 
     // ----- waitingListEntry check email ------
 
@@ -158,9 +158,9 @@ const oauthCallback = async (
         user.firstLogin = false;
         await user.save();
       }
-      console.log(
-        `[INFO] Updated existing user for ${email} with ${provider} credentials`
-      );
+      // console.log(
+      //   `[INFO] Updated existing user for ${email} with ${provider} credentials`
+      // );
     } else {
       user = await User.create({
         email,
@@ -177,9 +177,9 @@ const oauthCallback = async (
         inboxList: [email || waitingListEntry.inbox],
         userImportantMailKeywords: [...DEFAULT_IMPORTANT_KEYWORDS],
       });
-      console.log(
-        `[INFO] Created new user for ${email} with ${provider} credentials`
-      );
+      // console.log(
+      //   `[INFO] Created new user for ${email} with ${provider} credentials`
+      // );
     }
 
     const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } =

@@ -12,7 +12,6 @@ User language: {{USER_LANGUAGE}}
 User interaction mode: {{INTERACTION_MODE}}
 User preferences: {{USER_PREFERENCES}}
 
-
 ### Key Capabilities:
 - Understand context and nuance in user requests
 - Provide detailed and precise responses
@@ -100,7 +99,7 @@ User preferences: {{USER_PREFERENCES}}
 **Important:** Always ensure your response is a valid JSON object. Do not include any text outside of the JSON structure.
 
 ### Attachment Handling:
-  - When the user says "show attachments for email <id>", "list attachments for email <id>", or similar, use {"action": "list-attachments", "params": {"email_id": "<id>"}, "message": "Let me get the attachments for email <id>."}
+  - When the user says "show attachments for email <id>" this are the download links just click on it, "list attachments for email <id>", or similar, use {"action": "list-attachments", "params": {"email_id": "<id>"}, "message": "Let me get the attachments for email <id>."}
   - When listing emails with "fetch-emails", if an email has attachments, the response will include a note suggesting the user can say "show attachments for email N" to see them.
 
 ### Dynamic Email Request Handling:
