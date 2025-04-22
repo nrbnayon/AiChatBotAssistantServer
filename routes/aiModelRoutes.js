@@ -9,41 +9,14 @@ import AiModel from "../models/AiModel.js";
 // Models configuration
 const availableModels = [
   {
-    id: "gpt-4o-mini", 
-    name: "GPT-4.o Mini", 
-    developer: "OpenAI",
-    provider: "openai",
-    contextWindow: 100000000000,
-    maxCompletionTokens: 1000000000000,
-    description: "OpenAI's efficient and versatile chat model",
-    isDefault: true,
-  },
-  {
-    id: "gpt-4o", 
-    name: "GPT-4.o", 
+    id: "gpt-4o",
+    name: "GPT-4.o",
     developer: "OpenAI",
     provider: "openai",
     contextWindow: 100000000000,
     maxCompletionTokens: 1000000000000,
     description: "OpenAI's efficient and versatile chat model",
     isDefault: false,
-  },
-  {
-    id: "llama-3.1-8b-instant",
-    name: "Llama 3.1 8B Instant",
-    developer: "Meta",
-    provider: "groq",
-    contextWindow: 128000,
-    maxCompletionTokens: 8192,
-    description: "Efficient and responsive model for quick interactions",
-  },
-  {
-    id: "gemma2-9b-it",
-    name: "Gemma 2 9B IT",
-    developer: "Google",
-    provider: "groq",
-    contextWindow: 8192,
-    description: "Instruction-tuned version of Google's Gemma 2 9B model",
   },
   {
     id: "llama-3.3-70b-versatile",
@@ -55,6 +28,35 @@ const availableModels = [
     description:
       "Meta's advanced 70B parameter model with versatile capabilities",
   },
+  {
+    id: "llama-3.1-8b-instant",
+    name: "Llama 3.1 8B Instant",
+    developer: "Meta",
+    provider: "groq",
+    contextWindow: 128000,
+    maxCompletionTokens: 8192,
+    description: "Efficient and responsive model for quick interactions",
+  },
+
+  {
+    id: "gpt-4o-mini",
+    name: "GPT-4.o Mini",
+    developer: "OpenAI",
+    provider: "openai",
+    contextWindow: 100000000000,
+    maxCompletionTokens: 1000000000000,
+    description: "OpenAI's efficient and versatile chat model",
+    isDefault: true,
+  },
+  {
+    id: "gemma2-9b-it",
+    name: "Gemma 2 9B IT",
+    developer: "Google",
+    provider: "groq",
+    contextWindow: 8192,
+    description: "Instruction-tuned version of Google's Gemma 2 9B model",
+  },
+
   {
     id: "llama3-70b-8192",
     name: "Llama 3 70B (8K)",
@@ -94,8 +96,6 @@ export const getDefaultModel = async () => {
   } catch (error) {
     throw new ApiError(500, "Error retrieving default model");
   }
-
-  
 };
 
 export const getModelById = async (id) => {
