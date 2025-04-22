@@ -9,6 +9,10 @@ import {
 } from "../helper/notifyByEmail.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const getFrontendUrl =
+  process.env.NODE_ENV === "production"
+    ? process.env.FRONTEND_LIVE_URL
+    : process.env.FRONTEND_URL;
 
 const priceIdToPlan = {
   [process.env.STRIPE_PRICE_BASIC]: "basic",
@@ -86,8 +90,8 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
     payment_method_types: ["card"],
     line_items: [{ price: getStripePriceId(plan), quantity: 1 }],
     mode: "subscription",
-    success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${process.env.FRONTEND_URL}/cancel`,
+    success_url: `${getFrontendUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${getFrontendUrl}/cancel`,
     client_reference_id: user._id.toString(),
     customer_email: user.email,
   });
