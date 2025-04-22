@@ -12,6 +12,7 @@ const waitingListSchema = new mongoose.Schema({
     default: "waiting",
   },
   createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
 });
 
 waitingListSchema.pre("save", function (next) {
