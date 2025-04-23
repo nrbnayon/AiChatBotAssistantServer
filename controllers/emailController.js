@@ -7,7 +7,7 @@ import NodeCache from "node-cache";
 const emailListCache = new NodeCache({ stdTTL: 300 });
 
 const fetchEmails = catchAsync(async (req, res, filter = "all") => {
-  const { q, maxResults = 1000, pageToken, _t } = req.query;
+  const { q, maxResults = 1000, pageToken,  _t} = req.query;
 
   // console.log("Get query params:", q);
   // console.log("Get Filter :::", filter);
@@ -27,7 +27,7 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
   // Include _t in cache key to ensure unique requests bypass cache
   const cacheKey = `${req.user.id}-${filter}-${q || ""}-${pageToken || ""}-${
     timeFilter || ""
-  }-${_t || ""}`;
+  }`;
   const cachedEmails = emailListCache.get(cacheKey);
   if (cachedEmails) {
     // console.log(`Cache hit for ${cacheKey}`);

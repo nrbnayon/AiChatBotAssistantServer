@@ -14,18 +14,33 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+const planLimits = {
+  basic: {
+    maxInboxes: 1,
+    dailyQueries: 15,
+  },
+  premium: {
+    maxInboxes: 3,
+    dailyQueries: 100,
+  },
+  enterprise: {
+    maxInboxes: 10,
+    dailyQueries: Infinity,
+  },
+};
+
 // Company constants
 const companyName = "Inbox-Buddy.ai";
-const supportEmail = "support@inboxbuddy.com";
+const supportEmail = "support@inbox-buddy.ai";
 const year = new Date().getFullYear();
-const logoUrl = "https://i.ibb.co.com/G3M856f9/logo.png";
+const logoUrl =
+  "https://res.cloudinary.com/dtyxcxze9/image/upload/v1745383375/logo_yxchsq.png";
 const primaryColor = "#4361EE";
 const accentColor = "#3A0CA3";
 const lightGray = "#f8f9fa";
 const darkGray = "#343a40";
 const highlightColor = "#2ec4b6";
 const warningColor = "#ff9f1c";
-
 
 // Function to replace placeholders in templates
 const replacePlaceholders = (template, data) => {
@@ -71,8 +86,8 @@ const waitingListConfirmationTemplate = `
         </tr>
         <tr>
           <td style="background-color: ${lightGray}; padding: 25px; text-align: center; color: ${darkGray};">
-            <p style="margin-bottom: 10px;">&copy; ${year} ${companyName}. All rights reserved.</p>
-            <p style="margin: 0;"><a href="https://inboxbuddy.com/unsubscribe" style="color: ${primaryColor}; text-decoration: none;">Unsubscribe</a> | <a href="https://inboxbuddy.com/privacy" style="color: ${primaryColor}; text-decoration: none;">Privacy Policy</a></p>
+            <p style="margin-bottom: 10px;">© ${year} ${companyName}. All rights reserved.</p>
+             <a href="https://inbox-buddy.ai/about" style="color: ${primaryColor}; text-decoration: none;">Privacy Policy</a></p>
           </td>
         </tr>
       </table>
@@ -115,14 +130,14 @@ const adminNotificationTemplate = `
             </table>
             <p style="color: #555;">Please review and approve or reject this user through the admin panel.</p>
             <div style="text-align: center; margin: 30px 0;">
-              <a href="https://inboxbuddy.com/admin/waiting-list" style="background-color: ${primaryColor}; color: white; padding: 12px 28px; text-decoration: none; display: inline-block; border-radius: 4px; font-weight: 500; letter-spacing: 0.3px;">Access Admin Panel</a>
+              <a href="https://inbox-buddy.ai/admin/waiting-list" style="background-color: ${primaryColor}; color: white; padding: 12px 28px; text-decoration: none; display: inline-block; border-radius: 4px; font-weight: 500; letter-spacing: 0.3px;">Access Admin Panel</a>
             </div>
           </td>
         </tr>
         <tr>
           <td style="background-color: ${lightGray}; padding: 25px; text-align: center; color: ${darkGray};">
-            <p style="margin-bottom: 10px;">&copy; ${year} ${companyName}. All rights reserved.</p>
-            <p style="margin: 0;"><a href="https://inboxbuddy.com/privacy" style="color: ${primaryColor}; text-decoration: none;">Privacy Policy</a></p>
+            <p style="margin-bottom: 10px;">© ${year} ${companyName}. All rights reserved.</p>
+            <p style="margin: 0;"><a href="https://inbox-buddy.ai/about" style="color: ${primaryColor}; text-decoration: none;">Privacy Policy</a></p>
           </td>
         </tr>
       </table>
@@ -164,8 +179,8 @@ const approvalConfirmationTemplate = `
         </tr>
         <tr>
           <td style="background-color: ${lightGray}; padding: 25px; text-align: center; color: ${darkGray};">
-            <p style="margin-bottom: 10px;">&copy; ${year} ${companyName}. All rights reserved.</p>
-            <p style="margin: 0;"><a href="https://inboxbuddy.com/unsubscribe" style="color: ${primaryColor}; text-decoration: none;">Unsubscribe</a> | <a href="https://inboxbuddy.com/privacy" style="color: ${primaryColor}; text-decoration: none;">Privacy Policy</a></p>
+            <p style="margin-bottom: 10px;">© ${year} ${companyName}. All rights reserved.</p>
+            <a href="https://inbox-buddy.ai/about" style="color: ${primaryColor}; text-decoration: none;">Privacy Policy</a></p>
           </td>
         </tr>
       </table>
@@ -200,14 +215,14 @@ const firstLoginConfirmationTemplate = `
             <p style="color: #555;">Your security is our top priority. We use advanced encryption and security protocols to ensure your data remains protected at all times.</p>
             <p style="color: #555;">Need assistance or have questions? Our support team is ready to help at <a href="mailto:${supportEmail}" style="color: ${primaryColor}; text-decoration: none; font-weight: 500;">${supportEmail}</a>.</p>
             <div style="text-align: center; margin: 30px 0;">
-              <a href="https://inboxbuddy.com/dashboard" style="background-color: ${primaryColor}; color: white; padding: 12px 28px; text-decoration: none; display: inline-block; border-radius: 4px; font-weight: 500; letter-spacing: 0.3px;">Go to Dashboard</a>
+              <a href="https://inbox-buddy.ai/dashboard" style="background-color: ${primaryColor}; color: white; padding: 12px 28px; text-decoration: none; display: inline-block; border-radius: 4px; font-weight: 500; letter-spacing: 0.3px;">Go to Dashboard</a>
             </div>
           </td>
         </tr>
         <tr>
           <td style="background-color: ${lightGray}; padding: 25px; text-align: center; color: ${darkGray};">
-            <p style="margin-bottom: 10px;">&copy; ${year} ${companyName}. All rights reserved.</p>
-            <p style="margin: 0;"><a href="https://inboxbuddy.com/unsubscribe" style="color: ${primaryColor}; text-decoration: none;">Unsubscribe</a> | <a href="https://inboxbuddy.com/privacy" style="color: ${primaryColor}; text-decoration: none;">Privacy Policy</a></p>
+            <p style="margin-bottom: 10px;">© ${year} ${companyName}. All rights reserved.</p>
+            <a href="https://inbox-buddy.ai/about" style="color: ${primaryColor}; text-decoration: none;">Privacy Policy</a></p>
           </td>
         </tr>
       </table>
@@ -277,7 +292,7 @@ const subscriptionSuccessTemplate = `
                       </span>
                     </div>
                     <h4 style="color: ${darkGray}; text-align: center; margin-top: 0; margin-bottom: 10px;">Daily AI Queries</h4>
-                    <p style="color: #555; text-align: center; margin: 0; font-size: 15px;">{{dailyQueries}} queries per day</p>
+                    <p style="color: #555; text-align: center; margin: 0; font-size: 15px;">{{dailyQueries}}</p>
                   </div>
                 </td>
               </tr>
@@ -286,7 +301,7 @@ const subscriptionSuccessTemplate = `
             <p style="color: #555;">Ready to experience the full power of ${companyName}? Visit your dashboard to start managing your emails more efficiently:</p>
             
             <div style="text-align: center; margin: 30px 0;">
-              <a href="https://inboxbuddy.com/dashboard" style="background-color: ${primaryColor}; color: white; padding: 14px 32px; text-decoration: none; display: inline-block; border-radius: 6px; font-weight: 500; letter-spacing: 0.3px; font-size: 16px; box-shadow: 0 4px 6px rgba(67, 97, 238, 0.2);">Access Your Dashboard</a>
+              <a href="https://inbox-buddy.ai/dashboard" style="background-color: ${primaryColor}; color: white; padding: 14px 32px; text-decoration: none; display: inline-block; border-radius: 6px; font-weight: 500; letter-spacing: 0.3px; font-size: 16px; box-shadow: 0 4px 6px rgba(67, 97, 238, 0.2);">Access Your Dashboard</a>
             </div>
             
             <p style="color: #555;">If you have any questions about your subscription or need assistance, our support team is available at <a href="mailto:${supportEmail}" style="color: ${primaryColor}; text-decoration: none; font-weight: 500;">${supportEmail}</a>.</p>
@@ -298,11 +313,10 @@ const subscriptionSuccessTemplate = `
         </tr>
         <tr>
           <td style="background-color: ${lightGray}; padding: 25px; text-align: center; color: ${darkGray};">
-            <p style="margin-bottom: 10px;">&copy; ${year} ${companyName}. All rights reserved.</p>
+            <p style="margin-bottom: 10px;">© ${year} ${companyName}. All rights reserved.</p>
             <p style="margin: 0; font-size: 14px;">
-              <a href="https://inboxbuddy.com/account/billing" style="color: ${primaryColor}; text-decoration: none; margin: 0 10px;">Manage Subscription</a> | 
-              <a href="https://inboxbuddy.com/unsubscribe" style="color: ${primaryColor}; text-decoration: none; margin: 0 10px;">Unsubscribe</a> | 
-              <a href="https://inboxbuddy.com/privacy" style="color: ${primaryColor}; text-decoration: none; margin: 0 10px;">Privacy Policy</a>
+              <a href="https://inbox-buddy.ai/chat" style="color: ${primaryColor}; text-decoration: none; margin: 0 10px;">Manage Subscription</a> | 
+              <a href="https://inbox-buddy.ai/about" style="color: ${primaryColor}; text-decoration: none; margin: 0 10px;">Privacy Policy</a>
             </p>
           </td>
         </tr>
@@ -350,7 +364,7 @@ const subscriptionCancelTemplate = `
             <p style="color: #555;">Should you decide to return, you can reactivate your subscription at any time from your account settings:</p>
             
             <div style="text-align: center; margin: 30px 0;">
-              <a href="https://inboxbuddy.com/account/billing" style="background-color: ${primaryColor}; color: white; padding: 14px 32px; text-decoration: none; display: inline-block; border-radius: 6px; font-weight: 500; letter-spacing: 0.3px; font-size: 16px; box-shadow: 0 4px 6px rgba(67, 97, 238, 0.2);">Reactivate Subscription</a>
+              <a href="https://inbox-buddy.ai/account/billing" style="background-color: ${primaryColor}; color: white; padding: 14px 32px; text-decoration: none; display: inline-block; border-radius: 6px; font-weight: 500; letter-spacing: 0.3px; font-size: 16px; box-shadow: 0 4px 6px rgba(67, 97, 238, 0.2);">Reactivate Subscription</a>
             </div>
             
             <p style="color: #555;">If you have any questions about your subscription or need assistance, our support team is available at <a href="mailto:${supportEmail}" style="color: ${primaryColor}; text-decoration: none; font-weight: 500;">${supportEmail}</a>.</p>
@@ -362,10 +376,10 @@ const subscriptionCancelTemplate = `
         </tr>
         <tr>
           <td style="background-color: ${lightGray}; padding: 25px; text-align: center; color: ${darkGray};">
-            <p style="margin-bottom: 10px;">&copy; ${year} ${companyName}. All rights reserved.</p>
+            <p style="margin-bottom: 10px;">© ${year} ${companyName}. All rights reserved.</p>
             <p style="margin: 0; font-size: 14px;">
-              <a href="https://inboxbuddy.com/account/billing" style="color: ${primaryColor}; text-decoration: none; margin: 0 10px;">Manage Account</a> | 
-              <a href="https://inboxbuddy.com/privacy" style="color: ${primaryColor}; text-decoration: none; margin: 0 10px;">Privacy Policy</a>
+              <a href="https://inbox-buddy.ai/account/billing" style="color: ${primaryColor}; text-decoration: none; margin: 0 10px;">Manage Account</a> | 
+              <a href="https://inbox-buddy.ai/about" style="color: ${primaryColor}; text-decoration: none; margin: 0 10px;">Privacy Policy</a>
             </p>
           </td>
         </tr>
