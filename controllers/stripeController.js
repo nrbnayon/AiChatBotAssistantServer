@@ -285,16 +285,29 @@ export const enableAutoRenew = catchAsync(async (req, res, next) => {
   }
 
   try {
+    // Update the subscription to remove cancel_at_period_end flag
     const subscription = await stripe.subscriptions.update(
       user.subscription.stripeSubscriptionId,
       { cancel_at_period_end: false }
     );
 
-    let endDate =
-      subscription.current_period_end && !isNaN(subscription.current_period_end)
-        ? new Date(subscription.current_period_end * 1000)
-        : calculateFallbackEndDate(user.subscription.startDate);
+    // Validate the period end timestamp before using it
+    let endDate;
+    if (subscription.current_period_end) {
+      const timestamp = subscription.current_period_end * 1000;
+      endDate = new Date(timestamp);
 
+      // Additional validation to ensure we have a valid date
+      if (isNaN(endDate.getTime())) {
+        console.warn("Invalid date from Stripe, using fallback calculation");
+        endDate = calculateFallbackEndDate(user.subscription.startDate);
+      }
+    } else {
+      // Fallback if current_period_end is missing
+      endDate = calculateFallbackEndDate(user.subscription.startDate);
+    }
+
+    // Update user data
     user.subscription.autoRenew = true;
     user.subscription.endDate = endDate;
     await user.save();
@@ -317,20 +330,42 @@ export const cancelAutoRenew = catchAsync(async (req, res, next) => {
   }
 
   try {
-    const subscription = await stripe.subscriptions.update(
+    // First retrieve the full subscription details
+    const subscription = await stripe.subscriptions.retrieve(
+      user.subscription.stripeSubscriptionId
+    );
+
+    // Update the subscription to cancel at period end
+    const updatedSubscription = await stripe.subscriptions.update(
       user.subscription.stripeSubscriptionId,
       { cancel_at_period_end: true }
     );
 
+    // Validate the period end timestamp before using it
+    let endDate;
+    if (updatedSubscription.current_period_end) {
+      const timestamp = updatedSubscription.current_period_end * 1000;
+      endDate = new Date(timestamp);
+
+      // Additional validation to ensure we have a valid date
+      if (isNaN(endDate.getTime())) {
+        console.warn("Invalid date from Stripe, using fallback calculation");
+        endDate = calculateFallbackEndDate(user.subscription.startDate);
+      }
+    } else {
+      // Fallback if current_period_end is missing
+      endDate = calculateFallbackEndDate(user.subscription.startDate);
+    }
+
+    // Keep the subscription active for the current period, but mark as not auto-renewing
     user.subscription.autoRenew = false;
-    user.subscription.endDate = new Date(
-      subscription.current_period_end * 1000
-    );
+    user.subscription.endDate = endDate;
     await user.save();
 
     res.json({
       success: true,
-      message: "Auto-renew has been disabled.",
+      message:
+        "Auto-renew has been disabled. Your subscription will remain active until the end of the current billing period.",
       expiryDate: user.subscription.endDate,
     });
   } catch (error) {
@@ -464,16 +499,36 @@ const getStripePriceId = (plan) =>
 const getPlanFromPriceId = (priceId) => priceIdToPlan[priceId] || "basic";
 
 function calculateFallbackEndDate(startDate) {
-  const parsedStartDate =
-    startDate && !isNaN(new Date(startDate).getTime())
-      ? new Date(startDate)
-      : new Date();
+  // If no start date exists, use current date + 30 days
+  if (!startDate) {
+    const now = new Date();
+    const endDate = new Date(now);
+    endDate.setDate(endDate.getDate() + 30);
+    return endDate;
+  }
+
+  // Try to parse the startDate if it's a string
+  let parsedStartDate;
+  if (typeof startDate === "string") {
+    parsedStartDate = new Date(startDate);
+  } else {
+    parsedStartDate = new Date(startDate);
+  }
+
+  // Validate the parsed date
+  if (isNaN(parsedStartDate.getTime())) {
+    // If invalid, use current date + 30 days
+    const now = new Date();
+    const endDate = new Date(now);
+    endDate.setDate(endDate.getDate() + 30);
+    return endDate;
+  }
+
+  // Calculate end date: start date + 30 days
   const endDate = new Date(parsedStartDate);
   endDate.setDate(endDate.getDate() + 30);
   return endDate;
 }
-
-
 
 // controllers/stripeController.js
 // // controllers/stripeController.js

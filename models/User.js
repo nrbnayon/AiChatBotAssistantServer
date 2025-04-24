@@ -18,21 +18,21 @@ const DEFAULT_IMPORTANT_KEYWORDS = [
 const subscriptionSchema = new mongoose.Schema({
   plan: {
     type: String,
-    enum: ["basic", "premium", "enterprise"],
-    default: "basic",
+    enum: ["free", "basic", "premium", "enterprise"],
+    default: "free",
   },
   status: {
     type: String,
     enum: ["active", "pending", "cancelled", "expired"],
-    default: "pending",
+    default: "active",
   },
   remainingQueries: {
     type: Number,
-    default: 15,
+    default: 5,
   },
-  dailyQueries: { type: Number, default: 0 },
+  dailyQueries: { type: Number, default: 5 },
   dailyTokens: { type: Number, default: 0 },
-  autoRenew: { type: Boolean, default: true },
+  autoRenew: { type: Boolean, default: false },
   startDate: { type: Date },
   endDate: { type: Date },
   stripeSubscriptionId: { type: String },

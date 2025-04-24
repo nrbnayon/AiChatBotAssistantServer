@@ -4,42 +4,26 @@ import WaitingList from "../models/WaitingList.js";
 import { ApiError, AppError } from "../utils/errorHandler.js";
 import path from "path";
 
-const planLimits = {
+// Define plan configurations
+const planConfigs = {
+  free: { dailyQueries: 5, maxInboxes: 1 },
   basic: { dailyQueries: 15, maxInboxes: 1 },
   premium: { dailyQueries: 100, maxInboxes: 3 },
-  enterprise: { dailyQueries: Infinity, maxInboxes: 10 },
+  enterprise: { dailyQueries: 10000000000000, maxInboxes: 10 }, // Using a large number for "unlimited"
 };
 
 const handleLocalLogin = async (email, password) => {
-  try {
-    // Convert email to lowercase to ensure consistent matching
-    const normalizedEmail = email.toLowerCase().trim();
-
-    const user = await User.findOne({ email: normalizedEmail });
-
-    if (!user) {
-      throw new AppError("User Does Not Exist Try With Correct Email", 401);
-    }
-
-    if (user.authProvider !== "local") {
-      throw new AppError("Invalid authentication method", 401);
-    }
-
-    if (!user.password) {
-      throw new AppError("Password not set for this account", 401);
-    }
-
-    const isMatch = await user.comparePassword(password);
-
-    if (!isMatch) {
-      throw new ApiError(401, "Invalid credentials");
-    }
-
-    return user;
-  } catch (error) {
-    console.error("Login Error:", error);
-    throw error;
-  }
+  const normalizedEmail = email.toLowerCase().trim();
+  const user = await User.findOne({ email: normalizedEmail });
+  if (!user)
+    throw new AppError("User Does Not Exist Try With Correct Email", 401);
+  if (user.authProvider !== "local")
+    throw new AppError("Invalid authentication method", 401);
+  if (!user.password)
+    throw new AppError("Password not set for this account", 401);
+  const isMatch = await user.comparePassword(password);
+  if (!isMatch) throw new ApiError(401, "Invalid credentials");
+  return user;
 };
 
 const updateProfile = async (userId, profileData, file) => {
@@ -52,26 +36,20 @@ const updateProfile = async (userId, profileData, file) => {
     "dateOfBirth",
     "profilePicture",
   ];
-
   const updates = Object.keys(profileData)
     .filter((key) => allowedFields.includes(key))
     .reduce((obj, key) => ({ ...obj, [key]: profileData[key] }), {});
-
-  // Handle profile picture file if provided
   if (file) {
     const fileExt = path.extname(file.originalname).toLowerCase();
     updates.profilePicture = `http://${process.env.IP_ADDRESS}:${process.env.PORT}/uploads/images/${userId}${fileExt}`;
   }
-
   if (Object.keys(updates).length === 0)
     throw new ApiError(400, "No valid fields to update");
-
   const updatedUser = await User.findByIdAndUpdate(
     userId,
     { ...updates, lastSync: new Date() },
     { new: true }
   );
-
   if (!updatedUser) throw new ApiError(404, "User not found or update failed");
   return updatedUser;
 };
@@ -79,15 +57,18 @@ const updateProfile = async (userId, profileData, file) => {
 const updateSubscription = async (userId, { plan, autoRenew }) => {
   const user = await User.findById(userId);
   if (!user) throw new ApiError(404, "User not found");
-
-  if (plan && planLimits[plan]) {
+  if (plan && planConfigs[plan]) {
     user.subscription.plan = plan;
-    user.subscription.startDate = new Date();
-    user.subscription.dailyQueries = planLimits[plan].dailyQueries;
-    user.subscription.remainingQueries = planLimits[plan].dailyQueries;
+    user.subscription.startDate = plan !== "free" ? new Date() : undefined;
+    user.subscription.dailyQueries = planConfigs[plan].dailyQueries;
+    user.subscription.remainingQueries = planConfigs[plan].dailyQueries;
     user.subscription.status = "active";
-    if (user.inboxList.length > planLimits[plan].maxInboxes) {
-      user.inboxList = user.inboxList.slice(0, planLimits[plan].maxInboxes);
+    user.subscription.endDate =
+      plan !== "free"
+        ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        : undefined;
+    if (user.inboxList.length > planConfigs[plan].maxInboxes) {
+      user.inboxList = user.inboxList.slice(0, planConfigs[plan].maxInboxes);
     }
   }
   if (typeof autoRenew === "boolean") user.subscription.autoRenew = autoRenew;
@@ -107,16 +88,8 @@ const getAllUsers = async (
   status = null
 ) => {
   const skip = (page - 1) * limit;
-
-  // Create search query
   let query = {};
-
-  // Add status filter only if provided
-  if (status) {
-    query.status = status;
-  }
-
-  // Add search query if provided
+  if (status) query.status = status;
   if (searchQuery) {
     query = {
       ...query,
@@ -126,21 +99,17 @@ const getAllUsers = async (
       ],
     };
   }
-
   const users = await User.find(query)
     .select("-password -refreshToken -googleAccessToken -microsoftAccessToken")
     .skip(skip)
     .limit(limit)
     .sort({ createdAt: -1 })
     .lean();
-
   const totalUsers = await User.countDocuments(query);
-  const totalPages = Math.ceil(totalUsers / limit);
-
   return {
     users,
     totalCount: totalUsers,
-    totalPages,
+    totalPages: Math.ceil(totalUsers / limit),
     currentPage: page,
   };
 };
@@ -152,15 +121,8 @@ const searchWaitingList = async (
   status = null
 ) => {
   const skip = (page - 1) * limit;
-
-  // Create search query
   let query = {};
-
-  // Add status filter only if provided
-  if (status) {
-    query.status = status;
-  }
-
+  if (status) query.status = status;
   if (searchQuery) {
     query = {
       ...query,
@@ -170,18 +132,12 @@ const searchWaitingList = async (
       ],
     };
   }
-
-  // Using aggregation to sort "waiting" status to the top
   const waitingList = await WaitingList.aggregate([
     { $match: query },
     {
       $addFields: {
         sortOrder: {
-          $cond: {
-            if: { $eq: ["$status", "waiting"] },
-            then: 0,
-            else: 1,
-          },
+          $cond: { if: { $eq: ["$status", "waiting"] }, then: 0, else: 1 },
         },
       },
     },
@@ -189,14 +145,11 @@ const searchWaitingList = async (
     { $skip: skip },
     { $limit: limit },
   ]);
-
   const totalWaiting = await WaitingList.countDocuments(query);
-  const totalPages = Math.ceil(totalWaiting / limit);
-
   return {
     data: waitingList,
     total: totalWaiting,
-    totalPages,
+    totalPages: Math.ceil(totalWaiting / limit),
     currentPage: page,
   };
 };
@@ -211,6 +164,7 @@ const createUser = async ({
 }) => {
   const existingUser = await User.findOne({ email });
   if (existingUser) throw new ApiError(400, "User already exists");
+  const plan = "free"; // Changed: Default to free plan
   const newUser = new User({
     name,
     email,
@@ -220,21 +174,16 @@ const createUser = async ({
     status: status || "active",
     inboxList: [email],
     subscription: {
-      plan: "basic",
-      dailyQueries: 15,
-      autoRenew: true,
+      plan,
+      dailyQueries: planConfigs[plan].dailyQueries,
+      remainingQueries: planConfigs[plan].dailyQueries,
       status: "active",
     },
   });
   await newUser.save();
-
-  // Return the mongoose document if needed, otherwise return the object without password
-  if (returnDocument) {
-    return newUser;
-  }
-
-  const { password: _, ...userWithoutPassword } = newUser.toObject();
-  return userWithoutPassword;
+  return returnDocument
+    ? newUser
+    : (({ password: _, ...rest }) => rest)(newUser.toObject());
 };
 
 // Email services

@@ -179,6 +179,7 @@ const handleDevelopmentError = (err, res) => {
  * Production error handler with limited details
  */
 const handleProductionError = (err, res) => {
+  const funnyMessage = getFunnyErrorMessage(err.statusCode);
   if (err.isOperational) {
     return res.json({
       success: false,

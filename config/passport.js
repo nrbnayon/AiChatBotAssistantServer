@@ -172,7 +172,12 @@ const oauthCallback = async (
         authProvider: provider,
         verified: true,
         profilePicture,
-        subscription: { plan: "basic", dailyQueries: 15 },
+        subscription: {
+          plan: "free",
+          dailyQueries: 5,
+          remainingQueries: 5,
+          status: "active",
+        }, // Changed: Free plan for new users
         lastSync: new Date(),
         inboxList: [email || waitingListEntry.inbox],
         userImportantMailKeywords: [...DEFAULT_IMPORTANT_KEYWORDS],
