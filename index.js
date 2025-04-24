@@ -113,6 +113,13 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(requestLogger);
 
+// app.use((req, res, next) => {
+//   res.setTimeout(60000, () => {
+//     console.log("Request has timed out.");
+//     res.status(408).send("Request timed out");
+//   });
+//   next();
+// });
 // Routes
 app.get("/", (req, res) => {
   res.send("Welcome to the you mail ai assistant!");

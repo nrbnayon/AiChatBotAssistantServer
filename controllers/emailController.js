@@ -4,10 +4,10 @@ import MCPServer from "../services/mcpServer.js";
 import { StatusCodes } from "http-status-codes";
 import { ApiError, catchAsync } from "../utils/errorHandler.js";
 import NodeCache from "node-cache";
-const emailListCache = new NodeCache({ stdTTL: 300 });
+const emailListCache = new NodeCache({ stdTTL: 600 });
 
 const fetchEmails = catchAsync(async (req, res, filter = "all") => {
-  const { q, maxResults = 1000, pageToken,  _t} = req.query;
+  const { q, maxResults = 1000, pageToken, _t } = req.query;
 
   // console.log("Get query params:", q);
   // console.log("Get Filter :::", filter);
@@ -88,7 +88,7 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
 // Other functions remain unchanged...
 const fetchImportantEmails = catchAsync(async (req, res) => {
   const emailService = await createEmailService(req);
-  const { q, maxResults = 500, pageToken, keywords = [] } = req.query;
+  const { q, maxResults = 200, pageToken, keywords = [] } = req.query;
 
   const timeFilter = req.query.timeFilter || "daily";
 

@@ -7,7 +7,7 @@ import EmailService from "./emailService.js";
 import { convert } from "html-to-text";
 import { decrypt, encrypt } from "../utils/encryptionUtils.js";
 import NodeCache from "node-cache";
-const statsCache = new NodeCache({ stdTTL: 300 });
+const statsCache = new NodeCache({ stdTTL: 600 });
 
 class GmailService extends EmailService {
   async getClient() {
