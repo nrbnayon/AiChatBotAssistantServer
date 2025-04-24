@@ -373,7 +373,7 @@ const addInbox = catchAsync(async (req, res, next) => {
   const { inbox } = req.body;
   const user = await User.findById(req.user.id);
   if (!user) return next(new ApiError(404, "User not found"));
-  const maxInboxes = { basic: 1, premium: 3, enterprise: 10 }[
+  const maxInboxes = { free: 1, basic: 1, premium: 3, enterprise: 10 }[
     user.subscription.plan
   ];
   if (user.inboxList.length >= maxInboxes) {

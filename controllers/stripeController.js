@@ -22,7 +22,7 @@ const priceIdToPlan = {
 const planLimits = {
   basic: { maxInboxes: 1, dailyQueries: 15 },
   premium: { maxInboxes: 3, dailyQueries: 100 },
-  enterprise: { maxInboxes: 10, dailyQueries: Infinity },
+  enterprise: { maxInboxes: 10, dailyQueries: Infinity || 10000000000000 },
 };
 
 export const createCheckoutSession = catchAsync(async (req, res, next) => {
@@ -53,13 +53,13 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
     if (user.subscription.plan === plan) {
       return next(new ApiError(400, "You are already subscribed to this plan"));
     } else {
-      // Update existing subscription instead of canceling it
+      // Update existing subscription
       try {
         const subscription = await stripe.subscriptions.retrieve(
           user.subscription.stripeSubscriptionId
         );
 
-        const updatedSubscription = await stripe.subscriptions.update(
+        await stripe.subscriptions.update(
           user.subscription.stripeSubscriptionId,
           {
             items: [
@@ -68,19 +68,14 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
                 price: getStripePriceId(plan),
               },
             ],
-            proration_behavior: "always_invoice", // Charge prorated amount immediately
+            proration_behavior: "always_invoice",
           }
         );
 
-        // Update user data immediately
-        user.subscription.plan = plan;
-        user.subscription.dailyQueries = planLimits[plan].dailyQueries;
-        user.subscription.remainingQueries = planLimits[plan].dailyQueries;
-        await user.save();
-
+        // Do NOT update the database here; let the webhook handle it
         return res.json({
           success: true,
-          message: "Subscription updated successfully",
+          message: "Subscription update initiated; processing payment",
           plan,
         });
       } catch (error) {
@@ -92,7 +87,7 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
       }
     }
   } else {
-    // Create a new checkout session for users without an active subscription
+    // Create a new checkout session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [{ price: getStripePriceId(plan), quantity: 1 }],
@@ -220,10 +215,14 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
         return res.json({ received: true });
       }
 
-      user.subscription.status = "cancelled";
-      user.subscription.endDate = new Date();
+      user.subscription.plan = "free";
+      user.subscription.dailyQueries = 5;
+      user.subscription.remainingQueries = 5;
+      user.subscription.status = "active";
+      user.subscription.startDate = undefined;
+      user.subscription.endDate = undefined;
+      user.subscription.stripeSubscriptionId = undefined;
       user.subscription.autoRenew = false;
-      user.subscription.remainingQueries = 0;
       await user.save();
       await sendSubscriptionCancelEmail(user);
     }
