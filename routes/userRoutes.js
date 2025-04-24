@@ -72,13 +72,13 @@ router.post("/add-to-waiting-list", async (req, res) => {
           .json({ message: "You are already on the waiting list." });
       } else if (existingWaiting.status === "approved") {
         return res.status(200).json({
-          message:
-            "Your application has been approved. Please proceed to register.",
+          message: "Your request has been approved. Please proceed to login.",
         });
       } else if (existingWaiting.status === "rejected") {
-        return res
-          .status(200)
-          .json({ message: "Your application was rejected." });
+        return res.status(200).json({
+          message:
+            "Your request has been rejected. Please contact the support team.",
+        });
       }
     }
 
