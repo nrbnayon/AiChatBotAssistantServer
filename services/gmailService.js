@@ -7,7 +7,7 @@ import EmailService from "./emailService.js";
 import { convert } from "html-to-text";
 import { decrypt, encrypt } from "../utils/encryptionUtils.js";
 import NodeCache from "node-cache";
-const statsCache = new NodeCache({ stdTTL: 600 });
+const statsCache = new NodeCache({ stdTTL: 300 });
 
 class GmailService extends EmailService {
   async getClient() {
@@ -94,6 +94,10 @@ class GmailService extends EmailService {
 
     const filterMap = {
       all: (params) => params,
+      inbox: (params) => {
+        params.q = params.q ? `${params.q} in:inbox` : "in:inbox";
+        return params;
+      },
       read: (params) => {
         params.q = params.q ? `${params.q} is:read` : "is:read";
         return params;
@@ -265,7 +269,6 @@ class GmailService extends EmailService {
       attachments: attachments,
     };
   }
-
 
   getEmailBody(payload) {
     if (!payload) return "";

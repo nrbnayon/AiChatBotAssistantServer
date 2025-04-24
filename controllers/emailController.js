@@ -4,7 +4,7 @@ import MCPServer from "../services/mcpServer.js";
 import { StatusCodes } from "http-status-codes";
 import { ApiError, catchAsync } from "../utils/errorHandler.js";
 import NodeCache from "node-cache";
-const emailListCache = new NodeCache({ stdTTL: 600 });
+const emailListCache = new NodeCache({ stdTTL: 300 });
 
 const fetchEmails = catchAsync(async (req, res, filter = "all") => {
   const { q, maxResults = 1000, pageToken, _t } = req.query;
@@ -68,7 +68,9 @@ const fetchEmails = catchAsync(async (req, res, filter = "all") => {
   const responseData = {
     success: true,
     totalEmails:
-      emailsData?.totalCount || parseInt(inboxStats.totalEmails || 0),
+      filter === "all"
+        ? parseInt(inboxStats.totalEmails || 0)
+        : emailsData?.totalCount || 0,
     emails: messages,
     nextPageToken: emailsData.nextPageToken,
     prevPageToken: emailsData.prevPageToken,
