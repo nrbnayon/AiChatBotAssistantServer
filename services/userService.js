@@ -1,4 +1,5 @@
 // services\userService.js
+import Chat from "../models/Chat.js";
 import User from "../models/User.js";
 import WaitingList from "../models/WaitingList.js";
 import { ApiError, AppError } from "../utils/errorHandler.js";
@@ -77,8 +78,17 @@ const updateSubscription = async (userId, { plan, autoRenew }) => {
 };
 
 const deleteUser = async (userId) => {
-  const user = await User.findByIdAndDelete(userId);
+  const user = await User.findById(userId);
   if (!user) throw new ApiError(404, "User not found");
+
+  // Delete all chats associated with the user
+  await Chat.deleteMany({ userId });
+
+  // Remove user from waiting list if exists
+  await WaitingList.deleteOne({ email: user.email });
+
+  // Delete the user
+  await User.findByIdAndDelete(userId);
 };
 
 const getAllUsers = async (
@@ -164,7 +174,7 @@ const createUser = async ({
 }) => {
   const existingUser = await User.findOne({ email });
   if (existingUser) throw new ApiError(400, "User already exists");
-  const plan = "free"; // Changed: Default to free plan
+  const plan = "free"; 
   const newUser = new User({
     name,
     email,

@@ -15,6 +15,10 @@ const transporter = nodemailer.createTransport({
 });
 
 const planLimits = {
+  free: {
+    maxInboxes: 1,
+    dailyQueries: 5,
+  },
   basic: {
     maxInboxes: 1,
     dailyQueries: 15,
@@ -389,6 +393,40 @@ const subscriptionCancelTemplate = `
 </table>
 `;
 
+const otpTemplate = `
+<table width="100%" cellspacing="0" cellpadding="0" style="${commonStyles}">
+  <tr>
+    <td align="center" style="background-color: #f4f5f7; padding: 20px;">
+      <table width="600" cellspacing="0" cellpadding="0" style="border-radius: 8px; overflow: hidden; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+        <tr>
+          <td style="background-color: ${primaryColor}; padding: 30px; text-align: center;">
+            <img src="${logoUrl}" alt="${companyName} Logo" style="max-width: 180px;" />
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 40px 30px; background-color: #ffffff;">
+            <h2 style="color: ${accentColor}; margin-top: 0; font-weight: 600;">Password Reset OTP</h2>
+            <p style="color: #555;">Hello,</p>
+            <p style="color: #555;">You have requested to reset your password. Use the following OTP to proceed:</p>
+            <div style="background-color: ${lightGray}; padding: 20px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px;">
+              {{otp}}
+            </div>
+            <p style="color: #555; margin-top: 20px;">This OTP is valid for 2 minutes.</p>
+            <p style="color: #555;">If you did not request this, please ignore this email or contact support at <a href="mailto:${supportEmail}" style="color: ${primaryColor}; text-decoration: none; font-weight: 500;">${supportEmail}</a>.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background-color: ${lightGray}; padding: 25px; text-align: center; color: ${darkGray};">
+            <p style="margin-bottom: 10px;">© ${year} ${companyName}. All rights reserved.</p>
+            <a href="https://inbox-buddy.ai/about" style="color: ${primaryColor}; text-decoration: none;">Privacy Policy</a></p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+`;
+
 // Function to get admin emails
 const getAdminEmails = async () => {
   const admins = await User.find({
@@ -517,6 +555,25 @@ export const sendSubscriptionSuccessEmail = async (user) => {
       `Failed to send subscription success email to ${user.email}:`,
       error
     );
+  }
+};
+
+// New OTP Email Function
+export const sendOTPEmail = async (email, otp) => {
+  const html = replacePlaceholders(otpTemplate, { otp });
+  const text = htmlToText(html, { wordwrap: 130 });
+  try {
+    await transporter.sendMail({
+      from: `"${companyName}" <${process.env.EMAIL_FROM}>`,
+      to: email,
+      subject: `Your OTP for Password Reset`,
+      html,
+      text,
+    });
+    console.log(`OTP email sent to ${email}`);
+  } catch (error) {
+    console.error(`Failed to send OTP email to ${email}:`, error);
+    throw error; // Rethrow to handle in controller
   }
 };
 

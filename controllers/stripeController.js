@@ -35,30 +35,71 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
     return next(new ApiError(400, "Plan is required"));
   }
 
+  if (!["basic", "premium", "enterprise"].includes(plan)) {
+    return next(
+      new ApiError(400, "Invalid plan. Choose basic, premium, or enterprise")
+    );
+  }
+
   const userId = req.user.id;
   const user = await User.findById(userId);
   if (!user) {
     return next(new ApiError(404, "User not found"));
   }
 
-  if (!["basic", "premium", "enterprise"].includes(plan)) {
-    return next(new ApiError(400, "Invalid plan"));
-  }
-
+  // Check if the user has an active subscription
   const isActiveSubscription =
     user.subscription.status === "active" &&
-    user.subscription.endDate > new Date();
+    user.subscription.endDate &&
+    new Date(user.subscription.endDate) > new Date();
+
+  // Check if subscription ID exists and is valid
+  const hasValidSubscriptionId =
+    user.subscription.stripeSubscriptionId &&
+    typeof user.subscription.stripeSubscriptionId === "string" &&
+    user.subscription.stripeSubscriptionId.startsWith("sub_");
 
   if (isActiveSubscription) {
+    // If current plan is the same as requested plan
     if (user.subscription.plan === plan) {
       return next(new ApiError(400, "You are already subscribed to this plan"));
-    } else {
-      // Update existing subscription
+    } else if (hasValidSubscriptionId) {
+      // Handle plan switch for existing subscription
       try {
-        const subscription = await stripe.subscriptions.retrieve(
-          user.subscription.stripeSubscriptionId
-        );
+        // First verify the subscription exists in Stripe
+        let subscription;
+        try {
+          subscription = await stripe.subscriptions.retrieve(
+            user.subscription.stripeSubscriptionId
+          );
+        } catch (stripeError) {
+          // Handle case where subscription ID exists in DB but not in Stripe
+          if (stripeError.code === "resource_missing") {
+            // Create a new subscription instead since the stored one doesn't exist
+            const session = await createNewCheckoutSession(user, plan);
+            return res.json({
+              sessionId: session.id,
+              message:
+                "Creating new subscription (previous record not found in Stripe)",
+            });
+          }
+          throw stripeError; // Re-throw if it's a different error
+        }
 
+        // If subscription exists but is canceled or past due, create new one
+        if (
+          subscription.status === "canceled" ||
+          subscription.status === "past_due"
+        ) {
+          const session = await createNewCheckoutSession(user, plan);
+          return res.json({
+            sessionId: session.id,
+            message:
+              "Creating new subscription (previous subscription is no longer active)",
+          });
+        }
+
+        // Update the existing active subscription
         await stripe.subscriptions.update(
           user.subscription.stripeSubscriptionId,
           {
@@ -72,35 +113,57 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
           }
         );
 
-        // Do NOT update the database here; let the webhook handle it
         return res.json({
           success: true,
-          message: "Subscription update initiated; processing payment",
+          message:
+            "Subscription update initiated. Your plan will change after payment processing.",
           plan,
+          updateType: "upgrade",
         });
       } catch (error) {
         console.error("Error updating subscription:", error);
         if (error.type === "StripeCardError") {
           return next(new ApiError(400, "Payment failed: " + error.message));
         }
-        return next(new ApiError(500, "Failed to update subscription"));
+        return next(
+          new ApiError(500, "Failed to update subscription: " + error.message)
+        );
       }
     }
-  } else {
-    // Create a new checkout session
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      line_items: [{ price: getStripePriceId(plan), quantity: 1 }],
-      mode: "subscription",
-      success_url: `${getFrontendUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${getFrontendUrl}/cancel`,
-      client_reference_id: user._id.toString(),
-      customer_email: user.email,
-    });
+  }
 
-    res.json({ sessionId: session.id });
+  // Default case: Create a new checkout session
+  try {
+    const session = await createNewCheckoutSession(user, plan);
+    return res.json({
+      sessionId: session.id,
+      message: "Checkout session created successfully",
+    });
+  } catch (error) {
+    console.error("Error creating checkout session:", error);
+    return next(
+      new ApiError(500, "Failed to create checkout session: " + error.message)
+    );
   }
 });
+
+// Helper function to create a new checkout session
+async function createNewCheckoutSession(user, plan) {
+  return await stripe.checkout.sessions.create({
+    payment_method_types: ["card"],
+    line_items: [{ price: getStripePriceId(plan), quantity: 1 }],
+    mode: "subscription",
+    success_url: `${getFrontendUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${getFrontendUrl}/cancel`,
+    client_reference_id: user._id.toString(),
+    customer_email: user.email,
+    metadata: {
+      userId: user._id.toString(),
+      userEmail: user.email,
+      plan: plan,
+    },
+  });
+}
 
 export const handleWebhook = catchAsync(async (req, res, next) => {
   const sig = req.headers["stripe-signature"];
@@ -378,7 +441,8 @@ export const adminCancelUserSubscription = catchAsync(
     if (req.user.role !== "admin" && req.user.role !== "super_admin") {
       return next(new ApiError(403, "Unauthorized access"));
     }
-    const { userId } = req.body;
+
+    const { userId, immediate = false } = req.body;
     if (!userId) {
       return next(new ApiError(400, "User ID is required"));
     }
@@ -396,43 +460,97 @@ export const adminCancelUserSubscription = catchAsync(
       );
 
       if (subscription.status === "canceled") {
-        user.subscription.status = "cancelled";
+        // If Stripe says it's canceled, but still need to update the user
+        user.subscription.plan = "free";
+        user.subscription.status = "active"; // Keep status active for free plan
         user.subscription.endDate = new Date();
         user.subscription.autoRenew = false;
-        user.subscription.remainingQueries = 0;
+        user.subscription.remainingQueries = 5; // Free plan quota
+        user.subscription.dailyQueries = 5; // Free plan quota
+        user.subscription.stripeSubscriptionId = undefined; // Clear the subscription ID
+
         await user.save();
-        return next(new ApiError(400, "Subscription is already canceled"));
+        return res.status(200).json({
+          success: true,
+          message:
+            "User has been moved to free plan (subscription was already canceled)",
+          user: {
+            id: user._id,
+            email: user.email,
+            subscriptionStatus: user.subscription.status,
+            plan: user.subscription.plan,
+          },
+        });
       }
 
       if (
         subscription.status === "active" ||
         subscription.status === "trialing"
       ) {
-        const cancelResponse = await stripe.subscriptions.cancel(
-          user.subscription.stripeSubscriptionId
-        );
-        if (cancelResponse.status !== "canceled") {
-          return next(new ApiError(500, "Failed to cancel subscription"));
+        if (immediate) {
+          // Immediate cancellation
+          const cancelResponse = await stripe.subscriptions.cancel(
+            user.subscription.stripeSubscriptionId
+          );
+
+          if (cancelResponse.status !== "canceled") {
+            return next(new ApiError(500, "Failed to cancel subscription"));
+          }
+
+          // Update user to free plan immediately but keep status active
+          user.subscription.plan = "free";
+          user.subscription.status = "active"; // Keep status active for free plan
+          user.subscription.endDate = new Date();
+          user.subscription.autoRenew = false;
+          user.subscription.remainingQueries = 5; // Free plan quota
+          user.subscription.dailyQueries = 5; // Free plan quota
+          user.subscription.stripeSubscriptionId = undefined; // Clear the subscription ID
+
+          await user.save();
+          await sendSubscriptionCancelEmail(user);
+
+          return res.status(200).json({
+            success: true,
+            message: "User has been moved to free plan immediately",
+            user: {
+              id: user._id,
+              email: user.email,
+              subscriptionStatus: user.subscription.status,
+              plan: user.subscription.plan,
+            },
+          });
+        } else {
+          // Cancel at period end (same as user-initiated cancellation)
+          const updatedSubscription = await stripe.subscriptions.update(
+            user.subscription.stripeSubscriptionId,
+            { cancel_at_period_end: true }
+          );
+
+          let endDate =
+            updatedSubscription.current_period_end &&
+            !isNaN(updatedSubscription.current_period_end)
+              ? new Date(updatedSubscription.current_period_end * 1000)
+              : calculateFallbackEndDate(user.subscription.startDate);
+
+          // Keep subscription active until end of period
+          user.subscription.autoRenew = false;
+          user.subscription.endDate = endDate;
+
+          await user.save();
+
+          return res.status(200).json({
+            success: true,
+            message:
+              "User subscription will be cancelled at the end of the billing period",
+            user: {
+              id: user._id,
+              email: user.email,
+              subscriptionStatus: user.subscription.status,
+              endDate: user.subscription.endDate,
+            },
+          });
         }
-        user.subscription.status = "cancelled";
-        user.subscription.endDate = new Date();
-        user.subscription.autoRenew = false;
-        user.subscription.remainingQueries = 0;
-        await user.save();
       }
-
-      await sendSubscriptionCancelEmail(user);
-
-      return res.status(200).json({
-        success: true,
-        message: "User subscription cancelled successfully by admin",
-        user: {
-          id: user._id,
-          email: user.email,
-          subscriptionStatus: user.subscription.status,
-          endDate: user.subscription.endDate,
-        },
-      });
     } catch (error) {
       console.error("Error cancelling subscription:", error);
       return next(

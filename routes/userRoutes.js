@@ -29,6 +29,9 @@ import {
   createAiModel,
   updateAiModel,
   deleteAiModel,
+  changePassword, 
+  forgotPassword, 
+  resetPassword,
 } from "../controllers/userController.js";
 import auth, { setRefreshedTokenCookie } from "../middleware/authMiddleware.js";
 import { rateLimitMiddleware } from "../middleware/rateLimit.js";
@@ -228,6 +231,23 @@ router.post(
  * @description Administrative routes for user management
  * @access Admin and Super Admin
  */
+
+// 🔑 Change password (authenticated admins/super_admins only)
+router.put(
+  "/change-password",
+  auth("admin", "super_admin"),
+  setRefreshedTokenCookie,
+  rateLimitMiddleware(),
+  changePassword
+);
+
+// 🔑 Forgot password (public, for admins/super_admins)
+router.post("/forgot-password", forgotPassword);
+
+// 🔑 Reset password with OTP (public, for admins/super_admins)
+router.post("/reset-password", resetPassword);
+
+
 // Retrieve all registered users
 router.get(
   "/admin/users",

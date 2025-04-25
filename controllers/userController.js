@@ -10,6 +10,9 @@ import SystemMessage from "../models/SystemMessage.js";
 import { safeCookie } from "../helper/cookieHelper.js";
 import { generateTokens } from "./authController.js";
 import { jwtHelper } from "../helper/jwtHelper.js";
+import crypto from "crypto";
+import OTP from "../models/OTP.js";
+import { sendOTPEmail } from "../helper/notifyByEmail.js";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const getIncome = catchAsync(async (req, res, next) => {
@@ -527,6 +530,134 @@ const deleteAiModel = catchAsync(async (req, res, next) => {
   res.json({ success: true, message: "AI model deleted" });
 });
 
+// Password Management Functions
+const changePassword = catchAsync(async (req, res, next) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return next(new ApiError(400, "Current and new passwords are required"));
+  }
+
+  // Password strength validation
+  if (newPassword.length < 8) {
+    return next(new ApiError(400, "Password must be at least 8 characters"));
+  }
+
+  const user = await User.findById(req.user.id);
+  if (!user) return next(new ApiError(404, "User not found"));
+
+  // Verify current password
+  const isMatch = await user.comparePassword(currentPassword);
+  if (!isMatch) return next(new ApiError(401, "Current password is incorrect"));
+
+  // Update password
+  user.password = newPassword;
+  await user.save();
+
+  res.json({ success: true, message: "Password changed successfully" });
+});
+
+const forgotPassword = catchAsync(async (req, res, next) => {
+  const { email } = req.body;
+  if (!email) return next(new ApiError(400, "Email is required"));
+
+  const user = await User.findOne({ email });
+  if (!user || (user.role !== "admin" && user.role !== "super_admin")) {
+    return next(
+      new ApiError(403, "Only admins and super_admins can reset password")
+    );
+  }
+
+  // Rate limiting - check if OTP was requested recently
+  const recentOTP = await OTP.findOne({
+    email,
+    expiresAt: { $gt: new Date() },
+  });
+
+  if (recentOTP) {
+    const timeSinceLastRequest = Math.floor(
+      (recentOTP.expiresAt - Date.now()) / 1000
+    );
+    if (timeSinceLastRequest > 90) {
+      // Allow requesting new OTP only after 30 seconds (120-90=30)
+      return next(
+        new ApiError(
+          429,
+          `Please wait before requesting another OTP. Try again in ${
+            timeSinceLastRequest - 90
+          } seconds.`
+        )
+      );
+    }
+  }
+
+  // Generate 6-digit OTP
+  const otp = crypto.randomInt(100000, 999999).toString();
+  const expiresAt = new Date(Date.now() + 2 * 60 * 1000); // 2 minutes validity
+
+  // Delete any existing OTPs for this user
+  await OTP.deleteMany({ email });
+
+  // Save OTP to database
+  await OTP.create({ email, otp, expiresAt });
+
+  // Send OTP via email
+  await sendOTPEmail(email, otp);
+
+  res.json({
+    success: true,
+    message: "OTP sent to your email. Valid for 2 minutes.",
+  });
+});
+
+const resetPassword = catchAsync(async (req, res, next) => {
+  const { email, otp, newPassword } = req.body;
+  if (!email || !otp || !newPassword) {
+    return next(new ApiError(400, "Email, OTP, and new password are required"));
+  }
+
+  // Password strength validation
+  if (newPassword.length < 8) {
+    return next(new ApiError(400, "Password must be at least 8 characters"));
+  }
+
+  // Verify OTP
+  const otpRecord = await OTP.findOne({ email, otp });
+
+  if (!otpRecord) {
+    return next(new ApiError(400, "Invalid OTP"));
+  }
+
+  if (otpRecord.expiresAt < new Date()) {
+    // OTP has expired, delete it (as a backup to MongoDB TTL index)
+    await OTP.deleteOne({ _id: otpRecord._id });
+    return next(
+      new ApiError(400, "OTP has expired. Please request a new one.")
+    );
+  }
+
+  // Track attempts to prevent brute force
+  otpRecord.attempts += 1;
+  if (otpRecord.attempts >= 5) {
+    await OTP.deleteOne({ _id: otpRecord._id });
+    return next(
+      new ApiError(400, "Too many attempts. Please request a new OTP.")
+    );
+  }
+  await otpRecord.save();
+
+  const user = await User.findOne({ email });
+  if (!user) return next(new ApiError(404, "User not found"));
+
+  // Update password
+  user.password = newPassword;
+  await user.save();
+
+  // Delete used OTP
+  await OTP.deleteOne({ _id: otpRecord._id });
+
+  res.json({ success: true, message: "Password reset successfully" });
+});
+
 export {
   getMe,
   updateProfile,
@@ -555,4 +686,7 @@ export {
   createAiModel,
   updateAiModel,
   deleteAiModel,
+  changePassword,
+  forgotPassword,
+  resetPassword,
 };
