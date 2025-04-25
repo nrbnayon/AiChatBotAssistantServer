@@ -470,12 +470,14 @@ class MCPServer {
           ];
         }
 
+        // Restore the email analysis functionality
         const analyzedData = this.analyzeEmails(
           emails,
           processedQuery || filter || ""
         );
 
         let text = "";
+        // Check if we have table data from analysis
         if (analyzedData.table) {
           const introTexts = [
             "Here's what I dug up from your emails:",
@@ -497,6 +499,12 @@ class MCPServer {
         } else {
           const count = emails.messages.length;
           const previewCount = Math.min(count, 20);
+          const previewEmails = emails.messages.slice(0, previewCount);
+
+          // Automatically summarize if 3 or fewer emails, or if explicitly requested
+          const autoSummarize = previewCount <= 3;
+          const shouldSummarize = autoSummarize || summarize;
+
           if (count === 0) {
             const noEmailResponses = [
               "**No matching emails found**\n\nI couldn't find any emails that match your search criteria. You could try:\n• Using different keywords\n• Broadening your date range\n• Checking a different folder",
@@ -519,9 +527,8 @@ class MCPServer {
               foundEmailsTexts[
                 Math.floor(Math.random() * foundEmailsTexts.length)
               ] + "\n\n";
-            const previewEmails = emails.messages.slice(0, previewCount);
 
-            if (summarize) {
+            if (shouldSummarize) {
               const summaryPromises = previewEmails.map(async (email) => {
                 const summaryResponse = await this.callTool(
                   "summarize-email",
@@ -551,7 +558,7 @@ class MCPServer {
                             `[${att.filename}](http://192.168.10.32:4000/api/v1/emails/download/attachment?emailId=${e.id}&attachmentId=${att.id})`
                         )
                         .join(", ");
-                      attachmentNote = `\n**Attachments:** **${attachmentLinks} **`;
+                      attachmentNote = `\n**Attachments:** **${attachmentLinks}**`;
                     } else {
                       // For Outlook or when attachments aren't fetched
                       attachmentNote = `\n**Attachments:** Yes (say **show attachments for email ${
@@ -561,7 +568,7 @@ class MCPServer {
                   }
                   return `**${i + 1}.** **From:** ${e.from}\n**Subject:** ${
                     e.subject || "No subject"
-                  }\n**Date:** ${date}\n ${attachmentNote}\n**Summary:** ${
+                  }\n**Date:** ${date}${attachmentNote}\n**Summary:** ${
                     summaries[i]
                   }\n`;
                 })
@@ -590,16 +597,15 @@ class MCPServer {
                   }
                   return `**${i + 1}.** **From:** ${e.from}\n**Subject:** ${
                     e.subject || "No subject"
-                  }\n**Date:** ${date}\n ${attachmentNote}\n${
+                  }\n**Date:** ${date}${attachmentNote}\n**Preview:** ${
                     e.snippet || "No preview available"
-                  }\n 
-                  `;
+                  }\n`;
                 })
                 .join("\n");
             }
 
             const followUps = [
-              summarize
+              shouldSummarize
                 ? "Anything else I can help with?"
                 : "Want me to summarize any of these for you?",
               "Should I open one up or refine the search?",
