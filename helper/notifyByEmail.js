@@ -37,7 +37,7 @@ const planLimits = {
 
 // Company constants
 const companyName = "Inbox-Buddy.ai";
-const supportEmail = "support@inbox-buddy.ai";
+const supportEmail = "inboxbuddy.ai@gmail.com";
 const year = new Date().getFullYear();
 const primaryColor = "#4361EE";
 const accentColor = "#3A0CA3";
@@ -297,7 +297,7 @@ const subscriptionSuccessTemplate = `
                         🤖
                       </span>
                     </div>
-                    <h4 style="color: ${darkGray}; text-align: center; margin-top: 0; margin-bottom: 10px;">Daily AI Queries</h4>
+                    <h4 style="color: ${darkGray}; text-align: center; margin-top: 0; margin-bottom: 10px;">Your Daily Queries Limit</h4>
                     <p style="color: #555; text-align: center; margin: 0; font-size: 15px;">{{dailyQueries}}</p>
                   </div>
                 </td>
