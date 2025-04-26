@@ -12,7 +12,10 @@ import { generateTokens } from "./authController.js";
 import { jwtHelper } from "../helper/jwtHelper.js";
 import crypto from "crypto";
 import OTP from "../models/OTP.js";
-import { sendOTPEmail } from "../helper/notifyByEmail.js";
+import {
+  sendOTPEmail,
+  sendRejectionNotification,
+} from "../helper/notifyByEmail.js";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const getIncome = catchAsync(async (req, res, next) => {
@@ -71,6 +74,7 @@ const rejectWaitingList = catchAsync(async (req, res, next) => {
   );
   if (!entry)
     return next(new ApiError(404, "Entry not found or already processed"));
+  await sendRejectionNotification(entry);
   res.json({ message: "User rejected", entry });
 });
 
@@ -290,7 +294,7 @@ const updateUser = catchAsync(async (req, res, next) => {
 
   // Check if trying to update self
   if (id === req.user.id)
-    return next(new ApiError(403, "Use /profile to update your own details"));
+    return next(new ApiError(403, "You can't update your own details"));
 
   // Find target user
   const targetUser = await User.findById(id);

@@ -198,6 +198,40 @@ const approvalConfirmationTemplate = `
 </table>
 `;
 
+const rejectionNotificationTemplate = `
+<table width="100%" cellspacing="0" cellpadding="0" style="${commonStyles}">
+  <tr>
+    <td align="center" style="background-color: #f4f5f7; padding: 20px;">
+      <table width="600" cellspacing="0" cellpadding="0" style="border-radius: 8px; overflow: hidden; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+        <tr>
+          <td style="background-color: ${primaryColor}; padding: 30px; text-align: center;">
+            <img src="cid:companyLogo" alt="${companyName} Logo" style="max-width: 180px;" />
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 40px 30px; background-color: #ffffff;">
+            <h2 style="color: ${accentColor}; margin-top: 0; font-weight: 600;">Update on Your Waiting List Request</h2>
+            <p style="color: #555;">Hello {{name}},</p>
+            <p style="color: #555;">Thank you for your interest in ${companyName}. After careful consideration, we regret to inform you that we are unable to approve your request to join our platform at this time.</p>
+            <div style="background-color: ${lightGray}; border-left: 4px solid ${warningColor}; padding: 15px; margin: 20px 0;">
+              <p style="margin: 0; color: #444;">We appreciate your enthusiasm and understand this may be disappointing. If you have any questions or need further clarification, please reach out to us.</p>
+            </div>
+            <p style="color: #555;">For assistance or more information, feel free to contact our support team at <a href="mailto:${supportEmail}" style="color: ${primaryColor}; text-decoration: none; font-weight: 500;">${supportEmail}</a>.</p>
+            <p style="color: #555;">We hope to have the opportunity to serve you in the future.</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background-color: ${lightGray}; padding: 25px; text-align: center; color: ${darkGray};">
+            <p style="margin-bottom: 10px;">© ${year} ${companyName}. All rights reserved.</p>
+            <a href="https://inbox-buddy.ai/about" style="color: ${primaryColor}; text-decoration: none;">Privacy Policy</a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+`;
+
 const firstLoginConfirmationTemplate = `
 <table width="100%" cellspacing="0" cellpadding="0" style="${commonStyles}">
   <tr>
@@ -529,6 +563,37 @@ export const sendWaitingListConfirmation = async (user) => {
   } catch (error) {
     console.error(
       `Failed to send waiting list confirmation to ${user.email}:`,
+      error
+    );
+  }
+};
+
+export const sendRejectionNotification = async (user) => {
+  const html = replacePlaceholders(rejectionNotificationTemplate, {
+    name: user.name || "User",
+  });
+  const text = htmlToText(html, { wordwrap: 130 });
+  const mailOptions = {
+    from: `"${companyName}" <${process.env.EMAIL_FROM}>`,
+    to: user.email,
+    subject: `Update on Your Waiting List Request`,
+    html,
+    text,
+  };
+  if (fs.existsSync(localLogoPath) && !logoUrl) {
+    mailOptions.attachments = [
+      {
+        filename: "logo.png",
+        path: logoUrl || localLogoPath,
+        cid: "companyLogo",
+      },
+    ];
+  }
+  try {
+    await transporter.sendMail(mailOptions);
+  } catch (error) {
+    console.error(
+      `Failed to send rejection notification to ${user.email}:`,
       error
     );
   }
