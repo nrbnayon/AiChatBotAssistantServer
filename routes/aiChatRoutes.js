@@ -1,3 +1,4 @@
+// routes\aiChatRoutes.js
 import express from "express";
 import auth from "../middleware/authMiddleware.js";
 import { getEmailService } from "../services/emailService.js";
@@ -82,7 +83,7 @@ router.post(
     let userMessage = message || "";
     if (req.file) {
       try {
-        const fileText = await extractTextFromFile(
+        let fileText = await extractTextFromFile(
           req.file.path,
           req.file.mimetype
         );
@@ -261,11 +262,10 @@ router.post(
     let userMessage = message || "";
     if (req.file) {
       try {
-        const fileText = await extractTextFromFile(
+        let fileText = await extractTextFromFile(
           req.file.path,
           req.file.mimetype
         );
-        fileText = fileText.replace(/\s+/g, " ").trim();
         userMessage = userMessage
           ? `${userMessage}\n\nFile content: ${fileText}`
           : fileText;
@@ -451,36 +451,58 @@ function extractContextKeywords(message) {
 // Extract Text from Uploaded File
 async function extractTextFromFile(filePath, mimeType) {
   try {
-    let text = ""; // Declare text here to ensure it’s always defined
+    let fileText = ""; // Use let instead of const to allow reassignment
+
     if (mimeType === "text/plain") {
-      text = fs.readFileSync(filePath, "utf-8");
+      fileText = fs.readFileSync(filePath, "utf-8");
     } else if (mimeType === "application/pdf") {
       const data = new Uint8Array(fs.readFileSync(filePath));
       const loadingTask = pdfjsLib.getDocument({
         data,
         cMapUrl, // Provide CMAP URL for text extraction
         cMapPacked: true,
+        standardFontDataUrl:
+          path.join(
+            __dirname,
+            "..",
+            "node_modules",
+            "pdfjs-dist",
+            "standard_fonts"
+          ) + "/",
       });
+
       const pdf = await loadingTask.promise;
+      const textParts = [];
+
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        text += content.items.map((item) => item.str).join(" ") + "\n";
+        textParts.push(content.items.map((item) => item.str).join(" "));
       }
+
+      fileText = textParts.join("\n");
     } else if (
       mimeType ===
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     ) {
       const result = await mammoth.extractRawText({ path: filePath });
-      text = result.value;
+      fileText = result.value;
     } else {
-      throw new Error("Unsupported file type");
+      throw new Error(
+        "Unsupported file type. Only TXT, PDF, and DOCX files are supported."
+      );
     }
+
+    // Clean up the text (now using let, so reassignment is fine)
+    fileText = fileText.replace(/\s+/g, " ").trim();
+
     const MAX_FILE_CHARS = 4000;
-    if (text.length > MAX_FILE_CHARS) {
-      text = text.substring(0, MAX_FILE_CHARS) + "\n\n[File content truncated]";
+    if (fileText.length > MAX_FILE_CHARS) {
+      fileText =
+        fileText.substring(0, MAX_FILE_CHARS) + "\n\n[File content truncated]";
     }
-    return text;
+
+    return fileText;
   } catch (error) {
     console.error("File extraction error:", error);
     throw new Error(`Failed to extract text: ${error.message}`);
