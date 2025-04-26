@@ -29,9 +29,11 @@ import {
   createAiModel,
   updateAiModel,
   deleteAiModel,
-  changePassword, 
-  forgotPassword, 
+  changePassword,
+  forgotPassword,
   resetPassword,
+  requestChangePasswordOTP,
+  verifyOTP,
 } from "../controllers/userController.js";
 import auth, { setRefreshedTokenCookie } from "../middleware/authMiddleware.js";
 import { rateLimitMiddleware } from "../middleware/rateLimit.js";
@@ -233,7 +235,14 @@ router.post(
  */
 
 // 🔑 Change password (authenticated admins/super_admins only)
-router.put(
+
+router.post(
+  "/request-change-password-otp",
+  auth("admin", "super_admin"),
+  rateLimitMiddleware(),
+  requestChangePasswordOTP
+);
+router.post(
   "/change-password",
   auth("admin", "super_admin"),
   setRefreshedTokenCookie,
@@ -247,6 +256,8 @@ router.post("/forgot-password", forgotPassword);
 // 🔑 Reset password with OTP (public, for admins/super_admins)
 router.post("/reset-password", resetPassword);
 
+// 🔑 Verify OTP for password reset (public, for admins/super_admins)
+router.post("/verify-otp", verifyOTP);
 
 // Retrieve all registered users
 router.get(

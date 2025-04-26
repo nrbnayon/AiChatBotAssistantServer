@@ -570,7 +570,7 @@ class MCPServer {
                     e.subject || "No subject"
                   }\n**Date:** ${date}${attachmentNote}\n**Summary:** ${
                     summaries[i]
-                  }\n`;
+                  }\n\n`;
                 })
                 .join("\n");
             } else {
@@ -599,7 +599,7 @@ class MCPServer {
                     e.subject || "No subject"
                   }\n**Date:** ${date}${attachmentNote}\n**Preview:** ${
                     e.snippet || "No preview available"
-                  }\n`;
+                  }\n\n`;
                 })
                 .join("\n");
             }
