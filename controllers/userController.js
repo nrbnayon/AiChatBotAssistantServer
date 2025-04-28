@@ -544,6 +544,15 @@ const changePassword = catchAsync(async (req, res, next) => {
   const user = await User.findById(req.user.id);
   if (!user) return next(new ApiError(404, "User not found"));
 
+  // Verify current password FIRST, before consuming the OTP
+  const isMatch = await user.comparePassword(currentPassword);
+  if (!isMatch) return next(new ApiError(401, "Current password is incorrect"));
+
+  // Password strength validation
+  if (newPassword.length < 8) {
+    return next(new ApiError(400, "Password must be at least 8 characters"));
+  }
+
   // For admin and super_admin, require OTP verification
   if (user.role === "admin" || user.role === "super_admin") {
     if (!otp) {
@@ -578,16 +587,6 @@ const changePassword = catchAsync(async (req, res, next) => {
     // Delete used OTP after successful verification
     await OTP.deleteOne({ _id: otpRecord._id });
   }
-
-  // Verify current password
-  const isMatch = await user.comparePassword(currentPassword);
-  if (!isMatch) return next(new ApiError(401, "Current password is incorrect"));
-
-  // Password strength validation
-  if (newPassword.length < 8) {
-    return next(new ApiError(400, "Password must be at least 8 characters"));
-  }
-
   // Update password
   user.password = newPassword;
   await user.save();
@@ -620,15 +619,15 @@ const requestChangePasswordOTP = catchAsync(async (req, res, next) => {
 
   if (recentOTP) {
     const timeSinceLastRequest = Math.floor(
-      (recentOTP.expiresAt - Date.now()) / 1000
+      (Date.now() - recentOTP.createdAt) / 1000
     );
-    if (timeSinceLastRequest > 90) {
-      // Allow requesting new OTP only after 30 seconds (120-90=30)
+    if (timeSinceLastRequest < 30) {
+      // Allow requesting new OTP only after 30 seconds
       return next(
         new ApiError(
           429,
           `Please wait before requesting another OTP. Try again in ${
-            timeSinceLastRequest - 90
+            30 - timeSinceLastRequest
           } seconds.`
         )
       );
@@ -643,14 +642,20 @@ const requestChangePasswordOTP = catchAsync(async (req, res, next) => {
   await OTP.deleteMany({ email: user.email });
 
   // Save OTP to database
-  await OTP.create({ email: user.email, otp, expiresAt, attempts: 0 });
+  await OTP.create({
+    email: user.email,
+    otp,
+    expiresAt,
+    attempts: 0,
+    createdAt: new Date(),
+  });
 
   // Send OTP via email
   await sendOTPEmail(user.email, otp);
 
   res.json({
     success: true,
-    message: "OTP sent to your email. Valid for 2 minutes.",
+    message: "OTP sent to your email. Valid for 5 minutes.",
   });
 });
 
@@ -683,15 +688,15 @@ const forgotPassword = catchAsync(async (req, res, next) => {
 
   if (recentOTP) {
     const timeSinceLastRequest = Math.floor(
-      (recentOTP.expiresAt - Date.now()) / 1000
+      (Date.now() - recentOTP.createdAt) / 1000
     );
-    if (timeSinceLastRequest > 90) {
-      // Allow requesting new OTP only after 30 seconds (120-90=30)
+    if (timeSinceLastRequest < 30) {
+      // Allow requesting new OTP only after 30 seconds
       return next(
         new ApiError(
           429,
           `Please wait before requesting another OTP. Try again in ${
-            timeSinceLastRequest - 90
+            30 - timeSinceLastRequest
           } seconds.`
         )
       );
@@ -705,15 +710,21 @@ const forgotPassword = catchAsync(async (req, res, next) => {
   // Delete any existing OTPs for this user
   await OTP.deleteMany({ email });
 
-  // Save OTP to database with attempts counter
-  await OTP.create({ email, otp, expiresAt, attempts: 0 });
+  // Save OTP to database with attempts counter and creation time
+  await OTP.create({
+    email,
+    otp,
+    expiresAt,
+    attempts: 0,
+    createdAt: new Date(),
+  });
 
   // Send OTP via email
   await sendOTPEmail(email, otp);
 
   res.json({
     success: true,
-    message: "OTP sent to your email. Valid for 2 minutes.",
+    message: "OTP sent to your email. Valid for 5 minutes.",
   });
 });
 
