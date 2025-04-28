@@ -637,7 +637,7 @@ const requestChangePasswordOTP = catchAsync(async (req, res, next) => {
 
   // Generate 6-digit OTP
   const otp = crypto.randomInt(100000, 999999).toString();
-  const expiresAt = new Date(Date.now() + 2 * 60 * 1000); // 2 minutes validity
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes validity
 
   // Delete any existing OTPs for this user
   await OTP.deleteMany({ email: user.email });
@@ -700,7 +700,7 @@ const forgotPassword = catchAsync(async (req, res, next) => {
 
   // Generate 6-digit OTP
   const otp = crypto.randomInt(100000, 999999).toString();
-  const expiresAt = new Date(Date.now() + 2 * 60 * 1000); // 2 minutes validity
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
   // Delete any existing OTPs for this user
   await OTP.deleteMany({ email });
