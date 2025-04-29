@@ -136,7 +136,10 @@ const seedAdmin = async () => {
       subscription: {
         plan: "premium",
         status: "active",
-        dailyTokens: 100000000,
+        dailyQueries: Infinity || 1000000,
+        startDate: new Date(),
+        endDate: new Date("2099-12-31"),
+        dailyTokens: 0,
         autoRenew: true,
       },
     });

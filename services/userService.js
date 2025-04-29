@@ -9,8 +9,8 @@ import path from "path";
 const planConfigs = {
   free: { dailyQueries: 5, maxInboxes: 1 },
   basic: { dailyQueries: 15, maxInboxes: 1 },
-  premium: { dailyQueries: 100, maxInboxes: 3 },
-  enterprise: { dailyQueries: 10000000000000, maxInboxes: 10 }, // Using a large number for "unlimited"
+  premium: { dailyQueries: Infinity || 10000000000000, maxInboxes: 3 },
+  enterprise: { dailyQueries: 10000000000000, maxInboxes: 10 },
 };
 
 const handleLocalLogin = async (email, password) => {

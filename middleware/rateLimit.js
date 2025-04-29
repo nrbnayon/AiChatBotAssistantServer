@@ -251,7 +251,7 @@ const chatRateLimit = (options = {}) => {
         }
       }
 
-      const dailyQueryLimit = user.subscription.dailyQueries; // Changed: Use user’s dailyQueries
+      const dailyQueryLimit = user.subscription.dailyQueries; 
 
       // Reset daily counters if it’s a new day
       if (

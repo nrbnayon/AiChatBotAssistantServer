@@ -31,7 +31,7 @@ const transporter = nodemailer.createTransport({
 const planLimits = {
   free: { maxInboxes: 1, dailyQueries: 5 },
   basic: { maxInboxes: 1, dailyQueries: 15 },
-  premium: { maxInboxes: 3, dailyQueries: 100 },
+  premium: { maxInboxes: 3, dailyQueries: Infinity },
   enterprise: { maxInboxes: 10, dailyQueries: Infinity },
 };
 
@@ -381,8 +381,9 @@ const subscriptionCancelTemplate = `
               <h3 style="color: ${accentColor}; margin-top: 0; margin-bottom: 15px; font-size: 18px;">Free Plan Limitations:</h3>
               <ul style="color: #555; padding-left: 20px; margin: 0;">
                 <li style="margin-bottom: 10px;">Connected inboxes limited to {{maxInboxesFree}}</li>
-                <li style="margin-bottom: 10px;">Daily AI queries limited to {{dailyQueriesFree}}</li>
-                <li style="margin-bottom: 10px;">Reduced AI-powered features</li>
+                <li style="margin-bottom: 10px;">Daily chat queries Unlimited to {{dailyQueriesFree}}</li>
+                <li style="margin-bottom: 10px;">Third Party Integration {Pending}</li>
+                <li style="margin-bottom: 10px;">AI-powered features</li>
               </ul>
             </div>
             <div style="background-color: #fff4eb; border-radius: 8px; padding: 20px; margin: 25px 0; border: 1px dashed ${warningColor};">

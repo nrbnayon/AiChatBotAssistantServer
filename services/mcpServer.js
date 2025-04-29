@@ -498,7 +498,7 @@ class MCPServer {
           text = `${intro}\n\n${analyzedData.table}\n\n${followUp}`;
         } else {
           const count = emails.messages.length;
-          const previewCount = Math.min(count, 20);
+          const previewCount = Math.min(count, 10);
           const previewEmails = emails.messages.slice(0, previewCount);
 
           // Automatically summarize if 3 or fewer emails, or if explicitly requested

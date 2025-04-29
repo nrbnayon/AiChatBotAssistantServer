@@ -39,57 +39,68 @@ const subscriptionSchema = new mongoose.Schema({
   lastRequestDate: { type: Date },
 });
 
-const userSchema = new mongoose.Schema({
-  role: {
-    type: String,
-    default: "user",
-    enum: ["super_admin", "admin", "user"],
-  },
-  name: { type: String },
-  email: { type: String, required: true, unique: true },
-  password: { type: String },
-  authProvider: { type: String, enum: ["google", "microsoft", "local"] },
-  inboxList: [
-    {
+const userSchema = new mongoose.Schema(
+  {
+    role: {
       type: String,
-      unique: true,
-      required: true,
-      lowercase: true,
-      trim: true,
+      default: "user",
+      enum: ["super_admin", "admin", "user"],
     },
-  ],
-  googleId: { type: String },
-  googleAccessToken: { type: Object },
-  googleRefreshToken: { type: Object },
-  googleAccessTokenExpires: { type: Number },
-  microsoftId: { type: String },
-  microsoftAccessToken: { type: Object },
-  microsoftRefreshToken: { type: Object },
-  microsoftAccessTokenExpires: { type: Number },
-  profilePicture: { type: String },
-  status: {
-    type: String,
-    default: "active",
-    enum: ["active", "cancelled", "pending", "blocked"],
+    name: { type: String },
+    email: { type: String, required: true, unique: true },
+    password: { type: String },
+    authProvider: { type: String, enum: ["google", "microsoft", "local"] },
+    inboxList: [
+      {
+        type: String,
+        unique: true,
+        required: true,
+        lowercase: true,
+        trim: true,
+      },
+    ],
+    thirdTPartyIntegration: {
+      type: String,
+      status: {
+        type: String,
+        enum: ["active", "inactive", "pending"],
+        default: "pending",
+      },
+    },
+    googleId: { type: String },
+    googleAccessToken: { type: Object },
+    googleRefreshToken: { type: Object },
+    googleAccessTokenExpires: { type: Number },
+    microsoftId: { type: String },
+    microsoftAccessToken: { type: Object },
+    microsoftRefreshToken: { type: Object },
+    microsoftAccessTokenExpires: { type: Number },
+    profilePicture: { type: String },
+    status: {
+      type: String,
+      default: "active",
+      enum: ["active", "cancelled", "pending", "blocked"],
+    },
+    verified: { type: Boolean, default: false },
+    subscription: { type: subscriptionSchema, default: () => ({}) },
+    refreshToken: { type: String },
+    phone: { type: String },
+    image: { type: String },
+    address: { type: String },
+    country: { type: String },
+    gender: { type: String },
+    dateOfBirth: { type: Date },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
+    lastSync: { type: Date, default: Date.now },
+    userImportantMailKeywords: {
+      type: [String],
+      default: DEFAULT_IMPORTANT_KEYWORDS,
+    },
+    firstLogin: { type: Boolean, default: true },
   },
-  verified: { type: Boolean, default: false },
-  subscription: { type: subscriptionSchema, default: () => ({}) },
-  refreshToken: { type: String },
-  phone: { type: String },
-  image: { type: String },
-  address: { type: String },
-  country: { type: String },
-  gender: { type: String },
-  dateOfBirth: { type: Date },
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now },
-  lastSync: { type: Date, default: Date.now },
-  userImportantMailKeywords: {
-    type: [String],
-    default: DEFAULT_IMPORTANT_KEYWORDS,
-  },
-  firstLogin: { type: Boolean, default: true },
-});
+  { timestamps: true }
+);
 
 userSchema.pre("save", async function (next) {
   if (this.email) {
