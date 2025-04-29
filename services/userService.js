@@ -9,7 +9,7 @@ import path from "path";
 const planConfigs = {
   free: { dailyQueries: 5, maxInboxes: 1 },
   basic: { dailyQueries: 15, maxInboxes: 1 },
-  premium: { dailyQueries: Infinity || 10000000000000, maxInboxes: 3 },
+  premium: { dailyQueries: Infinity, maxInboxes: 3 },
   enterprise: { dailyQueries: 10000000000000, maxInboxes: 10 },
 };
 
