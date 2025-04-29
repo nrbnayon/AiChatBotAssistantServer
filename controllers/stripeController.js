@@ -15,12 +15,14 @@ const getFrontendUrl =
     : process.env.FRONTEND_URL;
 
 const priceIdToPlan = {
+  [process.env.STRIPE_FREE_BASIC]: "free",
   [process.env.STRIPE_PRICE_BASIC]: "basic",
   [process.env.STRIPE_PRICE_PREMIUM]: "premium",
   [process.env.STRIPE_PRICE_ENTERPRISE]: "enterprise",
 };
 
 const planLimits = {
+  free: { maxInboxes: 1, dailyQueries: 5 },
   basic: { maxInboxes: 1, dailyQueries: 15 },
   premium: { maxInboxes: 3, dailyQueries: Infinity || 10000000000000 },
   enterprise: { maxInboxes: 10, dailyQueries: Infinity || 10000000000000 },
@@ -42,7 +44,7 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
     return next(new ApiError(400, "Plan is required"));
   }
 
-  if (!["basic", "premium", "enterprise"].includes(plan)) {
+  if (!["free", "basic", "premium", "enterprise"].includes(plan)) {
     return next(
       new ApiError(400, "Invalid plan. Choose basic, premium, or enterprise")
     );
@@ -106,7 +108,7 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
               },
             });
           }
-          throw stripeError; // Re-throw if it's a different error
+          throw stripeError;
         }
 
         // If subscription exists but is canceled or past due, create new one
@@ -674,12 +676,13 @@ export const adminTotalEarningByUserSubscription = catchAsync(
 
 const getStripePriceId = (plan) =>
   ({
+    free: process.env.STRIPE_FREE_BASIC,
     basic: process.env.STRIPE_PRICE_BASIC,
     premium: process.env.STRIPE_PRICE_PREMIUM,
     enterprise: process.env.STRIPE_PRICE_ENTERPRISE,
   }[plan]);
 
-const getPlanFromPriceId = (priceId) => priceIdToPlan[priceId] || "basic";
+const getPlanFromPriceId = (priceId) => priceIdToPlan[priceId] || "free";
 
 function calculateFallbackEndDate(startDate) {
   if (!startDate) {
