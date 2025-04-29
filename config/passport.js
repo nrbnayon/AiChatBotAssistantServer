@@ -130,7 +130,7 @@ const oauthCallback = async (
       user[accessTokenField] = encryptedAccessToken;
       user[refreshTokenField] =
         encryptedRefreshToken || user[refreshTokenField];
-      user[expiryField] = Date.now() + 24 * 3600 * 1000; 
+      user[expiryField] = Date.now() + 24 * 3600 * 1000;
       user.authProvider = provider;
       user.verified = true;
       user.lastSync = new Date();
@@ -154,7 +154,7 @@ const oauthCallback = async (
       await user.save();
 
       if (user.firstLogin) {
-        await sendFirstLoginConfirmation(user); 
+        await sendFirstLoginConfirmation(user);
         user.firstLogin = false;
         await user.save();
       }
@@ -177,6 +177,8 @@ const oauthCallback = async (
           dailyQueries: 5,
           remainingQueries: 5,
           status: "active",
+          startDate: new Date(),
+          endDate: new Date().setFullYear(new Date().getFullYear() + 5),
         }, // Changed: Free plan for new users
         lastSync: new Date(),
         inboxList: [email || waitingListEntry.inbox],
@@ -193,7 +195,7 @@ const oauthCallback = async (
     await user.save();
 
     if (user.firstLogin) {
-      await sendFirstLoginConfirmation(user); 
+      await sendFirstLoginConfirmation(user);
       user.firstLogin = false;
       await user.save();
     }
@@ -202,8 +204,6 @@ const oauthCallback = async (
       accessToken: jwtAccessToken,
       refreshToken: jwtRefreshToken,
     });
-
-    
   } catch (error) {
     console.error(`[ERROR] ${provider} OAuth callback failed:`, error.message);
     return done(error, null);
