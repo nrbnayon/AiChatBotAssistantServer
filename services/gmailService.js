@@ -118,6 +118,10 @@ class GmailService extends EmailService {
         params.labelIds = ["SENT"];
         return params;
       },
+      promotions: (params) => {
+        params.labelIds = ["CATEGORY_PROMOTIONS"];
+        return params;
+      },
       drafts: (params) => {
         params.labelIds = ["DRAFT"];
         return params;
