@@ -110,6 +110,7 @@ class OutlookService extends EmailService {
       starred: `${client.baseUrl}/messages${baseParams}&$filter=flag/flagStatus eq 'flagged'`,
       drafts: `${client.baseUrl}/mailFolders/drafts/messages${baseParams}`,
       important: `${client.baseUrl}/messages${baseParams}&$filter=importance eq 'high'`,
+      promotions: `${client.baseUrl}/messages${baseParams}&$filter=categories/any(c:c eq 'Promotions') or contains(from/emailAddress/address,'newsletter') or contains(from/emailAddress/address,'noreply') or contains(from/emailAddress/address,'marketing') or contains(subject,'newsletter') or contains(subject,'offer') or contains(subject,'deal') or contains(subject,'sale') or contains(subject,'discount')`,
     };
 
     endpoint = filterMap[filter.toLowerCase()];
