@@ -1,3 +1,4 @@
+// controllers\stripeController.js this new updated
 import Stripe from "stripe";
 import User from "../models/User.js";
 import { ApiError, catchAsync } from "../utils/errorHandler.js";
@@ -54,6 +55,57 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
   const user = await User.findById(userId);
   if (!user) {
     return next(new ApiError(404, "User not found"));
+  }
+
+  if (plan === "free") {
+    // Update user to free plan directly without creating a checkout session
+    user.subscription.plan = "free";
+    user.subscription.status = "active";
+    user.subscription.dailyQueries = planLimits.free.dailyQueries;
+    user.subscription.remainingQueries = planLimits.free.dailyQueries;
+    user.subscription.startDate = new Date();
+    user.subscription.endDate = new Date().setFullYear(
+      new Date().getFullYear() + 10
+    );
+    user.subscription.autoRenew = false;
+
+    // If there's an active subscription, cancel it in Stripe
+    if (user.subscription.stripeSubscriptionId) {
+      try {
+        const subscription = await stripe.subscriptions.retrieve(
+          user.subscription.stripeSubscriptionId
+        );
+
+        if (
+          subscription.status === "active" ||
+          subscription.status === "trialing"
+        ) {
+          await stripe.subscriptions.cancel(
+            user.subscription.stripeSubscriptionId
+          );
+        }
+      } catch (error) {
+        // If subscription doesn't exist in Stripe, just continue
+        if (error.code !== "resource_missing") {
+          console.error("Error cancelling subscription:", error);
+        }
+      }
+      // Clear subscription ID
+      user.subscription.stripeSubscriptionId = undefined;
+    }
+
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: "Switched to free plan successfully",
+      subscription: {
+        plan: "free",
+        status: "active",
+        dailyQueries: user.subscription.dailyQueries,
+        remainingQueries: user.subscription.remainingQueries,
+      },
+    });
   }
 
   // Check if the user has an active subscription

@@ -178,7 +178,7 @@ const oauthCallback = async (
           remainingQueries: 5,
           status: "active",
           startDate: new Date(),
-          endDate: new Date().setFullYear(new Date().getFullYear() + 5),
+          endDate: new Date().setFullYear(new Date().getFullYear() + 10),
         }, // Changed: Free plan for new users
         lastSync: new Date(),
         inboxList: [email || waitingListEntry.inbox],
