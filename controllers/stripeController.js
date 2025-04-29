@@ -15,7 +15,7 @@ const getFrontendUrl =
     : process.env.FRONTEND_URL;
 
 const priceIdToPlan = {
-  [process.env.STRIPE_FREE_BASIC]: "free",
+  [process.env.STRIPE_PRICE_FREE]: "free",
   [process.env.STRIPE_PRICE_BASIC]: "basic",
   [process.env.STRIPE_PRICE_PREMIUM]: "premium",
   [process.env.STRIPE_PRICE_ENTERPRISE]: "enterprise",
@@ -676,7 +676,7 @@ export const adminTotalEarningByUserSubscription = catchAsync(
 
 const getStripePriceId = (plan) =>
   ({
-    free: process.env.STRIPE_FREE_BASIC,
+    free: process.env.STRIPE_PRICE_FREE,
     basic: process.env.STRIPE_PRICE_BASIC,
     premium: process.env.STRIPE_PRICE_PREMIUM,
     enterprise: process.env.STRIPE_PRICE_ENTERPRISE,
