@@ -42,7 +42,7 @@ const updateProfile = async (userId, profileData, file) => {
     .reduce((obj, key) => ({ ...obj, [key]: profileData[key] }), {});
   if (file) {
     const fileExt = path.extname(file.originalname).toLowerCase();
-    updates.profilePicture = `http://${process.env.IP_ADDRESS}:${process.env.PORT}/uploads/images/${userId}${fileExt}`;
+    updates.profilePicture = `https://server.inbox-buddy.ai/uploads/images/${userId}${fileExt}`;
   }
   if (Object.keys(updates).length === 0)
     throw new ApiError(400, "No valid fields to update");

@@ -55,16 +55,9 @@ const localIpAddress = getLocalIpAddress();
 
 const allowedOrigins = [
   "http://localhost:3000",
-  "http://localhost:5173",
-  "https://email-aichatbot.netlify.app",
-  process.env.FRONTEND_URL,
-  process.env.FRONTEND_LIVE_URL,
-  "http://192.168.10.33:3000",
-  `http://192.168.10.206:3000`,
-  `http://172.16.0.2:3000`,
-  "https://inbox-buddy-ai-ynx6.vercel.app",
-  `http://${localIpAddress}:3000`,
-  `http://${IP_ADDRESS}:3000`,
+  "http://localhost:4000",
+  "https://server.inbox-buddy.ai",
+  "https://inbox-buddy.ai",
 ].filter(Boolean);
 
 app.use(cookieParser());

@@ -555,7 +555,7 @@ class MCPServer {
                       const attachmentLinks = e.attachments
                         .map(
                           (att) =>
-                            `[${att.filename}](http://192.168.10.32:4000/api/v1/emails/download/attachment?emailId=${e.id}&attachmentId=${att.id})`
+                            `[${att.filename}](https://server.inbox-buddy.ai/api/v1/emails/download/attachment?emailId=${e.id}&attachmentId=${att.id})`
                         )
                         .join(", ");
                       attachmentNote = `\n**Attachments:** **${attachmentLinks}**`;
@@ -584,7 +584,7 @@ class MCPServer {
                       const attachmentLinks = e.attachments
                         .map(
                           (att) =>
-                            `[${att.filename}](http://192.168.10.32:4000/api/v1/emails/download/attachment?emailId=${e.id}&attachmentId=${att.id})`
+                            `[${att.filename}](https://server.inbox-buddy.ai/api/v1/emails/download/attachment?emailId=${e.id}&attachmentId=${att.id})`
                         )
                         .join(", ");
                       attachmentNote = `\n Here have **Attachments for Download click:** **${attachmentLinks}**`;
