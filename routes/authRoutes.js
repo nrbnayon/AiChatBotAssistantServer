@@ -82,7 +82,11 @@ router.get(
 router.get(
   "/:provider/callback",
   (req, res, next) => {
+    console.log("Session ID:", req.sessionID);
+    console.log("Session data:", req.session);
     const { provider } = req.params;
+    const state = req.query.state;
+    console.log("Get state", state);
     passport.authenticate(provider, { session: true }, (err, user, info) => {
       if (err) {
         return next(err);
@@ -119,11 +123,7 @@ router.get("/error", authError);
  * @access Public/Authenticated
  */
 // Local user login
-router.post(
-  "/login",
-  authRateLimit(),
-  localLogin
-);
+router.post("/login", authRateLimit(), localLogin);
 
 // User registration
 router.post("/register", authRateLimit(), register);
