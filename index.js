@@ -7,9 +7,6 @@ import session from "express-session";
 import passport from "passport";
 import fs from "fs";
 import path from "path";
-import Redis from "ioredis"; // Using ioredis instead of node-redis for better stability
-import connectRedis from "connect-redis";
-const RedisStore = connectRedis(session);
 import connectDB from "./config/database.js";
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
@@ -29,25 +26,6 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 4000;
 const IP_ADDRESS = process.env.IP_ADDRESS || "127.0.0.1";
-
-// Configure Redis client based on environment
-const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
-const redisClient = new Redis(REDIS_URL, {
-  retryStrategy: (times) => {
-    // Reconnection strategy
-    const delay = Math.min(times * 50, 2000);
-    return delay;
-  },
-  maxRetriesPerRequest: 5,
-});
-
-redisClient.on("error", (err) => {
-  console.error("Redis connection error:", err);
-});
-
-redisClient.on("connect", () => {
-  console.log("Connected to Redis successfully");
-});
 
 // Determine the upload directory based on the environment
 const isLambda = !!process.env.LAMBDA_TASK_ROOT;
@@ -88,7 +66,6 @@ const allowedOrigins = [
 app.use(cookieParser());
 app.use(
   session({
-    store: new RedisStore({ client: redisClient }),
     secret: process.env.JWT_SECRET,
     resave: false,
     saveUninitialized: false,
@@ -167,15 +144,6 @@ process.on("uncaughtException", (error) => {
   setTimeout(() => {
     process.exit(1);
   }, 1000);
-});
-
-// Graceful shutdown handling
-process.on("SIGTERM", () => {
-  console.log("SIGTERM received. Shutting down gracefully...");
-  redisClient.quit().then(() => {
-    console.log("Redis connection closed.");
-    process.exit(0);
-  });
 });
 
 connectDB().then(() => {
