@@ -25,12 +25,9 @@ const router = express.Router();
  */
 router.get(
   "/oauth/:provider",
-  // authRateLimit(), // Uncomment if rate limiting is desired
+  // authRateLimit(),
   (req, res, next) => {
     const { provider } = req.params;
-    const redirectUrl = req.query.redirect || "/dashboard";
-    req.session.redirectUrl = redirectUrl; // Store redirect URL in session
-
     const providers = {
       google: {
         strategy: "google",
@@ -61,8 +58,15 @@ router.get(
       return res.status(400).json({ message: "Invalid provider" });
     }
     const { strategy, scope, options = {} } = providers[provider];
+    const state = Buffer.from(
+      JSON.stringify({ redirect: req.query.redirect || "/dashboard" })
+    ).toString("base64");
 
-    passport.authenticate(strategy, { scope, ...options })(req, res, next);
+    passport.authenticate(strategy, { scope, state, ...options })(
+      req,
+      res,
+      next
+    );
   }
 );
 
@@ -78,11 +82,7 @@ router.get(
 router.get(
   "/:provider/callback",
   (req, res, next) => {
-    console.log("Session ID:", req.sessionID);
-    console.log("Full Session Data:", JSON.stringify(req.session, null, 2)); 
     const { provider } = req.params;
-    const state = req.query.state;
-    console.log("Get state", state);
     passport.authenticate(provider, { session: true }, (err, user, info) => {
       if (err) {
         return next(err);
@@ -119,7 +119,11 @@ router.get("/error", authError);
  * @access Public/Authenticated
  */
 // Local user login
-router.post("/login", authRateLimit(), localLogin);
+router.post(
+  "/login",
+  authRateLimit(),
+  localLogin
+);
 
 // User registration
 router.post("/register", authRateLimit(), register);

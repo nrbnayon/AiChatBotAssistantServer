@@ -43,8 +43,6 @@ const authError = (req, res) => {
 
 const oauthCallback = catchAsync(async (req, res) => {
   const { accessToken, refreshToken } = req.authInfo || {};
-  const redirectUrl = req.session.redirectUrl || "/dashboard";
-  delete req.session.redirectUrl;
   const state = req.query.state
     ? JSON.parse(Buffer.from(req.query.state, "base64").toString())
     : {};
@@ -81,10 +79,10 @@ const oauthCallback = catchAsync(async (req, res) => {
     maxAge: jwtHelper.getRefreshTokenExpiryMs(),
   });
 
-  const frontendRedirect = `${getFrontendUrl}/auth-callback?accessToken=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(
+  const redirectUrl = `${getFrontendUrl}/auth-callback?accessToken=${accessToken}&refreshToken=${refreshToken}&redirect=${encodeURIComponent(
     state.redirect || "/dashboard"
   )}`;
-  res.redirect(frontendRedirect);
+  res.redirect(redirectUrl);
 });
 
 const localLogin = catchAsync(async (req, res, next) => {

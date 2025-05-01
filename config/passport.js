@@ -238,8 +238,8 @@ const strategies = {
         "Mail.Send",
       ],
       tenant: "common",
-      pkce: false,
-      state: true, // Added to enable state handling with PKCE
+      // pkce: false,
+      // state: true, // Added to enable state handling with PKCE
     },
     Strategy: MicrosoftStrategy,
   },

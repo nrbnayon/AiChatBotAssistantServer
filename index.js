@@ -7,6 +7,7 @@ import session from "express-session";
 import passport from "passport";
 import fs from "fs";
 import path from "path";
+
 import connectDB from "./config/database.js";
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
@@ -21,7 +22,6 @@ import "./config/passport.js";
 import os from "os";
 import bodyParser from "body-parser";
 import { handleWebhook } from "./controllers/stripeController.js";
-import MongoStore from "connect-mongo";
 
 dotenv.config();
 const app = express();
@@ -70,11 +70,6 @@ app.use(
     secret: process.env.JWT_SECRET,
     resave: false,
     saveUninitialized: false,
-    store: MongoStore.create({
-      mongoUrl: process.env.MONGODB_URI,
-      collectionName: "sessions",
-      ttl: 15 * 24 * 60 * 60,
-    }),
     cookie: {
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
