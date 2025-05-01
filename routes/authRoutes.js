@@ -79,7 +79,7 @@ router.get(
   "/:provider/callback",
   (req, res, next) => {
     console.log("Session ID:", req.sessionID);
-    console.log("Session data:", req.session);
+    console.log("Full Session Data:", JSON.stringify(req.session, null, 2)); 
     const { provider } = req.params;
     const state = req.query.state;
     console.log("Get state", state);
