@@ -239,7 +239,7 @@ const strategies = {
       ],
       tenant: "common",
       pkce: true,
-      state: false, // Added to enable state handling with PKCE
+      state: true, // Added to enable state handling with PKCE
     },
     Strategy: MicrosoftStrategy,
   },
