@@ -56,6 +56,9 @@ const localIpAddress = getLocalIpAddress();
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:4000",
+  "http://46.202.159.90:3000",
+  "http://46.202.159.90:4000",
+  "http://115.127.156.9:3000",
   "https://server.inbox-buddy.ai",
   "https://inbox-buddy.ai",
 ].filter(Boolean);
