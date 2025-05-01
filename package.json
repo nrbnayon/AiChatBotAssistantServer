@@ -15,6 +15,7 @@
     "bcryptjs": "^3.0.2",
     "body-parser": "^2.2.0",
     "colors": "^1.4.0",
+    "connect-redis": "^8.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -43,6 +44,7 @@
     "passport-yahoo-oauth": "^0.2.0",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^5.0.375",
+    "redis": "^5.0.0",
     "stripe": "^18.0.0"
   },
   "devDependencies": {

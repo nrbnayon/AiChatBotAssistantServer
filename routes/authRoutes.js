@@ -25,9 +25,12 @@ const router = express.Router();
  */
 router.get(
   "/oauth/:provider",
-  // authRateLimit(),
+  // authRateLimit(), // Uncomment if rate limiting is desired
   (req, res, next) => {
     const { provider } = req.params;
+    const redirectUrl = req.query.redirect || "/dashboard";
+    req.session.redirectUrl = redirectUrl; // Store redirect URL in session
+
     const providers = {
       google: {
         strategy: "google",
@@ -58,15 +61,8 @@ router.get(
       return res.status(400).json({ message: "Invalid provider" });
     }
     const { strategy, scope, options = {} } = providers[provider];
-    const state = Buffer.from(
-      JSON.stringify({ redirect: req.query.redirect || "/dashboard" })
-    ).toString("base64");
 
-    passport.authenticate(strategy, { scope, state, ...options })(
-      req,
-      res,
-      next
-    );
+    passport.authenticate(strategy, { scope, ...options })(req, res, next);
   }
 );
 
