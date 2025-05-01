@@ -248,6 +248,7 @@ const strategies = {
         "Mail.Send",
       ],
       tenant: "common",
+      pkce: true,
     },
     Strategy: MicrosoftStrategy,
   },
