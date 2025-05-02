@@ -31,35 +31,51 @@ class OutlookService extends EmailService {
 
     if (microsoftTokenExpiry < Date.now() || !accessToken) {
       try {
+        // Log request parameters
+        const params = {
+          client_id: process.env.MICROSOFT_CLIENT_ID,
+          client_secret: process.env.MICROSOFT_CLIENT_SECRET,
+          refresh_token: refreshToken,
+          grant_type: "refresh_token",
+          scope: "offline_access User.Read Mail.Read Mail.ReadWrite Mail.Send",
+        };
+        // console.log("Refreshing Microsoft token with params:", {
+        //   ...params,
+        //   client_secret: "[REDACTED]", // Hide sensitive data
+        //   refresh_token: "[REDACTED]",
+        // });
+
         const response = await fetch(
           "https://login.microsoftonline.com/common/oauth2/v2.0/token",
           {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({
-              client_id: process.env.MICROSOFT_CLIENT_ID,
-              client_secret: process.env.MICROSOFT_CLIENT_SECRET,
-              refresh_token: refreshToken,
-              grant_type: "refresh_token",
-              scope:
-                "offline_access User.Read Mail.Read Mail.ReadWrite Mail.Send",
-            }),
+            body: new URLSearchParams(params),
           }
         );
 
         if (!response.ok) {
           const errorText = await response.text();
-          let errorMessage;
+          let errorData;
           try {
-            const errorData = JSON.parse(errorText);
-            errorMessage = errorData.error_description || errorData.error;
+            errorData = JSON.parse(errorText);
           } catch (e) {
-            errorMessage = errorText || "Unknown error";
+            errorData = {
+              error: "Unknown error",
+              error_description: errorText,
+            };
           }
-          console.error("Microsoft token refresh error:", errorMessage);
+          console.error(
+            "Microsoft token refresh failed with status:",
+            response.status,
+            "Details:",
+            errorData
+          );
           throw new ApiError(
-            StatusCodes.UNAUTHORIZED,
-            `Failed to refresh Microsoft token: ${errorMessage}`
+            StatusCodes.BAD_REQUEST,
+            `Failed to refresh Microsoft token: ${
+              errorData.error_description || errorData.error
+            }`
           );
         }
 
@@ -74,7 +90,7 @@ class OutlookService extends EmailService {
         }
         this.user.microsoftAccessTokenExpires = Date.now() + expires_in * 1000;
         await this.user.save();
-        // console.log("[DEBUG] Microsoft token refreshed");
+        console.log("[DEBUG] Microsoft token refreshed successfully");
       } catch (error) {
         if (error instanceof ApiError) throw error;
         throw new ApiError(
