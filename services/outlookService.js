@@ -122,7 +122,7 @@ class OutlookService extends EmailService {
       );
     }
 
-    // [CHANGE] Function to calculate date range based on timeFilter
+    // Function to calculate date range based on timeFilter
     function getDateRange(timeFilter) {
       const now = new Date();
       if (timeFilter === "daily") {
@@ -135,7 +135,6 @@ class OutlookService extends EmailService {
         const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
         return { after: start };
       } else if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(timeFilter)) {
-        // Normalize to YYYY/MM/DD
         const [year, month, day] = timeFilter
           .split("/")
           .map((part) => parseInt(part, 10));
@@ -151,23 +150,26 @@ class OutlookService extends EmailService {
       }
     }
 
+    // Improved filter construction using an array
     if (timeFilter) {
       const dateRange = getDateRange(timeFilter);
-      let filterStr = "";
+      const filterConditions = [];
       const existingFilter = endpoint.includes("$filter=")
         ? endpoint.split("$filter=")[1].split("&")[0]
         : "";
-      if (existingFilter) filterStr = `${existingFilter} and `;
+      if (existingFilter) {
+        filterConditions.push(existingFilter);
+      }
       if (dateRange.after) {
         const afterDate = dateRange.after.toISOString();
-        filterStr += `receivedDateTime ge ${afterDate}`;
+        filterConditions.push(`receivedDateTime ge ${afterDate}`);
       }
       if (dateRange.before) {
         const beforeDate = dateRange.before.toISOString();
-        if (dateRange.after) filterStr += " and ";
-        filterStr += `receivedDateTime lt ${beforeDate}`;
+        filterConditions.push(`receivedDateTime lt ${beforeDate}`);
       }
-      if (filterStr) {
+      if (filterConditions.length > 0) {
+        const filterStr = filterConditions.join(" and ");
         if (endpoint.includes("$filter=")) {
           endpoint = endpoint.replace(
             `$filter=${existingFilter}`,
@@ -226,13 +228,6 @@ class OutlookService extends EmailService {
           : null,
       totalCount: data["@odata.count"] || 0,
     };
-
-    // console.log(
-    //   `[DEBUG] Fetched ${result.messages.length} emails with pageToken: ${pageToken}, nextPageToken: ${result.nextPageToken}, prevPageToken: ${result.prevPageToken}`
-    // );
-    // console.log(
-    //   `[DEBUG] Email IDs: ${result.messages.map((e) => e.id).join(", ")}`
-    // );
 
     return result;
   }
