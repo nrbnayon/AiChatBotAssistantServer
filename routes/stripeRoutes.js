@@ -1,6 +1,7 @@
 // routes/stripeRoutes.js
 import express from "express";
 import {
+  verifySession,
   createCheckoutSession,
   cancelSubscription,
   cancelAutoRenew,
@@ -12,6 +13,8 @@ import auth, { setRefreshedTokenCookie } from "../middleware/authMiddleware.js";
 import { rateLimitMiddleware } from "../middleware/rateLimit.js";
 
 const router = express.Router();
+
+router.post("/verify-session", auth(), setRefreshedTokenCookie, verifySession);
 
 // Create checkout session
 router.post(

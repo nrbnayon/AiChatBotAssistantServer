@@ -257,6 +257,64 @@ export const createCheckoutSession = catchAsync(async (req, res, next) => {
   }
 });
 
+export const verifySession = catchAsync(async (req, res, next) => {
+  const { sessionId } = req.body;
+  if (!sessionId) return next(new ApiError(400, "Session ID is required"));
+
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["subscription"],
+    });
+    // console.log("Session retrieved:", session); // Add logging
+
+    if (session.payment_status !== "paid") {
+      return next(new ApiError(400, "Payment not completed"));
+    }
+
+    const userId = session.client_reference_id;
+    const user = await User.findById(userId);
+    if (!user) return next(new ApiError(404, "User not found"));
+
+    const subscription = session.subscription;
+    if (!subscription) {
+      return next(new ApiError(400, "No subscription found in session"));
+    }
+
+    const priceId = subscription.items.data[0].price.id;
+    const plan = getPlanFromPriceId(priceId);
+
+    user.subscription.plan = plan;
+    user.subscription.status = "active";
+    user.subscription.dailyQueries = planLimits[plan].dailyQueries;
+    user.subscription.remainingQueries = planLimits[plan].dailyQueries;
+    user.subscription.startDate = subscription.start_date
+      ? new Date(subscription.start_date * 1000)
+      : new Date();
+    user.subscription.endDate = subscription.current_period_end
+      ? new Date(subscription.current_period_end * 1000)
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    user.subscription.stripeSubscriptionId = subscription.id;
+    user.subscription.autoRenew = true;
+
+    await user.save();
+    // console.log("User subscription updated:", user.subscription); // Add logging
+
+    res.json({
+      success: true,
+      message: "Subscription updated successfully",
+      subscription: {
+        plan: user.subscription.plan,
+        status: user.subscription.status,
+        endDate: user.subscription.endDate,
+        autoRenew: user.subscription.autoRenew,
+      },
+    });
+  } catch (error) {
+    console.error("Error in verifySession:", error); // Add error logging
+    return next(new ApiError(500, "Failed to verify session"));
+  }
+});
+
 // Helper function to create a new checkout session
 async function createNewCheckoutSession(user, plan) {
   return await stripe.checkout.sessions.create({
@@ -290,6 +348,8 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
     console.error("Webhook signature verification failed:", err.message);
     return next(new ApiError(400, `Webhook Error: ${err.message}`));
   }
+
+  // console.log("Webhook event received:", event.type);
 
   try {
     if (event.type === "checkout.session.completed") {
@@ -335,6 +395,7 @@ export const handleWebhook = catchAsync(async (req, res, next) => {
 
       await user.save();
       await sendSubscriptionSuccessEmail(user);
+      // console.log("Webhook updated user subscription:", user.subscription);
     } else if (event.type === "customer.subscription.updated") {
       const subscription = await stripe.subscriptions.retrieve(
         event.data.object.id,
