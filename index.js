@@ -63,6 +63,7 @@ const allowedOrigins = [
   "http://115.127.156.9:3000",
   "https://server.inbox-buddy.ai",
   "https://inbox-buddy.ai",
+  "https://www.inbox-buddy.ai",
 ].filter(Boolean);
 
 app.use(cookieParser());
