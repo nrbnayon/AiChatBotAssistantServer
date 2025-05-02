@@ -12,6 +12,7 @@
     "@ai-sdk/xai": "^1.1.15",
     "@azure/identity": "^4.8.0",
     "@microsoft/microsoft-graph-client": "^3.0.7",
+    "axios": "^1.9.0",
     "bcryptjs": "^3.0.2",
     "body-parser": "^2.2.0",
     "colors": "^1.4.0",
