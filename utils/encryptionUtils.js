@@ -29,4 +29,9 @@ const decrypt = (encryption) => {
   return decrypted;
 };
 
+const sampleJWT = "header.payload.signature";
+const encrypted = encrypt(sampleJWT);
+const decrypted = decrypt(encrypted);
+// console.log(decrypted === sampleJWT);
+
 export { encrypt, decrypt };
