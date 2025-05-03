@@ -25,11 +25,15 @@ class GmailService extends EmailService {
       );
     }
 
-    const refreshToken = decrypt(encryptedRefreshToken);
+    // const refreshToken = decrypt(encryptedRefreshToken);
+    // const encryptedAccessToken = this.user.googleAccessToken;
+    // let accessToken = encryptedAccessToken
+    //   ? decrypt(encryptedAccessToken)
+    //   : null;
+
+    const refreshToken = encryptedRefreshToken;
     const encryptedAccessToken = this.user.googleAccessToken;
-    let accessToken = encryptedAccessToken
-      ? decrypt(encryptedAccessToken)
-      : null;
+    let accessToken = encryptedAccessToken ? encryptedAccessToken : null;
 
     const googleTokenExpiry = this.user.googleAccessTokenExpires || 0;
     if (googleTokenExpiry < Date.now() || !accessToken) {
@@ -39,9 +43,13 @@ class GmailService extends EmailService {
       try {
         const { credentials } = await auth.refreshAccessToken();
         accessToken = credentials.access_token;
-        this.user.googleAccessToken = encrypt(credentials.access_token);
+        // this.user.googleAccessToken = encrypt(credentials.access_token);
+        // this.user.googleRefreshToken = credentials.refresh_token
+        //   ? encrypt(credentials.refresh_token)
+        //   : this.user.googleRefreshToken;
+        this.user.googleAccessToken = credentials.access_token;
         this.user.googleRefreshToken = credentials.refresh_token
-          ? encrypt(credentials.refresh_token)
+          ? credentials.refresh_token
           : this.user.googleRefreshToken;
         this.user.googleAccessTokenExpires = credentials.expiry_date;
         await this.user.save();

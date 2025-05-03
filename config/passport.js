@@ -152,8 +152,11 @@ const oauthCallback = async (
     );
 
     // Encrypt sensitive tokens
-    const encryptedAccessToken = encrypt(accessToken);
-    const encryptedRefreshToken = refreshToken ? encrypt(refreshToken) : null;
+    // const encryptedAccessToken = encrypt(accessToken);
+    // const encryptedRefreshToken = refreshToken ? encrypt(refreshToken) : null;
+    // Non Encrypt sensitive tokens
+    const encryptedAccessToken = (accessToken);
+    const encryptedRefreshToken = refreshToken ? (refreshToken) : null;
 
     let user = await User.findOne({ email });
 

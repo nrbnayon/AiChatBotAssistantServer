@@ -13,7 +13,7 @@ class OutlookService extends EmailService {
     this.pageTokenCache = [];
   }
 
-  async getClient() {
+  async getClient(forceRefresh = false) {
     const encryptedRefreshToken = this.user.microsoftRefreshToken;
     if (!encryptedRefreshToken) {
       throw new ApiError(
@@ -22,16 +22,23 @@ class OutlookService extends EmailService {
       );
     }
 
-    const refreshToken = decrypt(encryptedRefreshToken);
+    // const refreshToken = decrypt(encryptedRefreshToken);
+    // const encryptedAccessToken = this.user.microsoftAccessToken;
+    // let accessToken = encryptedAccessToken
+    //   ? decrypt(encryptedAccessToken)
+    //   : null;
+    const refreshToken = encryptedRefreshToken;
     const encryptedAccessToken = this.user.microsoftAccessToken;
-    let accessToken = encryptedAccessToken
-      ? decrypt(encryptedAccessToken)
-      : null;
+    let accessToken = encryptedAccessToken ? encryptedAccessToken : null;
     const microsoftTokenExpiry = this.user.microsoftAccessTokenExpires || 0;
 
-    if (microsoftTokenExpiry < Date.now() || !accessToken) {
+    console.log(
+      `[DEBUG] Token expiry: ${microsoftTokenExpiry}, Current time: ${Date.now()}`
+    );
+
+    // Refresh token if expired or forced
+    if (forceRefresh || microsoftTokenExpiry < Date.now() || !accessToken) {
       try {
-        // Log request parameters
         const params = {
           client_id: process.env.MICROSOFT_CLIENT_ID,
           client_secret: process.env.MICROSOFT_CLIENT_SECRET,
@@ -39,11 +46,7 @@ class OutlookService extends EmailService {
           grant_type: "refresh_token",
           scope: "offline_access User.Read Mail.Read Mail.ReadWrite Mail.Send",
         };
-        // console.log("Refreshing Microsoft token with params:", {
-        //   ...params,
-        //   client_secret: "[REDACTED]", // Hide sensitive data
-        //   refresh_token: "[REDACTED]",
-        // });
+        console.log("[DEBUG] Refreshing Microsoft token...");
 
         const response = await fetch(
           "https://login.microsoftonline.com/common/oauth2/v2.0/token",
@@ -65,12 +68,13 @@ class OutlookService extends EmailService {
               error_description: errorText,
             };
           }
-          console.error(
-            "Microsoft token refresh failed with status:",
-            response.status,
-            "Details:",
-            errorData
-          );
+          if (errorData.error === "invalid_grant") {
+            throw new ApiError(
+              StatusCodes.UNAUTHORIZED,
+              "Refresh token is invalid. Please re-authenticate."
+            );
+          }
+          console.error("[ERROR] Token refresh failed:", errorData);
           throw new ApiError(
             StatusCodes.BAD_REQUEST,
             `Failed to refresh Microsoft token: ${
@@ -81,11 +85,26 @@ class OutlookService extends EmailService {
 
         const { access_token, refresh_token, expires_in } =
           await response.json();
+
+        if (!access_token) {
+          console.error("[ERROR] No access token received from Microsoft");
+          throw new ApiError(
+            StatusCodes.INTERNAL_SERVER_ERROR,
+            "Failed to obtain access token from Microsoft"
+          );
+        }
+
         accessToken = access_token;
-        const newEncryptedAccessToken = encrypt(access_token);
+        // const newEncryptedAccessToken = encrypt(access_token);
+        // this.user.microsoftAccessToken = newEncryptedAccessToken;
+        // if (refresh_token) {
+        //   const newEncryptedRefreshToken = encrypt(refresh_token);
+        //   this.user.microsoftRefreshToken = newEncryptedRefreshToken;
+        // }
+        const newEncryptedAccessToken = access_token;
         this.user.microsoftAccessToken = newEncryptedAccessToken;
         if (refresh_token) {
-          const newEncryptedRefreshToken = encrypt(refresh_token);
+          const newEncryptedRefreshToken = refresh_token;
           this.user.microsoftRefreshToken = newEncryptedRefreshToken;
         }
         this.user.microsoftAccessTokenExpires = Date.now() + expires_in * 1000;
@@ -100,6 +119,14 @@ class OutlookService extends EmailService {
       }
     }
 
+    // Basic validation: ensure access token exists
+    if (!accessToken) {
+      throw new ApiError(
+        StatusCodes.UNAUTHORIZED,
+        "No access token available. Please re-authenticate."
+      );
+    }
+
     return {
       accessToken,
       baseUrl: "https://graph.microsoft.com/v1.0/me",
@@ -107,6 +134,7 @@ class OutlookService extends EmailService {
   }
 
   // services/outlookService.js
+  // Revised fetchEmails method for OutlookService class
   async fetchEmails({
     query,
     maxResults = 1000,
@@ -114,138 +142,180 @@ class OutlookService extends EmailService {
     filter = "all",
     timeFilter = "all",
   }) {
-    const client = await this.getClient();
-    let endpoint;
-    const baseParams = `?$top=${maxResults}&$select=id,subject,from,toRecipients,receivedDateTime,bodyPreview,body,isRead`;
+    try {
+      let client = await this.getClient();
+      let endpoint;
+      const baseParams = `?$top=${maxResults}&$select=id,subject,from,toRecipients,receivedDateTime,bodyPreview,body,isRead`;
 
-    const filterMap = {
-      all: `${client.baseUrl}/messages${baseParams}`,
-      sent: `${client.baseUrl}/mailFolders/sentitems/messages${baseParams}`,
-      archived: `${client.baseUrl}/mailFolders/archive/messages${baseParams}`,
-      unread: `${client.baseUrl}/messages${baseParams}&$filter=isRead eq false`,
-      starred: `${client.baseUrl}/messages${baseParams}&$filter=flag/flagStatus eq 'flagged'`,
-      drafts: `${client.baseUrl}/mailFolders/drafts/messages${baseParams}`,
-      important: `${client.baseUrl}/messages${baseParams}&$filter=importance eq 'high'`,
-      promotions: `${client.baseUrl}/messages${baseParams}&$filter=categories/any(c:c eq 'Promotions') or contains(from/emailAddress/address,'newsletter') or contains(from/emailAddress/address,'noreply') or contains(from/emailAddress/address,'marketing') or contains(subject,'newsletter') or contains(subject,'offer') or contains(subject,'deal') or contains(subject,'sale') or contains(subject,'discount')`,
-    };
+      // Define filter conditions and handle query separately
+      let hasSearchQuery = query && query.trim().length > 0;
+      let hasFilterConditions = false;
 
-    endpoint = filterMap[filter.toLowerCase()];
+      // Start with base endpoints without filters
+      const baseEndpoints = {
+        all: `${client.baseUrl}/messages`,
+        sent: `${client.baseUrl}/mailFolders/sentitems/messages`,
+        archived: `${client.baseUrl}/mailFolders/archive/messages`,
+        unread: `${client.baseUrl}/messages`,
+        starred: `${client.baseUrl}/messages`,
+        drafts: `${client.baseUrl}/mailFolders/drafts/messages`,
+        important: `${client.baseUrl}/messages`,
+        promotions: `${client.baseUrl}/messages`,
+      };
 
-    if (!endpoint) {
-      throw new ApiError(
-        StatusCodes.BAD_REQUEST,
-        `Unsupported filter: ${filter}`
-      );
-    }
+      endpoint = baseEndpoints[filter.toLowerCase()] || baseEndpoints.all;
 
-    // Function to calculate date range based on timeFilter
-    function getDateRange(timeFilter) {
-      const now = new Date();
-      if (timeFilter === "daily") {
-        const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        return { after: start };
-      } else if (timeFilter === "weekly") {
-        const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        return { after: start };
-      } else if (timeFilter === "monthly") {
-        const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        return { after: start };
-      } else if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(timeFilter)) {
-        const [year, month, day] = timeFilter
-          .split("/")
-          .map((part) => parseInt(part, 10));
-        const paddedMonth = month.toString().padStart(2, "0");
-        const paddedDay = day.toString().padStart(2, "0");
-        const startDate = new Date(Date.UTC(year, month - 1, day));
-        const endDate = new Date(Date.UTC(year, month - 1, day + 1));
-        return { after: startDate, before: endDate };
-      } else if (timeFilter === "all") {
-        return {};
-      } else {
-        return {};
-      }
-    }
-
-    // Improved filter construction using an array
-    if (timeFilter) {
-      const dateRange = getDateRange(timeFilter);
+      // Build filter conditions separately from search
       const filterConditions = [];
-      const existingFilter = endpoint.includes("$filter=")
-        ? endpoint.split("$filter=")[1].split("&")[0]
-        : "";
-      if (existingFilter) {
-        filterConditions.push(existingFilter);
+
+      // Add specific filter conditions based on selected filter
+      if (filter.toLowerCase() === "unread") {
+        filterConditions.push("isRead eq false");
+        hasFilterConditions = true;
+      } else if (filter.toLowerCase() === "starred") {
+        filterConditions.push("flag/flagStatus eq 'flagged'");
+        hasFilterConditions = true;
+      } else if (filter.toLowerCase() === "important") {
+        filterConditions.push("importance eq 'high'");
+        hasFilterConditions = true;
+      } else if (filter.toLowerCase() === "promotions") {
+        filterConditions.push(
+          "categories/any(c:c eq 'Promotions') or contains(from/emailAddress/address,'newsletter') " +
+            "or contains(from/emailAddress/address,'noreply') or contains(from/emailAddress/address,'marketing') " +
+            "or contains(subject,'newsletter') or contains(subject,'offer') or contains(subject,'deal') " +
+            "or contains(subject,'sale') or contains(subject,'discount')"
+        );
+        hasFilterConditions = true;
       }
-      if (dateRange.after) {
-        const afterDate = dateRange.after.toISOString();
-        filterConditions.push(`receivedDateTime ge ${afterDate}`);
-      }
-      if (dateRange.before) {
-        const beforeDate = dateRange.before.toISOString();
-        filterConditions.push(`receivedDateTime lt ${beforeDate}`);
-      }
-      if (filterConditions.length > 0) {
-        const filterStr = filterConditions.join(" and ");
-        if (endpoint.includes("$filter=")) {
-          endpoint = endpoint.replace(
-            `$filter=${existingFilter}`,
-            `$filter=${encodeURIComponent(filterStr)}`
-          );
+
+      // Add time filter conditions if applicable
+      function getDateRange(timeFilter) {
+        const now = new Date();
+        if (timeFilter === "daily") {
+          const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+          return { after: start };
+        } else if (timeFilter === "weekly") {
+          const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          return { after: start };
+        } else if (timeFilter === "monthly") {
+          const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          return { after: start };
+        } else if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(timeFilter)) {
+          const [year, month, day] = timeFilter
+            .split("/")
+            .map((part) => parseInt(part, 10));
+          const paddedMonth = month.toString().padStart(2, "0");
+          const paddedDay = day.toString().padStart(2, "0");
+          const startDate = new Date(Date.UTC(year, month - 1, day));
+          const endDate = new Date(Date.UTC(year, month - 1, day + 1));
+          return { after: startDate, before: endDate };
+        } else if (timeFilter === "all") {
+          return {};
         } else {
-          endpoint += `&$filter=${encodeURIComponent(filterStr)}`;
+          return {};
         }
       }
-    }
 
-    if (pageToken) endpoint += `&$skiptoken=${encodeURIComponent(pageToken)}`;
-    if (query) endpoint += `&$search="${encodeURIComponent(query)}"`;
-
-    const response = await fetch(endpoint, {
-      headers: { Authorization: `Bearer ${client.accessToken}` },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage;
-      try {
-        const errorData = JSON.parse(errorText);
-        errorMessage = errorData.error?.message || JSON.stringify(errorData);
-      } catch (e) {
-        errorMessage = errorText || "Unknown error";
+      if (timeFilter && timeFilter !== "all") {
+        const dateRange = getDateRange(timeFilter);
+        if (dateRange.after) {
+          const afterDate = dateRange.after.toISOString();
+          filterConditions.push(`receivedDateTime ge ${afterDate}`);
+          hasFilterConditions = true;
+        }
+        if (dateRange.before) {
+          const beforeDate = dateRange.before.toISOString();
+          filterConditions.push(`receivedDateTime lt ${beforeDate}`);
+          hasFilterConditions = true;
+        }
       }
+
+      // Determine which approach to use based on query and filters
+      endpoint += baseParams;
+
+      if (hasSearchQuery && hasFilterConditions) {
+        // If we have both search and filters, we need to use two separate requests
+        // and merge results, or prioritize one over the other
+
+        // Option 1: Prioritize search
+        endpoint += `&$search="${encodeURIComponent(query)}"`;
+        console.log(
+          "[DEBUG] Prioritizing search query over filters due to API limitations"
+        );
+
+        // Option 2: Alternative approach - get IDs from search, then filter
+        // This would be more complex but could be implemented if needed
+      } else if (hasSearchQuery) {
+        // Only search, no filters
+        endpoint += `&$search="${encodeURIComponent(query)}"`;
+      } else if (hasFilterConditions) {
+        // Only filters, no search
+        endpoint += `&$filter=${encodeURIComponent(
+          filterConditions.join(" and ")
+        )}`;
+      }
+
+      if (pageToken) endpoint += `&$skiptoken=${encodeURIComponent(pageToken)}`;
+
+      let response = await fetch(endpoint, {
+        headers: { Authorization: `Bearer ${client.accessToken}` },
+      });
+
+      // Retry with forced refresh if 401 Unauthorized
+      if (response.status === 401) {
+        console.log("[DEBUG] Received 401, attempting token refresh...");
+        client = await this.getClient(true); // Force refresh
+        response = await fetch(endpoint, {
+          headers: { Authorization: `Bearer ${client.accessToken}` },
+        });
+      }
+
+      if (!response.ok) {
+        const statusCode = response.status;
+        const errorText = await response.text();
+        let errorMessage;
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error?.message || JSON.stringify(errorData);
+        } catch (e) {
+          errorMessage = errorText || "Unknown error";
+        }
+        throw new ApiError(statusCode, `Microsoft API error: ${errorMessage}`);
+      }
+
+      const data = await response.json();
+      const emails = data.value.map(this.formatEmail.bind(this));
+
+      let nextPageToken = null;
+      if (data["@odata.nextLink"]) {
+        const linkParts = data["@odata.nextLink"].split("skiptoken=");
+        if (linkParts.length > 1) {
+          nextPageToken = decodeURIComponent(linkParts[1]);
+        }
+      }
+
+      const pageTokenCache = this.pageTokenCache;
+      if (pageToken) {
+        pageTokenCache.push(pageToken);
+      }
+
+      return {
+        messages: emails,
+        nextPageToken,
+        prevPageToken:
+          pageTokenCache.length > 1
+            ? pageTokenCache[pageTokenCache.length - 2]
+            : null,
+        totalCount: data["@odata.count"] || 0,
+      };
+    } catch (error) {
+      console.error("[ERROR] fetchEmails failed:", error);
+      if (error instanceof ApiError) throw error;
       throw new ApiError(
-        StatusCodes.BAD_REQUEST,
-        `Microsoft API error: ${errorMessage}`
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        `Failed to fetch emails: ${error.message}`
       );
     }
-
-    const data = await response.json();
-    const emails = data.value.map(this.formatEmail.bind(this));
-
-    let nextPageToken = null;
-    if (data["@odata.nextLink"]) {
-      const linkParts = data["@odata.nextLink"].split("skiptoken=");
-      if (linkParts.length > 1) {
-        nextPageToken = decodeURIComponent(linkParts[1]);
-      }
-    }
-
-    const pageTokenCache = this.pageTokenCache;
-    if (pageToken) {
-      pageTokenCache.push(pageToken);
-    }
-
-    const result = {
-      messages: emails,
-      nextPageToken,
-      prevPageToken:
-        pageTokenCache.length > 1
-          ? pageTokenCache[pageTokenCache.length - 2]
-          : null,
-      totalCount: data["@odata.count"] || 0,
-    };
-
-    return result;
   }
 
   formatEmail(email) {

@@ -18,15 +18,21 @@ const encrypt = (text) => {
 };
 
 const decrypt = (encryption) => {
-  const decipher = crypto.createDecipheriv(
-    algorithm,
-    key,
-    Buffer.from(encryption.iv, "hex")
-  );
-  decipher.setAuthTag(Buffer.from(encryption.authTag, "hex"));
-  let decrypted = decipher.update(encryption.encryptedData, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-  return decrypted;
+  try {
+    const decipher = crypto.createDecipheriv(
+      algorithm,
+      key,
+      Buffer.from(encryption.iv, "hex")
+    );
+    decipher.setAuthTag(Buffer.from(encryption.authTag, "hex"));
+    let decrypted = decipher.update(encryption.encryptedData, "hex", "utf8");
+    decrypted += decipher.final("utf8");
+    console.log("[DEBUG] Decrypted token:", decrypted.substring(0, 10) + "...");
+    return decrypted;
+  } catch (error) {
+    console.error("[ERROR] Decryption failed:", error.message);
+    throw new ApiError(StatusCodes.INTERNAL_SERVER_ERROR, "Decryption failed");
+  }
 };
 
 const sampleJWT = "header.payload.signature";

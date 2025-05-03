@@ -149,13 +149,31 @@ process.on("uncaughtException", (error) => {
   }, 1000);
 });
 
-connectDB().then(() => {
-  app.listen(PORT, IP_ADDRESS, () => {
-    console.log(`
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("UNHANDLED REJECTION! 💥 Keeping server alive...");
+  console.error("Promise:", promise, "Reason:", reason);
+  // Do not exit - keep the server running
+});
+
+connectDB()
+  .then(() => {
+    const server = app.listen(PORT, IP_ADDRESS, () => {
+      console.log(`
     ╔═════════════════════════════════════╗
     ║  🚀 Server launched successfully!   ║
     ║  🌐 Running on:${IP_ADDRESS}:${PORT.toString().padEnd(10, " ")} ║
     ╚═════════════════════════════════════╝
     `);
+    });
+
+    // Handle server errors gracefully
+    server.on("error", (error) => {
+      console.error("SERVER ERROR! 💥 Keeping server alive...");
+      console.error(error);
+    });
+  })
+  .catch((error) => {
+    console.error("DATABASE CONNECTION FAILED! 💥 Shutting down...");
+    console.error(error);
+    process.exit(1);
   });
-});
