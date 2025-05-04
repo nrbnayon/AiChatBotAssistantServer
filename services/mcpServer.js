@@ -1295,7 +1295,7 @@ class MCPServer {
         "**Error processing request**\n\nI couldn't complete the action because:\n• The connection to your email provider might be interrupted\n• The requested information might be unavailable\n• There might be a temporary system limitation\n\nCould you try your request again?",
         "**Action couldn't be completed**\n\nI ran into a technical issue while working on your request. You could:\n1. Try again with a simpler query\n2. Refresh the page and try again\n3. Check if your email account is accessible",
         "**Request failed**\n\nI wasn't able to process that request due to a technical error. Let's try:\n• Breaking your request into smaller steps\n• Using different wording\n• Waiting a moment before trying again",
-        "**Technical difficulty encountered**\n\nSorry about that! I experienced an error while trying to handle your request. This is likely a temporary issue. Please try again or try a different request.",
+        "**Technical difficulty encountered**\n\nSorry about that! I experienced an error while trying to handle your request.\n This is likely a temporary issue.\n Please try again or try a different request.",
       ];
 
       return {
@@ -1322,15 +1322,29 @@ class MCPServer {
       };
     };
 
-    // Handle email details requests
-    const emailKeywordRegex =
-      /(detail|details|full email)\s*(?:(\d+))?\s*email(?:s)?(?:\s*from\s*(\w+))?/i;
-    const emailMatch = message.toLowerCase().match(emailKeywordRegex);
+    // Flexible email details detection
+    const lowerMessage = message.toLowerCase();
+    const emailKeywords = ["email", "emails"];
+    const detailKeywords = ["detail", "details", "full", "body"];
+    const hasEmail = emailKeywords.some((keyword) =>
+      lowerMessage.includes(keyword)
+    );
+    const hasDetail = detailKeywords.some((keyword) =>
+      lowerMessage.includes(keyword)
+    );
 
-    if (emailMatch) {
-      const numEmails = emailMatch[2] ? parseInt(emailMatch[2], 10) : 1; // Default to 1 if no number specified
-      const sender = emailMatch[3]; // Sender is optional
+    if (hasEmail && hasDetail) {
+      // Extract number of emails (default to 1 if not specified)
+      let numEmails = 1;
+      const numMatch = lowerMessage.match(/(\d+)/);
+      if (numMatch) {
+        numEmails = parseInt(numMatch[1], 10);
+      }
       const maxEmails = Math.min(numEmails, 10); // Cap at 10 emails
+
+      // Extract sender if specified (e.g., "from john")
+      const senderMatch = lowerMessage.match(/from\s+(\w+)/i);
+      const sender = senderMatch ? senderMatch[1] : null;
 
       try {
         const fetchOptions = {
@@ -1338,26 +1352,31 @@ class MCPServer {
           maxResults: maxEmails,
         };
         if (sender) {
-          fetchOptions.query = `from:${sender}`; // Add sender filter if specified
+          fetchOptions.query = `from:${sender}`;
         }
 
         const recentEmails = await this.emailService.fetchEmails(fetchOptions);
         if (recentEmails.messages && recentEmails.messages.length > 0) {
           const emails = recentEmails.messages;
-          this.lastEmailId = emails[0].id; // Track the last email ID (most recent)
-          this.lastListedEmails.set(userId, emails); // Store for future reference
+          this.lastEmailId = emails[0].id;
+          this.lastListedEmails.set(userId, emails);
 
-          // Format email details
-          let emailText = emails
-            .map((email, index) => {
+          // Fetch full email details for each email
+          const emailDetails = await Promise.all(
+            emails.map(async (email, index) => {
+              const fullEmail = await this.emailService.getEmail(email.id);
+              const date = new Date(fullEmail.date).toLocaleString();
               return `**Email ${index + 1}:**\n**From:** ${
-                email.from
-              }\n**To:** ${email.to}\n**Subject:** ${
-                email.subject
-              }\n**Date:** ${email.date}\n\n**Body:** ${email.body}`;
+                fullEmail.from
+              }\n**To:** ${fullEmail.to}\n**Subject:** ${
+                fullEmail.subject || "No subject"
+              }\n**Date:** ${date}\n\n**Body:** ${
+                fullEmail.body || "No body content available"
+              }`;
             })
-            .join("\n\n---\n\n");
+          );
 
+          const emailText = emailDetails.join("\n\n---\n\n");
           const senderText = sender ? ` from ${sender}` : "";
           const plural = maxEmails > 1 ? "s" : "";
           return createTextResponse(
@@ -1374,18 +1393,16 @@ class MCPServer {
           );
         }
       } catch (error) {
-        console.error(
-          `Failed to fetch email${maxEmails > 1 ? "s" : ""}${
-            sender ? ` from ${sender}` : ""
-          }:`,
-          error
-        );
+        console.error(`Failed to fetch emails:`, error);
         let errorText = `Sorry ${userName}, I ran into a problem fetching your email${
           maxEmails > 1 ? "s" : ""
         }${sender ? ` from ${sender}` : ""}:\n`;
-        if (error.message.includes("token") || error.status === 401) {
+        if (error.status === 404) {
           errorText +=
-            "• It looks like there's an issue with your email account connection. Please re-authenticate.\n";
+            "• The requested email might not exist or I don’t have access to it.\n";
+        } else if (error.message.includes("token") || error.status === 401) {
+          errorText +=
+            "• There’s an issue with your email account connection. Please re-authenticate.\n";
         } else if (error.message.includes("network")) {
           errorText +=
             "• The connection to your email provider seems interrupted.\n";

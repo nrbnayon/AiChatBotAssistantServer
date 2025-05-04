@@ -7,6 +7,8 @@ import session from "express-session";
 import passport from "passport";
 import fs from "fs";
 import path from "path";
+import os from "os";
+import bodyParser from "body-parser";
 
 import connectDB from "./config/database.js";
 import authRoutes from "./routes/authRoutes.js";
@@ -18,12 +20,21 @@ import aiModelRoutes from "./routes/aiModelRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import { globalErrorHandler } from "./utils/errorHandler.js";
 import requestLogger from "./utils/requestLogger.js";
-import "./config/passport.js";
-import os from "os";
-import bodyParser from "body-parser";
+import serverMonitor from "./utils/serverMonitor.js"; // Import our server monitor
 import { handleWebhook } from "./controllers/stripeController.js";
+import "./config/passport.js";
+import { homePageHTML } from "./home.js";
 
+// Create the logs directory if it doesn't exist
+const logsDir = path.join(process.cwd(), "logs");
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
+
+// Initialize dotenv
 dotenv.config();
+
+// Create Express app
 const app = express();
 const PORT = process.env.PORT || 4000;
 const IP_ADDRESS = process.env.IP_ADDRESS || "127.0.0.1";
@@ -119,9 +130,10 @@ app.use((req, res, next) => {
   });
   next();
 });
+
 // Routes
 app.get("/", (req, res) => {
-  res.send("Welcome to the you mail ai assistant!");
+  res.send(homePageHTML);
 });
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/users", userRoutes);
@@ -130,6 +142,16 @@ app.use("/api/v1/ai-models", aiModelRoutes);
 app.use("/api/v1/emails", emailRoutes);
 app.use("/api/v1/ai-assistant", aiChatRoutes);
 app.use("/api/v1/chats", chatRoutes);
+
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "UP",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memoryUsage: process.memoryUsage(),
+  });
+});
 
 app.use((req, res) => {
   res.status(404).json({
@@ -141,39 +163,75 @@ app.use((req, res) => {
 
 app.use(globalErrorHandler);
 
+// Enhanced global error handling
 process.on("uncaughtException", (error) => {
-  console.error("UNCAUGHT EXCEPTION! 💥 Shutting down gracefully...");
+  console.error("UNCAUGHT EXCEPTION! 💥");
   console.error(error.name, error.message, error.stack);
-  setTimeout(() => {
-    process.exit(1);
-  }, 1000);
+  // Don't exit - let the server monitor handle it
+  // Log to file
+  fs.appendFileSync(
+    path.join(logsDir, "uncaught-exceptions.log"),
+    `[${new Date().toISOString()}] ${error.stack}\n`
+  );
 });
 
 process.on("unhandledRejection", (reason, promise) => {
-  console.error("UNHANDLED REJECTION! 💥 Keeping server alive...");
+  console.error("UNHANDLED REJECTION! 💥");
   console.error("Promise:", promise, "Reason:", reason);
-  // Do not exit - keep the server running
+  // Don't exit - let the server monitor handle it
+  // Log to file
+  fs.appendFileSync(
+    path.join(logsDir, "unhandled-rejections.log"),
+    `[${new Date().toISOString()}] ${reason}\n`
+  );
 });
 
-connectDB()
-  .then(() => {
-    const server = app.listen(PORT, IP_ADDRESS, () => {
-      console.log(`
-    ╔═════════════════════════════════════╗
-    ║  🚀 Server launched successfully!   ║
-    ║  🌐 Running on:${IP_ADDRESS}:${PORT.toString().padEnd(10, " ")} ║
-    ╚═════════════════════════════════════╝
-    `);
-    });
+// Create server monitor with our app
+const monitor = serverMonitor(app, PORT, IP_ADDRESS, 2000);
 
-    // Handle server errors gracefully
-    server.on("error", (error) => {
-      console.error("SERVER ERROR! 💥 Keeping server alive...");
-      console.error(error);
-    });
-  })
-  .catch((error) => {
-    console.error("DATABASE CONNECTION FAILED! 💥 Shutting down...");
+// Connect to database and start server
+(async () => {
+  try {
+    // Connect to database
+    await connectDB();
+    console.log("📊 Database connected successfully!");
+
+    // Start server
+    await monitor.start();
+
+    // Set up memory usage monitoring
+    const memoryMonitorInterval = setInterval(() => {
+      const memoryUsage = process.memoryUsage();
+      const heapUsed = Math.round(memoryUsage.heapUsed / 1024 / 1024);
+      const heapTotal = Math.round(memoryUsage.heapTotal / 1024 / 1024);
+
+      // Log memory usage if it's getting high (over 80% of total)
+      if (heapUsed > heapTotal * 0.8) {
+        console.warn(`⚠️ High memory usage: ${heapUsed}MB / ${heapTotal}MB`);
+      }
+    }, 60000); // Check every minute
+
+    // Handle process termination
+    const handleTermination = async (signal) => {
+      console.log(
+        `\n🛑 Received ${signal} signal. Shutting down gracefully...`
+      );
+      clearInterval(memoryMonitorInterval);
+      await monitor.stop();
+      process.exit(0);
+    };
+
+    // Listen for termination signals
+    process.on("SIGTERM", () => handleTermination("SIGTERM"));
+    process.on("SIGINT", () => handleTermination("SIGINT"));
+  } catch (error) {
+    console.error("STARTUP ERROR! 💥");
     console.error(error);
-    process.exit(1);
-  });
+
+    // Wait a bit then restart
+    setTimeout(() => {
+      console.log("🔄 Attempting to restart after startup error...");
+      process.exit(1); // Exit with error code - PM2 will restart
+    }, 5000);
+  }
+})();

@@ -5,8 +5,16 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js example.js",
-    "dev": "nodemon index.js --host"
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "start:pm2": "pm2 start ecosystem.config.cjs",
+    "start:pm2:prod": "pm2 start ecosystem.config.cjs --env production",
+    "stop:pm2": "pm2 stop email-ai-assistant",
+    "logs:pm2": "pm2 logs",
+    "status:pm2": "pm2 status",
+    "monit:pm2": "pm2 monit",
+    "build": "mkdir -p dist && cp -r *.js *.json config controllers helper models routes services utils logs .env dist/",
+    "start:prod": "cd dist && node index.js"
   },
   "dependencies": {
     "@ai-sdk/xai": "^1.1.15",
@@ -42,12 +50,12 @@
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "passport-microsoft": "^2.1.0",
-    "passport-yahoo-oauth": "^0.2.0",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^5.0.375",
     "stripe": "^18.0.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.9"
+    "nodemon": "^3.1.9",
+    "pm2": "^5.4.3"
   }
 }
