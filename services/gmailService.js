@@ -376,7 +376,7 @@ class GmailService extends EmailService {
         id: emailId,
         format: "full",
       });
-      return this.formatEmail(email.data);
+      return this.formatEmail(email?.data || "No email data found please try again with a different approach");
     } catch (error) {
       console.error("[ERROR] Failed to get email:", error);
       throw new ApiError(
