@@ -1171,7 +1171,7 @@ class MCPServer {
     if (relevantEmails.length > 5 || /schedule|appointment/i.test(query)) {
       return {
         list: this.buildDetailedList(relevantEmails),
-        table: this.formatEmailTable(relevantEmails),
+        // table: this.formatEmailTable(relevantEmails),
         summary: `Found ${relevantEmails.length} emails matching "${query}"`,
       };
     } else {
@@ -1198,7 +1198,7 @@ class MCPServer {
           `**${index + 1}. ${email.subject || "No Subject"}**\n` +
           `   **From:** ${fromName} (${fromEmail})\n` +
           `   **Date:** ${date}\n` +
-          `   ${email.snippet || "No preview available"}\n`
+          `  **Preview:** ${email.snippet || "No preview available"}\n`
         );
       })
       .join("\n\n");
@@ -1232,34 +1232,34 @@ class MCPServer {
     };
   }
 
-  formatEmailTable(emails) {
-    if (!emails || emails.length === 0) return "No emails available.";
+  // formatEmailTable(emails) {
+  //   if (!emails || emails.length === 0) return "No emails available.";
 
-    const relevantColumns = ["date", "from", "subject", "snippet"];
-    const headers = {
-      date: "Date",
-      from: "From",
-      subject: "Subject",
-      snippet: "Preview",
-    };
+  //   const relevantColumns = ["date", "from", "subject", "snippet"];
+  //   const headers = {
+  //     date: "Date",
+  //     from: "From",
+  //     subject: "Subject",
+  //     snippet: "Preview",
+  //   };
 
-    const headerRow = `| ${relevantColumns
-      .map((col) => headers[col])
-      .join(" | ")} |`;
-    const separator = `| :--- | :--- | :------ | :------ |`;
+  //   const headerRow = `| ${relevantColumns
+  //     .map((col) => headers[col])
+  //     .join(" | ")} |`;
+  //   const separator = `| :--- | :--- | :------ | :------ |`;
 
-    const rows = emails.map((email) => {
-      const date = new Date(email.date).toLocaleDateString();
-      const from = email.from.includes("<")
-        ? email.from.split("<")[0].trim()
-        : email.from;
-      const subject = this.truncateText(email.subject || "No Subject", 30);
-      const preview = this.truncateText(email.body || "", 100);
-      return `| ${date} | ${from} | ${subject} | ${preview} |`;
-    });
+  //   const rows = emails.map((email) => {
+  //     const date = new Date(email.date).toLocaleDateString();
+  //     const from = email.from.includes("<")
+  //       ? email.from.split("<")[0].trim()
+  //       : email.from;
+  //     const subject = this.truncateText(email.subject || "No Subject", 50);
+  //     const preview = this.truncateText(email.body || "", 100);
+  //     return `| ${date} | ${from} | ${subject} | ${preview} |`;
+  //   });
 
-    return `${headerRow}\n${separator}\n${rows.join("\n")}`;
-  }
+  //   return `${headerRow}\n${separator}\n${rows.join("\n")}`;
+  // }
 
   // Helper function to truncate text with ellipsis
   truncateText(text, maxLength) {
