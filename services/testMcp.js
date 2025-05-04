@@ -1,4 +1,3 @@
-// services\mcpServer.js
 import Groq from "groq-sdk";
 import OpenAI from "openai";
 import EmailDraft from "../models/EmailDraft.js";
@@ -20,6 +19,7 @@ const STANDARD_FALLBACK_CHAIN = [
 function estimateTokens(text) {
   return Math.ceil(text.length / 4);
 }
+
 class ModelProvider {
   constructor() {
     this.groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -30,6 +30,7 @@ class ModelProvider {
     this.retryDelay = 200;
     this.maxRetryDelay = 500;
   }
+
   async callModelWithRetry(model, options) {
     if (!options || !options.messages) {
       throw new ApiError(500, "Invalid options for model retry");
@@ -101,7 +102,6 @@ class ModelProvider {
 
     const primaryModel = await getModelById(primaryModelId);
     if (primaryModel) {
-      // console.log(`Attempting to use primary model: ${primaryModel.name}`);
       let attemptCount = 0;
       let currentRetryDelay = this.retryDelay;
       while (attemptCount < this.retryCount) {
@@ -110,7 +110,6 @@ class ModelProvider {
             primaryModel,
             options
           );
-          // console.log(`Successfully used primary model: ${primaryModel.name}`);
           return {
             result,
             tokenCount,
@@ -123,9 +122,6 @@ class ModelProvider {
             error.message?.includes("429") ||
             error.message?.includes("rate_limit_exceeded")
           ) {
-            // console.log(
-            //   "Rate limit error detected, stopping retries for primary model"
-            // );
             break;
           }
           attemptCount++;
@@ -142,7 +138,6 @@ class ModelProvider {
       }
     }
 
-    // Fallback chain if primary model fails
     for (const currentModelId of completeChain.slice(1)) {
       try {
         const model = await getModelById(currentModelId);
@@ -150,12 +145,10 @@ class ModelProvider {
           console.warn(`Model ${currentModelId} not found, skipping`);
           continue;
         }
-        // console.log(`Attempting to use fallback model: ${model.name}`);
         const { result, tokenCount } = await this.callModelWithRetry(
           model,
           options
         );
-        // console.log(`Successfully used fallback model: ${model.name}`);
         return {
           result,
           tokenCount,
@@ -183,7 +176,7 @@ class MCPServer {
     this.modelProvider = new ModelProvider();
     this.pendingEmails = new Map();
     this.lastListedEmails = new Map();
-    this.lastEmailId = null;
+    this.lastEmailId = null; // Added to track the last email ID
     this.callTool = this.callTool.bind(this);
   }
 
@@ -231,7 +224,6 @@ class MCPServer {
 
     const lowerMessage = message.toLowerCase();
     if (lowerMessage.includes("this emails")) {
-      // Replace "this emails" with comma-separated IDs of last listed emails
       const emailIds = lastListed.map((e) => e.id).join(", ");
       return message.replace(/this\s+emails?/i, `emails ${emailIds}`);
     } else if (
@@ -296,11 +288,6 @@ class MCPServer {
         } = args;
 
         let processedQuery = query ? this.processQuery(query) : "";
-        // Enhanced search to handle sender variations
-        if (processedQuery.toLowerCase().includes("from:")) {
-          processedQuery = processedQuery.replace(/from:/i, "").trim();
-        }
-
         const emails = await this.emailService.fetchEmails({
           filter,
           query: processedQuery,
@@ -319,14 +306,12 @@ class MCPServer {
           ];
         }
 
-        // Restore the email analysis functionality
         const analyzedData = this.analyzeEmails(
           emails,
           processedQuery || filter || ""
         );
 
         let text = "";
-        // Check if we have table data from analysis
         if (analyzedData.table) {
           const introTexts = [
             "Here's what I dug up from your emails:",
@@ -349,24 +334,18 @@ class MCPServer {
           const count = emails.messages.length;
           const previewCount = Math.min(count, 10);
           const previewEmails = emails.messages.slice(0, previewCount);
-          // this.lastListedEmails.set(userId, previewEmails);
 
-          // Automatically summarize if 3 or fewer emails, or if explicitly requested
           const autoSummarize = previewCount <= 3;
           const shouldSummarize = autoSummarize || summarize;
 
           if (count === 0) {
-              const noEmailResponses = [
-                `**No matching emails found**\n\nI couldn't find any emails that match your search for "${query}". You could try:\n• Using different keywords\n• Broadening your date range\n• Checking a different folder\n• Try a variation like \`from:${query}\` or \`subject:${query}\``,
-
-                `**Your search returned no results**\n\nI searched for "${query}" but found nothing. Possible next steps:\n• Try different search terms\n• Remove some filters\n• Check for typos in names or email addresses\n• Try \`to:${query}\` if you're looking for emails sent to someone`,
-
-                `**No emails match "${query}"**\n\nSuggestions:\n1. Use broader search terms than "${query}"\n2. Check a different time period\n3. Try searching in 'All Mail' instead`,
-
-                `**I couldn't find any matching emails for "${query}"**\n\nThis might be because:\n• Your search was too specific\n• There might be a connection issue\n• The emails might be in another folder\n• Try alternatives like \`label:${query}\` or \`category:${query}\``,
-
-                `**No matching results for "${query}"**\n\nLet's try a different approach:\n• Show me email \`from:${query}\` to find emails from specific people\n• Find all emails with \`subject:${query}\` to search subject lines`,
-              ];
+            const noEmailResponses = [
+              "**No matching emails found**\n\nI couldn't find any emails that match your search criteria. You could try:\n• Using different keywords\n• Broadening your date range\n• Checking a different folder",
+              "**Your search returned no results**\n\nPossible next steps:\n• Try different search terms\n• Remove some filters\n• Check for typos in names or email addresses",
+              "**No emails match this query**\n\nSuggestions:\n1. Use broader search terms\n2. Check a different time period\n3. Try searching in 'All Mail' instead",
+              "**I couldn't find any matching emails**\n\nThis might be because:\n• Your search was too specific\n• There might be a connection issue\n• The emails might be in another folder",
+              "**No results for this search**\n\nLet's try a different approach:\n• Show me email `from:[sender]` to find emails from specific people\n• Find all emails from `{query}`\n• Any email from `{query}`",
+            ];
             text =
               noEmailResponses[
                 Math.floor(Math.random() * noEmailResponses.length)
@@ -405,19 +384,17 @@ class MCPServer {
                   let attachmentNote = "";
                   if (e.hasAttachments) {
                     if (e.attachments && e.attachments.length > 0) {
-                      // For Gmail, where attachments are available
                       const attachmentLinks = e.attachments
                         .map(
                           (att) =>
                             `[${att.filename}](https://server.inbox-buddy.ai/api/v1/emails/download/attachment?emailId=${e.id}&attachmentId=${att.id})`
                         )
                         .join(", ");
-                      attachmentNote = `\n**Attachments:** **${attachmentLinks}** just click on it to download.`;
+                      attachmentNote = `\n**Attachments:** **${attachmentLinks}**`;
                     } else {
-                      // For Outlook or when attachments aren't fetched
                       attachmentNote = `\n**Attachments:** Yes (say **show attachments for email ${
                         i + 1
-                      }** to this are the download links just click on it to see them)`;
+                      }** to see them)`;
                     }
                   }
                   return `**${i + 1}.** **From:** ${e.from}\n**Subject:** ${
@@ -434,16 +411,14 @@ class MCPServer {
                   let attachmentNote = "";
                   if (e.hasAttachments) {
                     if (e.attachments && e.attachments.length > 0) {
-                      // For Gmail, where attachments are available
                       const attachmentLinks = e.attachments
                         .map(
                           (att) =>
                             `[${att.filename}](https://server.inbox-buddy.ai/api/v1/emails/download/attachment?emailId=${e.id}&attachmentId=${att.id})`
                         )
                         .join(", ");
-                      attachmentNote = `\n Here have **Attachments:** **${attachmentLinks}** just click on it to download.`;
+                      attachmentNote = `\nHere have **Attachments for Download click:** **${attachmentLinks}**`;
                     } else {
-                      // For Outlook or when attachments aren't fetched
                       attachmentNote = `\n**Attachments:** Yes (say **show attachments for email ${
                         i + 1
                       }** to see them)`;
@@ -485,7 +460,7 @@ class MCPServer {
         }
         const attachmentList = attachments
           .map((att, index) => {
-            const downloadLink = `https://inbox-buddy.ai/api/v1/emails/download/attachment?emailId=${email_id}&attachmentId=${att.id}`;
+            const downloadLink = `http://172.16.0.2:3000/api/v1/emails/download/attachment?emailId=${email_id}&attachmentId=${att.id}`;
             return `${index + 1}. [${att.filename}](${downloadLink})`;
           })
           .join("\n");
@@ -574,6 +549,7 @@ class MCPServer {
         }
         return [{ type: "text", text }];
       }
+
       case "read-email": {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID parameter");
@@ -594,6 +570,7 @@ class MCPServer {
           },
         ];
       }
+
       case "trash-email": {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID parameter");
@@ -625,6 +602,7 @@ class MCPServer {
           throw error;
         }
       }
+
       case "reply-to-email": {
         const { email_id, message, attachments = [] } = args;
 
@@ -728,11 +706,11 @@ class MCPServer {
           },
         ];
       }
+
       case "search-emails": {
-        const { query, timeFilter = "weekly" } = args; // Default to "weekly"
+        const { query, timeFilter = "weekly" } = args;
         if (!query) throw new Error("Missing query parameter");
 
-        // Normalize timeFilter to YYYY/MM/DD
         let normalizedTimeFilter = timeFilter;
         if (
           timeFilter &&
@@ -744,7 +722,6 @@ class MCPServer {
               2,
               "0"
             )}/${String(day).padStart(2, "0")}`;
-            // Validate date
             const date = new Date(year, month - 1, day);
             if (
               date.getFullYear() !== year ||
@@ -780,6 +757,7 @@ class MCPServer {
           },
         ];
       }
+
       case "mark-email-as-read": {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID parameter");
@@ -798,6 +776,7 @@ class MCPServer {
           },
         ];
       }
+
       case "summarize-email": {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID");
@@ -947,12 +926,12 @@ class MCPServer {
         if (
           pendingDraft &&
           modificationKeywords.some((keyword) =>
-            message.toLowerCase().includes(keyword)
+            content.toLowerCase().includes(keyword)
           )
         ) {
           const defaultModel = await getDefaultModel();
           const modificationPrompt = `
-      Modify the following email draft based on the user's request: "${message}".
+      Modify the following email draft based on the user's request: "${content}".
       Keep the original structure intact, including line breaks and formatting, and only update the requested parts.
       Provide the updated draft clearly with To:, Subject:, and the body separated by newlines.
       Ensure To: and Subject: are each on their own line, and the body starts after a blank line.
@@ -1090,18 +1069,13 @@ class MCPServer {
           const draftResponses = [
             `I've prepared an email for **${recipient}**:\n\n**To:** ${
               recipient_email || recipient
-            }\n**Subject:** ${subject}\n\n${body}\n\nDoes this look good? Let me know if you'd like any changes before sending. Or do you want to send it now? just say **"confirm send"** it`,
-
+            }\n**Subject:** ${subject}\n\n${body}\n\nDoes this look good? Let me know if you'd like any changes before sending. Or say **"confirm send"** to send it now!`,
             `Here's a draft email for **${recipient}**:\n\n**To:** ${
               recipient_email || recipient
-            }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think? Is it ready to send or would you like to make adjustments?. Or do you want to send it now? just say **"confirm send"** it`,
-
+            }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think? Ready to send or need adjustments? Say **"confirm send"** to proceed!`,
             `I've drafted an email for **${recipient}**:\n\n**To:** ${
               recipient_email || recipient
-            }\n**Subject:** ${subject}\n\n${body}\n\nPlease review and let me know if this works for you or if any changes are needed. Just confirm me when you're ready to send. write **"confirm send"** to send it`,
-            `Here's a draft email for **${recipient}**:\n\n**To:** ${
-              recipient_email || recipient
-            }\n**Subject:** ${subject}\n\n${body}\n\nLet me know if you want to send it as is or if you need to tweak anything. Or do you want to send it now? just say **"confirm sent"** it`,
+            }\n**Subject:** ${subject}\n\n${body}\n\nPlease review. Say **"confirm send"** to send it or suggest changes!`,
           ];
           return [
             {
@@ -1119,8 +1093,6 @@ class MCPServer {
     }
   }
 
-  // Improved email analyzer with better output format selection
-  // Improved email analyzer with better output format selection
   analyzeEmails(emails, query) {
     if (!emails || !emails.messages || emails.messages.length === 0) {
       return { text: "No emails found." };
@@ -1133,22 +1105,17 @@ class MCPServer {
       return query
         .toLowerCase()
         .split(" ")
-        .some(
-          (term) => content.includes(term) && term.length > 2 // Ignore very short terms
-        );
+        .some((term) => content.includes(term) && term.length > 2);
     });
 
     if (relevantEmails.length === 0) {
       return { text: "No matching emails found for your query." };
     }
 
-    // Sort emails by date (newest first)
     relevantEmails.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    // Choose format based on number of results and query type
-    if (relevantEmails.length > 5 || /schedule|appointment/i.test(query)) {
+    if (relevantEmails.length > 7 || /schedule|appointment/i.test(query)) {
       return {
-        list: this.buildDetailedList(relevantEmails),
         table: this.formatEmailTable(relevantEmails),
         summary: `Found ${relevantEmails.length} emails matching "${query}"`,
       };
@@ -1160,7 +1127,6 @@ class MCPServer {
     }
   }
 
-  // Build a more readable list format for smaller result sets
   buildDetailedList(emails) {
     return emails
       .map((email, index) => {
@@ -1180,34 +1146,6 @@ class MCPServer {
         );
       })
       .join("\n\n");
-  }
-
-  getSenderBreakdown(emails) {
-    const senderCounts = {};
-    emails.forEach((email) => {
-      const sender = email.from;
-      senderCounts[sender] = (senderCounts[sender] || 0) + 1;
-    });
-    return Object.entries(senderCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([sender, count]) => ({ sender, count }));
-  }
-
-  getTimeDistribution(emails) {
-    const today = new Date();
-    const oneDayAgo = new Date(today);
-    oneDayAgo.setDate(today.getDate() - 1);
-    const oneWeekAgo = new Date(today);
-    oneWeekAgo.setDate(today.getDate() - 7);
-    const oneMonthAgo = new Date(today);
-    oneMonthAgo.setMonth(today.getMonth() - 1);
-    return {
-      today: emails.filter((e) => new Date(e.date) >= oneDayAgo).length,
-      thisWeek: emails.filter((e) => new Date(e.date) >= oneWeekAgo).length,
-      thisMonth: emails.filter((e) => new Date(e.date) >= oneMonthAgo).length,
-      older: emails.filter((e) => new Date(e.date) < oneMonthAgo).length,
-    };
   }
 
   formatEmailTable(emails) {
@@ -1239,7 +1177,6 @@ class MCPServer {
     return `${headerRow}\n${separator}\n${rows.join("\n")}`;
   }
 
-  // Helper function to truncate text with ellipsis
   truncateText(text, maxLength) {
     return text.length > maxLength
       ? text.substring(0, maxLength - 3) + "..."
@@ -1256,8 +1193,6 @@ class MCPServer {
   ) {
     const userId = req.user.id;
     const userName = req.user.name || "User";
-    // console.log("User name:", userName);
-    // console.log("User Send Message:", message);
     const userEmail = req.user.email;
 
     const {
@@ -1268,75 +1203,40 @@ class MCPServer {
       topImportantEmails = [],
     } = context;
 
-    // --- Enhanced: Handle "last email" requests dynamically with sender and list support ---
-    const lowerMessageText = message.toLowerCase();
-    const lastEmailRegex =
-      /(detail|details|full email|)\s*(?:(\d+))?\s*email(?:s)?(?:\s*from\s*(\w+))?/i;
-    const match = lowerMessageText.match(lastEmailRegex);
-
-    if (match) {
-      const numEmails = match[2] ? parseInt(match[2], 10) : 1; // Default to 1 if no number specified
-      const sender = match[3]; // Sender is optional
-      const maxEmails = Math.min(numEmails, 10); // Cap at 10 emails
-
+    // --- Added: Handle "last email" requests dynamically ---
+    const lowerMessage = message.toLowerCase();
+    if (
+      lowerMessage.includes("last email") ||
+      lowerMessage.includes("latest email")
+    ) {
       try {
-        const fetchOptions = {
+        const recentEmails = await this.emailService.fetchEmails({
           filter: "all",
-          maxResults: maxEmails,
-        };
-        if (sender) {
-          fetchOptions.query = `from:${sender}`; // Add sender filter if specified
-        }
-
-        const recentEmails = await this.emailService.fetchEmails(fetchOptions);
+          maxResults: 1,
+        });
         if (recentEmails.messages && recentEmails.messages.length > 0) {
-          const emails = recentEmails.messages;
-          this.lastEmailId = emails[0].id; // Track the last email ID (most recent)
-
-          // Format email details
-          let emailText = emails
-            .map((email, index) => {
-              return `**Email ${index + 1}:**\n**From:** ${
-                email.from
-              }\n**To:** ${email.to}\n**Subject:** ${
-                email.subject
-              }\n**Date:** ${email.date}\n\n${email.body}`;
-            })
-            .join("\n\n---\n\n");
-
-          const senderText = sender ? ` from ${sender}` : "";
-          const plural = maxEmails > 1 ? "s" : "";
+          const lastEmail = recentEmails.messages[0];
+          this.lastEmailId = lastEmail.id; // Track the last email ID
+          const emailText = `**From:** ${lastEmail.from}\n**To:** ${lastEmail.to}\n**Subject:** ${lastEmail.subject}\n**Date:** ${lastEmail.date}\n\n${lastEmail.body}`;
           return {
             type: "text",
-            text: `Hey ${userName}, here${
-              maxEmails > 1 ? " are" : "’s"
-            } the full details of your ${
-              maxEmails > 1 ? `${maxEmails} most recent` : "last"
-            } email${plural}${senderText}:\n\n${emailText}`,
+            text: `Hey ${userName}, here’s the full details of your last email:\n\n${emailText}`,
             modelUsed: "N/A",
             fallbackUsed: false,
             tokenCount: 0,
           };
         } else {
-          const senderText = sender ? ` from ${sender}` : "";
           return {
             type: "text",
-            text: `Hi ${userName}, I couldn’t find any emails${senderText} in your inbox. Want me to check again or try something else?`,
+            text: `Hi ${userName}, I couldn’t find any emails in your inbox. It might be empty, or there was an issue fetching them. Want me to try again?`,
             modelUsed: "N/A",
             fallbackUsed: false,
             tokenCount: 0,
           };
         }
       } catch (error) {
-        console.error(
-          `Failed to fetch email${maxEmails > 1 ? "s" : ""}${
-            sender ? ` from ${sender}` : ""
-          }:`,
-          error
-        );
-        let errorText = `Sorry ${userName}, I ran into a problem fetching your email${
-          maxEmails > 1 ? "s" : ""
-        }${sender ? ` from ${sender}` : ""}:\n`;
+        console.error("Failed to fetch last email:", error);
+        let errorText = `Sorry ${userName}, I ran into a problem fetching your last email:\n`;
         if (error.message.includes("token") || error.status === 401) {
           errorText +=
             "• It looks like there’s an issue with your email account connection. Please re-authenticate.\n";
@@ -1358,7 +1258,7 @@ class MCPServer {
         };
       }
     }
-    // --- End of enhanced "last email" handling ---
+    // --- End of "last email" handling ---
 
     const attachmentMatch = message.match(/show attachments for email (\d+)/i);
     if (attachmentMatch) {
@@ -1420,7 +1320,7 @@ class MCPServer {
         .replace(/{{TIME_CONTEXT}}/g, timeContext)
         .replace(/{{EMAIL_COUNT}}/g, emailCount.toString())
         .replace(/{{UNREAD_COUNT}}/g, unreadCount.toString()) +
-      "\n\nWhen there's a pending email draft, interpret affirmative responses like 'confirm sent', 'yes', or 'send it' as a command to send the email, returning {\"action\": \"send-email\", \"params\": {...}}. If the user latest draft: say **'send draft 1'** or Old draft: say **'send draft 2'** after a list of drafts, select the corresponding draft (1 for the most recent, 2 for the second most recent) and return the same action." +
+      "\n\nWhen there's a pending email draft, interpret affirmative responses like 'confirm sent', 'yes', or 'send it' as a command to send the email, returning {\"action\": \"send-email\", \"params\": {...}}. If the user mentions 'send draft 1' or 'send draft 2' after a list of drafts, select the corresponding draft (1 for the most recent, 2 for the second most recent) and return the same action." +
       "\n\nWhen the user uploads a file, the file content is included in the message. Analyze it directly and provide responses based on its text. Do not attempt to fetch emails or use undefined tools unless explicitly requested.";
 
     if (
@@ -1577,7 +1477,6 @@ class MCPServer {
       }
     }
 
-    const lowerMessage = message.toLowerCase();
     const importantTriggers = ["important", "priority", "urgent"];
     const isImportantQuery = importantTriggers.some((trigger) =>
       lowerMessage.includes(trigger)
@@ -1613,22 +1512,19 @@ class MCPServer {
       };
     }
 
-    // Process message and limit history
     let processedMessage = this.preprocessMessage(message, userId);
     const maxHistory = 5;
     const limitedHistory = history.slice(-maxHistory);
 
-    // Estimate token count
     const systemTokens = estimateTokens(personalizedSystemPrompt);
     const userMessageTokens = estimateTokens(processedMessage);
     let historyTokens = 0;
     limitedHistory.forEach((msg) => {
       historyTokens += estimateTokens(msg.content);
     });
-    const MAX_TOKENS = 5500; // Safe threshold below 6000
+    const MAX_TOKENS = 5500;
     let totalTokens = systemTokens + historyTokens + userMessageTokens + 100;
 
-    // Truncate history if exceeding token limit
     let adjustedHistory = [...limitedHistory];
     while (totalTokens > MAX_TOKENS && adjustedHistory.length > 0) {
       const removedMessage = adjustedHistory.shift();
@@ -1637,9 +1533,8 @@ class MCPServer {
     }
 
     if (totalTokens > MAX_TOKENS) {
-      // If still over limit, truncate user message
       const maxUserTokens = MAX_TOKENS - systemTokens - historyTokens - 100;
-      const truncatedMessage = processedMessage.substring(0, maxUserTokens * 4); // Approx 4 chars per token
+      const truncatedMessage = processedMessage.substring(0, maxUserTokens * 4);
       processedMessage = `${truncatedMessage}... (message truncated due to length)`;
       totalTokens = MAX_TOKENS;
     }
@@ -1675,7 +1570,7 @@ class MCPServer {
     let timeGreeting = "";
     if (hour >= 5 && hour < 12) timeGreeting = "It's morning, ";
     else if (hour >= 12 && hour < 18) timeGreeting = "It's afternoon, ";
-    else timeGreeting = "It's evening, ";
+    else timeGreeting = "It’s evening, ";
     messages.push({
       role: "system",
       content: `${timeGreeting}the user might appreciate a response that acknowledges their busy schedule.`,
@@ -1713,7 +1608,7 @@ class MCPServer {
       console.error("Model call failed completely:", error);
       return {
         type: "text",
-        text: "I'm having trouble connecting right now. Could you try again in a moment?",
+        text: `Hi ${userName}, I’m having trouble connecting right now. Could you try again in a moment?`,
         modelUsed: "N/A",
         fallbackUsed: false,
         tokenCount: 0,
@@ -1727,8 +1622,8 @@ class MCPServer {
       actionData = JSON.parse(responseContent);
       if (!actionData.action && !actionData.message && !actionData.chat) {
         const clarificationRequests = [
-          "I'm not quite catching you—could you say that another way?",
-          "Hmm, I'm a bit lost. Mind rephrasing that?",
+          "I’m not quite catching you—could you say that another way?",
+          "Hmm, I’m a bit lost. Mind rephrasing that?",
           "Not sure I follow. Can you give me more to go on?",
         ];
         return {
@@ -1765,8 +1660,8 @@ class MCPServer {
         this.pendingEmails.set(userId, actionData.params);
         const recipientName = actionData.params.recipient_id.split("@")[0];
         const draftResponses = [
-          `I've put together an email for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nLooks okay? Say **"confirm send"** to send it, or let me know what to tweak!`,
-          `Here's an email draft for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nGood to go? Just say **"confirm send"**, or tell me what's off!`,
+          `I’ve put together an email for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nLooks okay? Say **"confirm send"** to send it, or let me know what to tweak!`,
+          `Here’s an email draft for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nGood to go? Just say **"confirm send"**, or tell me what’s off!`,
           `Drafted something for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nHappy with it? Say **"confirm send"** or suggest changes!`,
         ];
         return {
@@ -1816,7 +1711,7 @@ class MCPServer {
               "Unable to summarize the content.";
             return {
               type: "text",
-              text: `I couldn't use the specified tool, but here's a summary of the provided content: ${summary}`,
+              text: `I couldn’t use the specified tool, but here’s a summary of your request: ${summary}`,
               modelUsed: modelUsed.name || "N/A",
               fallbackUsed: fallbackUsed,
             };
@@ -1824,32 +1719,20 @@ class MCPServer {
             console.error("Failed to generate summary:", summaryError);
             return {
               type: "text",
-              text: "I couldn't use the requested tool and also had trouble summarizing the content. Can you try a different approach?",
+              text: "I couldn’t use the requested tool and also had trouble summarizing the content. Can you try a different approach?",
               modelUsed: modelUsed.name || "N/A",
               fallbackUsed: fallbackUsed,
             };
           }
         } else {
           console.error("Tool call failed:", error);
-
-           const errorResponses = [
-             "**Something went wrong**\n\nI encountered an error while processing your request. This might be due to:\n• A temporary service disruption\n• Connection issues\n• An unsupported request type\n\nPlease try again in a moment.",
-
-             "**Error processing request**\n\nI couldn't complete the action because:\n• The connection to your email provider might be interrupted\n• The requested information might be unavailable\n• There might be a temporary system limitation\n\nCould you try your request again?",
-
-             "**Action couldn't be completed**\n\nI ran into a technical issue while working on your request. You could:\n1. Try again with a simpler query\n2. Refresh the page and try again\n3. Check if your email account is accessible",
-
-             "**Request failed**\n\nI wasn't able to process that request due to a technical error. Let's try:\n• Breaking your request into smaller steps\n• Using different wording\n• Waiting a moment before trying again",
-
-             "**Technical difficulty encountered**\n\nSorry about that! I experienced an error while trying to handle your request. This is likely a temporary issue. Please try again or try a different request.",
-           ];
-
-          const errorText =
-            errorResponses[Math.floor(Math.random() * errorResponses.length)];
-
           return {
             type: "text",
-            text: errorText,
+            text: `Sorry ${userName}, I couldn’t complete that action:\n• ${
+              error.message.includes("connection")
+                ? "The connection to your email provider might be interrupted"
+                : "There might be a temporary issue"
+            }\nCould you try again?`,
             modelUsed: modelUsed.name || "N/A",
             fallbackUsed: fallbackUsed,
           };
@@ -1860,7 +1743,7 @@ class MCPServer {
         ? this.formatTable(actionData.data.table)
         : "";
       const followUps = [
-        "What's your next step with this?",
+        "What’s your next step with this?",
         "Anything here you want to dive into?",
         "Does this cover what you needed?",
         "Need me to expand on anything?",
@@ -1871,7 +1754,7 @@ class MCPServer {
       return {
         type: "text",
         text: fallbackUsed
-          ? `⚠️ The selected model is unavailable due to ***token limits***. Please use another best model.\n\n${text}`
+          ? `⚠️ The selected model is unavailable due to token limits. Using a fallback model.\n\n${text}`
           : text,
         modelUsed: modelUsed.name || "N/A",
         fallbackUsed: fallbackUsed,
@@ -1881,7 +1764,7 @@ class MCPServer {
       return {
         type: "text",
         text: fallbackUsed
-          ? `⚠️ The selected model is unavailable due to ***token limits***. Please use another best model.\n\n${actionData.chat}`
+          ? `⚠️ The selected model is unavailable due to token limits. Using a fallback model.\n\n${actionData.chat}`
           : actionData.chat,
         modelUsed: modelUsed.name || "N/A",
         fallbackUsed: fallbackUsed,
@@ -1891,7 +1774,7 @@ class MCPServer {
       return {
         type: "text",
         text: fallbackUsed
-          ? `⚠️ The selected model is unavailable due to ***token limits***. Please use another best model.\n\n${actionData.message}`
+          ? `⚠️ The selected model is unavailable due to token limits. Using a fallback model.\n\n${actionData.message}`
           : actionData.message,
         modelUsed: modelUsed.name || "N/A",
         fallbackUsed: fallbackUsed,
@@ -1899,8 +1782,8 @@ class MCPServer {
       };
     } else {
       const clarificationRequests = [
-        "Not sure what you're after—can you fill me in more?",
-        "I'm a tad confused—could you clarify that?",
+        "Not sure what you’re after—can you fill me in more?",
+        "I’m a tad confused—could you clarify that?",
         "Hmm, what do you mean? Give me a nudge!",
       ];
       return {
@@ -1916,3 +1799,185 @@ class MCPServer {
 }
 
 export default MCPServer;
+  const errorResponses = [
+    "**Something went wrong**\n\nI encountered an error while processing your request. This might be due to:\n• A temporary service disruption\n• Connection issues\n• An unsupported request type\n\nPlease try again in a moment.",
+
+    "**Error processing request**\n\nI couldn't complete the action because:\n• The connection to your email provider might be interrupted\n• The requested information might be unavailable\n• There might be a temporary system limitation\n\nCould you try your request again?",
+
+    "**Action couldn't be completed**\n\nI ran into a technical issue while working on your request. You could:\n1. Try again with a simpler query\n2. Refresh the page and try again\n3. Check if your email account is accessible",
+
+    "**Request failed**\n\nI wasn't able to process that request due to a technical error. Let's try:\n• Breaking your request into smaller steps\n• Using different wording\n• Waiting a moment before trying again",
+
+    "**Technical difficulty encountered**\n\nSorry about that! I experienced an error while trying to handle your request. This is likely a temporary issue. Please try again or try a different request.",
+];
+  
+  const noEmailResponses = [
+    `**No matching emails found**\n\nI couldn't find any emails that match your search for "${query}". You could try:\n• Using different keywords\n• Broadening your date range\n• Checking a different folder\n• Try a variation like \`from:${query}\` or \`subject:${query}\``,
+
+    `**Your search returned no results**\n\nI searched for "${query}" but found nothing. Possible next steps:\n• Try different search terms\n• Remove some filters\n• Check for typos in names or email addresses\n• Try \`to:${query}\` if you're looking for emails sent to someone`,
+
+    `**No emails match "${query}"**\n\nSuggestions:\n1. Use broader search terms than "${query}"\n2. Check a different time period\n3. Try searching in 'All Mail' instead`,
+
+    `**I couldn't find any matching emails for "${query}"**\n\nThis might be because:\n• Your search was too specific\n• There might be a connection issue\n• The emails might be in another folder\n• Try alternatives like \`label:${query}\` or \`category:${query}\``,
+
+    `**No results for "${query}"**\n\nLet's try a different approach:\n• Show me email \`from:${query}\` to find emails from specific people\n• Find all emails with \`subject:${query}\` to search subject lines`,
+];
+  
+
+
+      // case "fetch-emails": {
+      //   const {
+      //     filter = "all",
+      //     query = "",
+      //     maxResults,
+      //     pageToken,
+      //     timeFilter,
+      //     summarize = false,
+      //   } = args;
+
+      //   // console.log(`[DEBUG] maxResults: ${maxResults}, parsed: ${maxResults}`);
+
+      //   let processedQuery = query ? this.processQuery(query) : "";
+      //   const emails = await this.emailService.fetchEmails({
+      //     filter,
+      //     query: processedQuery,
+      //     maxResults,
+      //     pageToken,
+      //     timeFilter,
+      //   });
+
+      //   if (!emails || !Array.isArray(emails.messages)) {
+      //     console.error("[ERROR] fetchEmails returned invalid data:", emails);
+      //     return [
+      //       {
+      //         type: "text",
+      //         text: "Sorry, I couldn't fetch your emails right now. Want to try again?",
+      //       },
+      //     ];
+      //   }
+
+      //   const analyzedData = this.analyzeEmails(
+      //     emails,
+      //     processedQuery || filter || ""
+      //   );
+
+      //   let text = "";
+      //   if (analyzedData.table) {
+      //     const introTexts = [
+      //       "Here's what I dug up from your emails:",
+      //       "I've sifted through your inbox and found this:",
+      //       "Check out what I discovered in your emails:",
+      //       "Here's the scoop from your inbox:",
+      //     ];
+      //     const followUpTexts = [
+      //       "What do you want to do with these?",
+      //       "Anything catch your eye here?",
+      //       "Need help with any of these?",
+      //       "What's next on your mind?",
+      //     ];
+      //     const intro =
+      //       introTexts[Math.floor(Math.random() * introTexts.length)];
+      //     const followUp =
+      //       followUpTexts[Math.floor(Math.random() * followUpTexts.length)];
+      //     text = `${intro}\n\n${analyzedData.table}\n\n${followUp}`;
+      //   } else {
+      //     const count = emails.messages.length;
+      //     const previewCount = Math.min(count, 20);
+      //     if (count === 0) {
+      //       const noEmailResponses = [
+      //         "**No matching emails found**\n\nI couldn't find any emails that match your search criteria. You could try:\n• Using different keywords\n• Broadening your date range\n• Checking a different folder",
+
+      //         "**Your search returned no results**\n\nPossible next steps:\n• Try different search terms\n• Remove some filters\n• Check for typos in names or email addresses",
+
+      //         "**No emails match this query**\n\nSuggestions:\n1. Use broader search terms\n2. Check a different time period\n3. Try searching in 'All Mail' instead",
+
+      //         "**I couldn't find any matching emails**\n\nThis might be because:\n• Your search was too specific\n• There might be a connection issue\n• The emails might be in another folder",
+
+      //         "**No results for this search**\n\nLet's try a different approach:\n• Search for `from:[sender]` to find emails from specific people\n• Use `after:yesterday` to find recent emails\n• Try `has:attachment` to find emails with files",
+      //       ];
+
+      //       text =
+      //         noEmailResponses[
+      //           Math.floor(Math.random() * noEmailResponses.length)
+      //         ];
+      //     } else {
+      //       const foundEmailsTexts = [
+      //         `Found **${count} emails** that match. Here's a peek at the latest **${previewCount}**:`,
+      //         `Got **${count} emails** for you. Here are the top **${previewCount}**:`,
+      //         `I've tracked down **${count} emails**. Check out the most recent **${previewCount}**:`,
+      //       ];
+      //       text =
+      //         foundEmailsTexts[
+      //           Math.floor(Math.random() * foundEmailsTexts.length)
+      //         ] + "\n\n";
+      //       const previewEmails = emails.messages.slice(0, previewCount);
+
+      //       if (summarize) {
+      //         const summaryPromises = previewEmails.map(async (email) => {
+      //           const summaryResponse = await this.callTool(
+      //             "summarize-email",
+      //             { email_id: email.id },
+      //             userId,
+      //             modelId
+      //           );
+      //           const summaryText = summaryResponse[0].text;
+      //           const parts = summaryText.split(": **");
+      //           if (parts.length > 1) {
+      //             return parts[1].replace("**", "").trim();
+      //           } else {
+      //             return "No summary available.";
+      //           }
+      //         });
+      //         const summaries = await Promise.all(summaryPromises);
+      //         text += previewEmails
+      //           .map((e, i) => {
+      //             const date = new Date(e.date).toLocaleDateString();
+      //             const attachmentNote = e.hasAttachments
+      //               ? "\n**Attachments:** Yes (say **show attachments for email** " +
+      //                 (i + 1) +
+      //                 "' to see them)"
+      //               : "";
+      //             return `**${i + 1}.** **From:** ${e.from}\n**Subject:** ${
+      //               e.subject || "No subject"
+      //             }\n**Date:** ${date}\n**ID:** ${
+      //               e.id
+      //             }${attachmentNote}\n**Summary:** ${summaries[i]}\n`;
+      //           })
+      //           .join("\n");
+      //       } else {
+      //         text += previewEmails
+      //           .map((e, i) => {
+      //             const date = new Date(e.date).toLocaleDateString();
+      //             const attachmentNote = e.hasAttachments
+      //               ? "\n**Attachments:** Yes (say **show attachments for email**" +
+      //                 (i + 1) +
+      //                 "' to see them)"
+      //               : "";
+      //             return `**${i + 1}.** **From:** ${e.from}\n**Subject:** ${
+      //               e.subject || "No subject"
+      //             }\n**Date:** ${date}\n**ID:** ${e.id}${attachmentNote}\n${
+      //               e.snippet || "No preview available"
+      //             }\n
+      //             // **Body:** ${e.body} || No preview available
+      //             `;
+      //           })
+      //           .join("\n");
+      //       }
+
+      //       const followUps = [
+      //         summarize
+      //           ? "Anything else I can help with?"
+      //           : "Want me to summarize any of these for you?",
+      //         "Should I open one up or refine the search?",
+      //         "Anything here you'd like to explore further?",
+      //       ];
+      //       text += `\n\n${
+      //         followUps[Math.floor(Math.random() * followUps.length)]
+      //       }`;
+      //       this.lastListedEmails.set(userId, previewEmails);
+      //     }
+      //   }
+      //   return [
+      //     { type: "text", text, artifact: { type: "json", data: emails } },
+      //   ];
+      // }
