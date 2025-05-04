@@ -356,17 +356,17 @@ class MCPServer {
           const shouldSummarize = autoSummarize || summarize;
 
           if (count === 0) {
-              const noEmailResponses = [
-                `**No matching emails found**\n\nI couldn't find any emails that match your search for "${query}". You could try:\n• Using different keywords\n• Broadening your date range\n• Checking a different folder\n• Try a variation like \`from:${query}\` or \`subject:${query}\``,
+            const noEmailResponses = [
+              `**No matching emails found**\n\nI couldn't find any emails that match your search for "${query}". You could try:\n• Using different keywords\n• Broadening your date range\n• Checking a different folder\n• Try a variation like \`from:${query}\` or \`subject:${query}\``,
 
-                `**Your search returned no results**\n\nI searched for "${query}" but found nothing. Possible next steps:\n• Try different search terms\n• Remove some filters\n• Check for typos in names or email addresses\n• Try \`to:${query}\` if you're looking for emails sent to someone`,
+              `**Your search returned no results**\n\nI searched for "${query}" but found nothing. Possible next steps:\n• Try different search terms\n• Remove some filters\n• Check for typos in names or email addresses\n• Try \`to:${query}\` if you're looking for emails sent to someone`,
 
-                `**No emails match "${query}"**\n\nSuggestions:\n1. Use broader search terms than "${query}"\n2. Check a different time period\n3. Try searching in 'All Mail' instead`,
+              `**No emails match "${query}"**\n\nSuggestions:\n1. Use broader search terms than "${query}"\n2. Check a different time period\n3. Try searching in 'All Mail' instead`,
 
-                `**I couldn't find any matching emails for "${query}"**\n\nThis might be because:\n• Your search was too specific\n• There might be a connection issue\n• The emails might be in another folder\n• Try alternatives like \`label:${query}\` or \`category:${query}\``,
+              `**I couldn't find any matching emails for "${query}"**\n\nThis might be because:\n• Your search was too specific\n• There might be a connection issue\n• The emails might be in another folder\n• Try alternatives like \`label:${query}\` or \`category:${query}\``,
 
-                `**No matching results for "${query}"**\n\nLet's try a different approach:\n• Show me email \`from:${query}\` to find emails from specific people\n• Find all emails with \`subject:${query}\` to search subject lines`,
-              ];
+              `**No matching results for "${query}"**\n\nLet's try a different approach:\n• Show me email \`from:${query}\` to find emails from specific people\n• Find all emails with \`subject:${query}\` to search subject lines`,
+            ];
             text =
               noEmailResponses[
                 Math.floor(Math.random() * noEmailResponses.length)
@@ -1256,8 +1256,6 @@ class MCPServer {
   ) {
     const userId = req.user.id;
     const userName = req.user.name || "User";
-    // console.log("User name:", userName);
-    // console.log("User Send Message:", message);
     const userEmail = req.user.email;
 
     const {
@@ -1268,150 +1266,102 @@ class MCPServer {
       topImportantEmails = [],
     } = context;
 
-    // --- Enhanced: Handle "last email" requests dynamically with sender and list support ---
-    const lowerMessageText = message.toLowerCase();
-    const lastEmailRegex =
-      /(detail|details|full email|)\s*(?:(\d+))?\s*email(?:s)?(?:\s*from\s*(\w+))?/i;
-    const match = lowerMessageText.match(lastEmailRegex);
+    // Helper functions for response generation
+    const getRandomResponse = (responses) => {
+      return responses[Math.floor(Math.random() * responses.length)];
+    };
 
-    if (match) {
-      const numEmails = match[2] ? parseInt(match[2], 10) : 1; // Default to 1 if no number specified
-      const sender = match[3]; // Sender is optional
-      const maxEmails = Math.min(numEmails, 10); // Cap at 10 emails
+    const formatErrorResponse = (error, customMessage = "") => {
+      console.error(customMessage || "Error:", error);
+      const errorResponses = [
+        "**Something went wrong**\n\nI encountered an error while processing your request. This might be due to:\n• A temporary service disruption\n• Connection issues\n• An unsupported request type\n\nPlease try again in a moment.",
+        "**Error processing request**\n\nI couldn't complete the action because:\n• The connection to your email provider might be interrupted\n• The requested information might be unavailable\n• There might be a temporary system limitation\n\nCould you try your request again?",
+        "**Action couldn't be completed**\n\nI ran into a technical issue while working on your request. You could:\n1. Try again with a simpler query\n2. Refresh the page and try again\n3. Check if your email account is accessible",
+        "**Request failed**\n\nI wasn't able to process that request due to a technical error. Let's try:\n• Breaking your request into smaller steps\n• Using different wording\n• Waiting a moment before trying again",
+        "**Technical difficulty encountered**\n\nSorry about that! I experienced an error while trying to handle your request. This is likely a temporary issue. Please try again or try a different request.",
+      ];
 
-      try {
-        const fetchOptions = {
-          filter: "all",
-          maxResults: maxEmails,
-        };
-        if (sender) {
-          fetchOptions.query = `from:${sender}`; // Add sender filter if specified
-        }
+      return {
+        type: "text",
+        text: getRandomResponse(errorResponses),
+        modelUsed: "N/A",
+        fallbackUsed: false,
+      };
+    };
 
-        const recentEmails = await this.emailService.fetchEmails(fetchOptions);
-        if (recentEmails.messages && recentEmails.messages.length > 0) {
-          const emails = recentEmails.messages;
-          this.lastEmailId = emails[0].id; // Track the last email ID (most recent)
+    const createTextResponse = (
+      text,
+      modelUsed = "N/A",
+      fallbackUsed = false,
+      tokenCount = 0
+    ) => {
+      return {
+        type: "text",
+        text,
+        modelUsed:
+          typeof modelUsed === "object" ? modelUsed.name || "N/A" : modelUsed,
+        fallbackUsed,
+        tokenCount,
+      };
+    };
 
-          // Format email details
-          let emailText = emails
-            .map((email, index) => {
-              return `**Email ${index + 1}:**\n**From:** ${
-                email.from
-              }\n**To:** ${email.to}\n**Subject:** ${
-                email.subject
-              }\n**Date:** ${email.date}\n\n${email.body}`;
-            })
-            .join("\n\n---\n\n");
-
-          const senderText = sender ? ` from ${sender}` : "";
-          const plural = maxEmails > 1 ? "s" : "";
-          return {
-            type: "text",
-            text: `Hey ${userName}, here${
-              maxEmails > 1 ? " are" : "’s"
-            } the full details of your ${
-              maxEmails > 1 ? `${maxEmails} most recent` : "last"
-            } email${plural}${senderText}:\n\n${emailText}`,
-            modelUsed: "N/A",
-            fallbackUsed: false,
-            tokenCount: 0,
-          };
-        } else {
-          const senderText = sender ? ` from ${sender}` : "";
-          return {
-            type: "text",
-            text: `Hi ${userName}, I couldn’t find any emails${senderText} in your inbox. Want me to check again or try something else?`,
-            modelUsed: "N/A",
-            fallbackUsed: false,
-            tokenCount: 0,
-          };
-        }
-      } catch (error) {
-        console.error(
-          `Failed to fetch email${maxEmails > 1 ? "s" : ""}${
-            sender ? ` from ${sender}` : ""
-          }:`,
-          error
-        );
-        let errorText = `Sorry ${userName}, I ran into a problem fetching your email${
-          maxEmails > 1 ? "s" : ""
-        }${sender ? ` from ${sender}` : ""}:\n`;
-        if (error.message.includes("token") || error.status === 401) {
-          errorText +=
-            "• It looks like there’s an issue with your email account connection. Please re-authenticate.\n";
-        } else if (error.message.includes("network")) {
-          errorText +=
-            "• The connection to your email provider seems interrupted.\n";
-        } else {
-          errorText +=
-            "• Something unexpected happened—could be a temporary glitch.\n";
-        }
-        errorText +=
-          "Could you try again, or let me know how else I can assist?";
-        return {
-          type: "text",
-          text: errorText,
-          modelUsed: "N/A",
-          fallbackUsed: false,
-          tokenCount: 0,
-        };
-      }
-    }
-    // --- End of enhanced "last email" handling ---
-
+    // Handle showing attachments
     const attachmentMatch = message.match(/show attachments for email (\d+)/i);
     if (attachmentMatch) {
       const emailNumber = parseInt(attachmentMatch[1], 10);
       const lastListed = this.lastListedEmails.get(userId);
       if (lastListed && emailNumber > 0 && emailNumber <= lastListed.length) {
         const emailId = lastListed[emailNumber - 1].id;
-        const toolResponse = await this.callTool(
-          "list-attachments",
-          { email_id: emailId },
-          userId
-        );
-        return {
-          ...toolResponse[0],
-          modelUsed: "N/A",
-          fallbackUsed: false,
-        };
+        try {
+          const toolResponse = await this.callTool(
+            "list-attachments",
+            { email_id: emailId },
+            userId
+          );
+          return {
+            ...toolResponse[0],
+            modelUsed: "N/A",
+            fallbackUsed: false,
+          };
+        } catch (error) {
+          return formatErrorResponse(error, "Failed to list attachments");
+        }
       } else {
-        return {
-          type: "text",
-          text: "Sorry, I couldn’t find that email. Please make sure you’re referring to a recently listed email.",
-          modelUsed: "N/A",
-          fallbackUsed: false,
-        };
+        return createTextResponse(
+          "Sorry, I couldn't find that email. Please make sure you're referring to a recently listed email."
+        );
       }
     }
 
+    // Handle showing emails
     const readEmailMatch = message.match(/show email (\d+)/i);
     if (readEmailMatch) {
       const emailNumber = parseInt(readEmailMatch[1], 10);
       const lastListed = this.lastListedEmails.get(userId);
       if (lastListed && emailNumber > 0 && emailNumber <= lastListed.length) {
         const emailId = lastListed[emailNumber - 1].id;
-        const toolResponse = await this.callTool(
-          "read-email",
-          { email_id: emailId },
-          userId
-        );
-        return {
-          ...toolResponse[0],
-          modelUsed: "N/A",
-          fallbackUsed: false,
-        };
+        try {
+          const toolResponse = await this.callTool(
+            "read-email",
+            { email_id: emailId },
+            userId
+          );
+          return {
+            ...toolResponse[0],
+            modelUsed: "N/A",
+            fallbackUsed: false,
+          };
+        } catch (error) {
+          return formatErrorResponse(error, "Failed to read email");
+        }
       } else {
-        return {
-          type: "text",
-          text: "Sorry, I couldn’t find that email. Please make sure you’re referring to a recently listed email.",
-          modelUsed: "N/A",
-          fallbackUsed: false,
-        };
+        return createTextResponse(
+          "Sorry, I couldn't find that email. Please make sure you're referring to a recently listed email."
+        );
       }
     }
 
+    // Create system prompt
     const systemPrompt = await this.getDefaultSystemMessage();
     const personalizedSystemPrompt =
       systemPrompt
@@ -1423,25 +1373,31 @@ class MCPServer {
       "\n\nWhen there's a pending email draft, interpret affirmative responses like 'confirm sent', 'yes', or 'send it' as a command to send the email, returning {\"action\": \"send-email\", \"params\": {...}}. If the user latest draft: say **'send draft 1'** or Old draft: say **'send draft 2'** after a list of drafts, select the corresponding draft (1 for the most recent, 2 for the second most recent) and return the same action." +
       "\n\nWhen the user uploads a file, the file content is included in the message. Analyze it directly and provide responses based on its text. Do not attempt to fetch emails or use undefined tools unless explicitly requested.";
 
-    if (
-      (message.toLowerCase().includes("confirm") &&
-        (message.toLowerCase().includes("send") ||
-          message.toLowerCase().includes("sent"))) ||
-      message.toLowerCase().includes("confirm") ||
-      message.toLowerCase().includes("confirmed") ||
-      message.toLowerCase().includes("yes send it") ||
-      message.toLowerCase().includes("go ahead") ||
-      message.toLowerCase().includes("proceed") ||
-      message.toLowerCase().includes("send it now") ||
-      message.toLowerCase().includes("send draft 1") ||
-      message.toLowerCase().includes("send draft 2")
-    ) {
+    // Handle email sending confirmations
+    const lowerCaseMessage = message.toLowerCase();
+    const confirmationPhrases = [
+      "confirm",
+      "confirmed",
+      "yes send it",
+      "go ahead",
+      "proceed",
+      "send it now",
+      "send draft 1",
+      "send draft 2",
+    ];
+    const isConfirmation = confirmationPhrases.some((phrase) =>
+      lowerCaseMessage.includes(phrase)
+    );
+
+    if (isConfirmation) {
       let pendingDraft = null;
 
+      // Check for draft in last assistant message
       const lastAssistantMessage = history
         .slice()
         .reverse()
         .find((msg) => msg.role === "assistant")?.content;
+
       if (
         lastAssistantMessage &&
         (lastAssistantMessage.includes("Drafted something for") ||
@@ -1453,6 +1409,7 @@ class MCPServer {
         let subject = null;
         let messageStartIndex = -1;
 
+        // Parse email components from last message
         for (let i = 0; i < lines.length; i++) {
           if (lines[i].startsWith("**To:**")) {
             to = lines[i].replace("**To:**", "").trim();
@@ -1465,51 +1422,51 @@ class MCPServer {
         if (to && subject && messageStartIndex !== -1) {
           let messageLines = [];
           for (let i = messageStartIndex; i < lines.length; i++) {
-            if (
-              lines[i].includes("Looks good?") ||
-              lines[i].includes("What do you think—") ||
-              lines[i].includes("Happy with it?") ||
-              lines[i].includes("Let me know if this works")
-            ) {
+            const endMarkers = [
+              "Looks good?",
+              "What do you think—",
+              "Happy with it?",
+              "Let me know if this works",
+            ];
+            if (endMarkers.some((marker) => lines[i].includes(marker))) {
               break;
             }
             messageLines.push(lines[i]);
           }
-          const message = messageLines.join("\n").trim();
-          if (message) {
+          const messageContent = messageLines.join("\n").trim();
+          if (messageContent) {
             pendingDraft = {
               recipient_id: to,
               subject: subject,
-              message: message,
+              message: messageContent,
             };
           }
         }
       }
 
+      // Handle multiple drafts
       const drafts = await EmailDraft.find({ userId }).sort({ createdAt: -1 });
       if (drafts.length > 1 && !pendingDraft) {
-        if (message.toLowerCase().includes("send draft 1")) {
+        if (lowerCaseMessage.includes("send draft 1")) {
           pendingDraft = {
             recipient_id: drafts[0].recipientId,
             subject: drafts[0].subject,
             message: drafts[0].message,
           };
-        } else if (message.toLowerCase().includes("send draft 2")) {
+        } else if (lowerCaseMessage.includes("send draft 2")) {
           pendingDraft = {
             recipient_id: drafts[1].recipientId,
             subject: drafts[1].subject,
             message: drafts[1].message,
           };
         } else {
-          return {
-            type: "text",
-            text: `I found ${drafts.length} drafts:\n1. To: ${drafts[0].recipientId}, Subject: ${drafts[0].subject}\n2. To: ${drafts[1].recipientId}, Subject: ${drafts[1].subject}\nWhich one? Say **"send draft 1"** or **"send draft 2"**.`,
-            modelUsed: "N/A",
-            fallbackUsed: false,
-          };
+          return createTextResponse(
+            `I found ${drafts.length} drafts:\n1. To: ${drafts[0].recipientId}, Subject: ${drafts[0].subject}\n2. To: ${drafts[1].recipientId}, Subject: ${drafts[1].subject}\nWhich one? Say **"send draft 1"** or **"send draft 2"**.`
+          );
         }
       }
 
+      // Check for a single draft
       if (!pendingDraft) {
         const recentDraft = await EmailDraft.findOne({ userId }).sort({
           createdAt: -1,
@@ -1523,6 +1480,7 @@ class MCPServer {
         }
       }
 
+      // Process the draft sending
       const affirmativeResponses = [
         "yes",
         "ok",
@@ -1535,9 +1493,7 @@ class MCPServer {
       ];
       if (
         pendingDraft &&
-        affirmativeResponses.some((word) =>
-          message.toLowerCase().includes(word)
-        )
+        affirmativeResponses.some((word) => lowerCaseMessage.includes(word))
       ) {
         try {
           const toolResponse = await this.callTool(
@@ -1553,12 +1509,9 @@ class MCPServer {
           };
         } catch (error) {
           console.error("Failed to send email:", error);
-          return {
-            type: "text",
-            text: "Oops, something went wrong while sending the email. Please try again later.",
-            modelUsed: "N/A",
-            fallbackUsed: false,
-          };
+          return createTextResponse(
+            "Oops, something went wrong while sending the email. Please try again later."
+          );
         }
       } else {
         const noDraftResponses = [
@@ -1566,21 +1519,91 @@ class MCPServer {
           "Looks like there's no email queued up. Shall we draft a new one?",
           "I don't see a draft to send. How about we create one now?",
         ];
-        return {
-          type: "text",
-          text: noDraftResponses[
-            Math.floor(Math.random() * noDraftResponses.length)
-          ],
-          modelUsed: "N/A",
-          fallbackUsed: false,
-        };
+        return createTextResponse(getRandomResponse(noDraftResponses));
       }
     }
 
-    const lowerMessage = message.toLowerCase();
+    // Handle email details requests
+    const emailKeywordRegex =
+      /(detail|details|full email)\s*(?:(\d+))?\s*email(?:s)?(?:\s*from\s*(\w+))?/i;
+    const emailMatch = message.toLowerCase().match(emailKeywordRegex);
+
+    if (emailMatch) {
+      const numEmails = emailMatch[2] ? parseInt(emailMatch[2], 10) : 1; // Default to 1 if no number specified
+      const sender = emailMatch[3]; // Sender is optional
+      const maxEmails = Math.min(numEmails, 10); // Cap at 10 emails
+
+      try {
+        const fetchOptions = {
+          filter: "all",
+          maxResults: maxEmails,
+        };
+        if (sender) {
+          fetchOptions.query = `from:${sender}`; // Add sender filter if specified
+        }
+
+        const recentEmails = await this.emailService.fetchEmails(fetchOptions);
+        if (recentEmails.messages && recentEmails.messages.length > 0) {
+          const emails = recentEmails.messages;
+          this.lastEmailId = emails[0].id; // Track the last email ID (most recent)
+          this.lastListedEmails.set(userId, emails); // Store for future reference
+
+          // Format email details
+          let emailText = emails
+            .map((email, index) => {
+              return `**Email ${index + 1}:**\n**From:** ${
+                email.from
+              }\n**To:** ${email.to}\n**Subject:** ${
+                email.subject
+              }\n**Date:** ${email.date}\n\n**Body:** ${email.body}`;
+            })
+            .join("\n\n---\n\n");
+
+          const senderText = sender ? ` from ${sender}` : "";
+          const plural = maxEmails > 1 ? "s" : "";
+          return createTextResponse(
+            `Hey ${userName}, here${
+              maxEmails > 1 ? " are" : "'s"
+            } the full details of your ${
+              maxEmails > 1 ? `${maxEmails} most recent` : "last"
+            } email${plural}${senderText}:\n\n${emailText}`
+          );
+        } else {
+          const senderText = sender ? ` from ${sender}` : "";
+          return createTextResponse(
+            `Hi ${userName}, I couldn't find any emails${senderText} in your inbox. Want me to check again or try something else?`
+          );
+        }
+      } catch (error) {
+        console.error(
+          `Failed to fetch email${maxEmails > 1 ? "s" : ""}${
+            sender ? ` from ${sender}` : ""
+          }:`,
+          error
+        );
+        let errorText = `Sorry ${userName}, I ran into a problem fetching your email${
+          maxEmails > 1 ? "s" : ""
+        }${sender ? ` from ${sender}` : ""}:\n`;
+        if (error.message.includes("token") || error.status === 401) {
+          errorText +=
+            "• It looks like there's an issue with your email account connection. Please re-authenticate.\n";
+        } else if (error.message.includes("network")) {
+          errorText +=
+            "• The connection to your email provider seems interrupted.\n";
+        } else {
+          errorText +=
+            "• Something unexpected happened—could be a temporary glitch.\n";
+        }
+        errorText +=
+          "Could you try again, or let me know how else I can assist?";
+        return createTextResponse(errorText);
+      }
+    }
+
+    // Handle important email queries
     const importantTriggers = ["important", "priority", "urgent"];
     const isImportantQuery = importantTriggers.some((trigger) =>
-      lowerMessage.includes(trigger)
+      message.toLowerCase().includes(trigger)
     );
 
     if (isImportantQuery && importantCount > 0) {
@@ -1598,19 +1621,20 @@ class MCPServer {
           }\nImportance Score: ${score}%${snippet}${body}\n`;
         })
         .join("\n");
-      return {
-        type: "text",
-        text: `Hey ${userName}, I found **${importantCount} important emails** that need your attention. Here are the top ones:\n\n${importantEmailsList}\nWant me to open any of these?`,
-        modelUsed: modelId ? (await getModelById(modelId)).name : "N/A",
-        fallbackUsed: false,
-      };
+
+      this.lastListedEmails.set(userId, topImportantEmails); // Store for future reference
+
+      return createTextResponse(
+        `Hey ${userName}, I found **${importantCount} important emails** that need your attention. Here are the top ones:\n\n${importantEmailsList}\nWant me to open any of these?`,
+        modelId ? (await getModelById(modelId)).name : "N/A",
+        false
+      );
     } else if (isImportantQuery) {
-      return {
-        type: "text",
-        text: `Hi ${userName}, I didn’t find any important emails right now. Anything else I can help with?`,
-        modelUsed: modelId ? (await getModelById(modelId)).name : "N/A",
-        fallbackUsed: false,
-      };
+      return createTextResponse(
+        `Hi ${userName}, I didn't find any important emails right now. Anything else I can help with?`,
+        modelId ? (await getModelById(modelId)).name : "N/A",
+        false
+      );
     }
 
     // Process message and limit history
@@ -1618,36 +1642,44 @@ class MCPServer {
     const maxHistory = 5;
     const limitedHistory = history.slice(-maxHistory);
 
-    // Estimate token count
-    const systemTokens = estimateTokens(personalizedSystemPrompt);
-    const userMessageTokens = estimateTokens(processedMessage);
+    // Estimate token count and manage token limits
+    const estimateTokenCount = (text) => {
+      // A very rough approximation: ~4 chars per token
+      return Math.ceil(text.length / 4);
+    };
+
+    const systemTokens = estimateTokenCount(personalizedSystemPrompt);
+    const userMessageTokens = estimateTokenCount(processedMessage);
     let historyTokens = 0;
     limitedHistory.forEach((msg) => {
-      historyTokens += estimateTokens(msg.content);
+      historyTokens += estimateTokenCount(msg.content);
     });
+
     const MAX_TOKENS = 5500; // Safe threshold below 6000
-    let totalTokens = systemTokens + historyTokens + userMessageTokens + 100;
+    let totalTokens = systemTokens + historyTokens + userMessageTokens + 100; // Extra buffer
 
     // Truncate history if exceeding token limit
     let adjustedHistory = [...limitedHistory];
     while (totalTokens > MAX_TOKENS && adjustedHistory.length > 0) {
       const removedMessage = adjustedHistory.shift();
-      historyTokens -= estimateTokens(removedMessage.content);
+      historyTokens -= estimateTokenCount(removedMessage.content);
       totalTokens = systemTokens + historyTokens + userMessageTokens + 100;
     }
 
+    // If still over limit, truncate user message
     if (totalTokens > MAX_TOKENS) {
-      // If still over limit, truncate user message
       const maxUserTokens = MAX_TOKENS - systemTokens - historyTokens - 100;
       const truncatedMessage = processedMessage.substring(0, maxUserTokens * 4); // Approx 4 chars per token
       processedMessage = `${truncatedMessage}... (message truncated due to length)`;
-      totalTokens = MAX_TOKENS;
     }
 
+    // Prepare message array for model
     const messages = [
       { role: "system", content: personalizedSystemPrompt },
       ...adjustedHistory,
     ];
+
+    // Add important emails context if available
     if (context.topImportantEmails && context.topImportantEmails.length > 0) {
       const importantEmailsText = context.topImportantEmails
         .map(
@@ -1660,8 +1692,11 @@ class MCPServer {
         content: `I have found the following important emails:\n${importantEmailsText}`,
       });
     }
+
+    // Add user message
     messages.push({ role: "user", content: processedMessage });
 
+    // Validate all messages have required properties
     messages.forEach((msg, index) => {
       if (!msg.role || !msg.content) {
         console.error(`Invalid message at index ${index}:`, msg);
@@ -1671,6 +1706,7 @@ class MCPServer {
       }
     });
 
+    // Add time context hint
     const hour = new Date().getHours();
     let timeGreeting = "";
     if (hour >= 5 && hour < 12) timeGreeting = "It's morning, ";
@@ -1681,6 +1717,7 @@ class MCPServer {
       content: `${timeGreeting}the user might appreciate a response that acknowledges their busy schedule.`,
     });
 
+    // Get model to use
     let primaryModelId;
     if (modelId) {
       const selectedModel = await getModelById(modelId);
@@ -1692,12 +1729,15 @@ class MCPServer {
       const defaultModel = await getDefaultModel();
       primaryModelId = defaultModel.id;
     }
+
+    // Set up model options
     const options = {
       messages,
       temperature: 1.0,
       response_format: { type: "json_object" },
     };
 
+    // Call the model
     let result, modelUsed, fallbackUsed, tokenCount;
     try {
       const response = await this.modelProvider.callWithFallbackChain(
@@ -1711,18 +1751,15 @@ class MCPServer {
       tokenCount = response.tokenCount;
     } catch (error) {
       console.error("Model call failed completely:", error);
-      return {
-        type: "text",
-        text: "I'm having trouble connecting right now. Could you try again in a moment?",
-        modelUsed: "N/A",
-        fallbackUsed: false,
-        tokenCount: 0,
-      };
+      return createTextResponse(
+        "I'm having trouble connecting right now. Could you try again in a moment?"
+      );
     }
 
+    // Process model response
     const responseContent = result.choices[0]?.message?.content || "{}";
-
     let actionData;
+
     try {
       actionData = JSON.parse(responseContent);
       if (!actionData.action && !actionData.message && !actionData.chat) {
@@ -1731,14 +1768,11 @@ class MCPServer {
           "Hmm, I'm a bit lost. Mind rephrasing that?",
           "Not sure I follow. Can you give me more to go on?",
         ];
-        return {
-          type: "text",
-          text: clarificationRequests[
-            Math.floor(Math.random() * clarificationRequests.length)
-          ],
-          modelUsed: modelUsed.name || "N/A",
-          fallbackUsed: fallbackUsed,
-        };
+        return createTextResponse(
+          getRandomResponse(clarificationRequests),
+          modelUsed,
+          fallbackUsed
+        );
       }
     } catch (error) {
       console.error(
@@ -1752,32 +1786,50 @@ class MCPServer {
         "Something went wonky on my end. Could you repeat it?",
         "Sorry, I tripped up! Can you give it another shot?",
       ];
-      return {
-        type: "text",
-        text: errorResponses[Math.floor(Math.random() * errorResponses.length)],
-        modelUsed: modelUsed.name || "N/A",
-        fallbackUsed: fallbackUsed,
-      };
+      return createTextResponse(
+        getRandomResponse(errorResponses),
+        modelUsed,
+        fallbackUsed
+      );
     }
 
+    // Handle action-based responses
     if (actionData.action) {
       if (actionData.action === "send-email") {
-        this.pendingEmails.set(userId, actionData.params);
-        const recipientName = actionData.params.recipient_id.split("@")[0];
-        const draftResponses = [
-          `I've put together an email for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nLooks okay? Say **"confirm send"** to send it, or let me know what to tweak!`,
-          `Here's an email draft for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nGood to go? Just say **"confirm send"**, or tell me what's off!`,
-          `Drafted something for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nHappy with it? Say **"confirm send"** or suggest changes!`,
-        ];
-        return {
-          type: "text",
-          text: draftResponses[
-            Math.floor(Math.random() * draftResponses.length)
-          ],
-          modelUsed: modelUsed.name || "N/A",
-          fallbackUsed: fallbackUsed,
-        };
+        // Create a new draft email
+        try {
+          // Save draft to database for future reference
+          const newDraft = new EmailDraft({
+            userId,
+            recipientId: actionData.params.recipient_id,
+            subject: actionData.params.subject,
+            message: actionData.params.message,
+            createdAt: new Date(),
+          });
+          await newDraft.save();
+
+          // Store pending email in memory
+          this.pendingEmails.set(userId, actionData.params);
+
+          const recipientName = actionData.params.recipient_id.split("@")[0];
+          const draftResponses = [
+            `I've put together an email for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nLooks okay? Say **"confirm send"** to send it, or let me know what to tweak!`,
+            `Here's an email draft for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nGood to go? Just say **"confirm send"**, or tell me what's off!`,
+            `Drafted something for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nHappy with it? Say **"confirm send"** or suggest changes!`,
+          ];
+
+          return createTextResponse(
+            getRandomResponse(draftResponses),
+            modelUsed,
+            fallbackUsed
+          );
+        } catch (error) {
+          console.error("Failed to create email draft:", error);
+          return formatErrorResponse(error, "Failed to create email draft");
+        }
       }
+
+      // Handle other tool actions
       try {
         const toolResponse = await this.callTool(
           actionData.action,
@@ -1792,6 +1844,7 @@ class MCPServer {
         };
       } catch (error) {
         if (error.message && error.message.includes("Unknown tool")) {
+          // Try to summarize content if tool is unknown
           const summaryPrompt = `Please summarize the following text:\n\n${processedMessage}`;
           try {
             const summaryResponse =
@@ -1811,106 +1864,88 @@ class MCPServer {
                 },
                 STANDARD_FALLBACK_CHAIN
               );
+
             const summary =
               summaryResponse.result.choices[0]?.message?.content ||
               "Unable to summarize the content.";
-            return {
-              type: "text",
-              text: `I couldn't use the specified tool, but here's a summary of the provided content: ${summary}`,
-              modelUsed: modelUsed.name || "N/A",
-              fallbackUsed: fallbackUsed,
-            };
+
+            return createTextResponse(
+              `I couldn't use the specified tool, but here's a summary of the provided content: ${summary}`,
+              modelUsed,
+              fallbackUsed
+            );
           } catch (summaryError) {
             console.error("Failed to generate summary:", summaryError);
-            return {
-              type: "text",
-              text: "I couldn't use the requested tool and also had trouble summarizing the content. Can you try a different approach?",
-              modelUsed: modelUsed.name || "N/A",
-              fallbackUsed: fallbackUsed,
-            };
+            return createTextResponse(
+              "I couldn't use the requested tool and also had trouble summarizing the content. Can you try a different approach?",
+              modelUsed,
+              fallbackUsed
+            );
           }
         } else {
-          console.error("Tool call failed:", error);
-
-           const errorResponses = [
-             "**Something went wrong**\n\nI encountered an error while processing your request. This might be due to:\n• A temporary service disruption\n• Connection issues\n• An unsupported request type\n\nPlease try again in a moment.",
-
-             "**Error processing request**\n\nI couldn't complete the action because:\n• The connection to your email provider might be interrupted\n• The requested information might be unavailable\n• There might be a temporary system limitation\n\nCould you try your request again?",
-
-             "**Action couldn't be completed**\n\nI ran into a technical issue while working on your request. You could:\n1. Try again with a simpler query\n2. Refresh the page and try again\n3. Check if your email account is accessible",
-
-             "**Request failed**\n\nI wasn't able to process that request due to a technical error. Let's try:\n• Breaking your request into smaller steps\n• Using different wording\n• Waiting a moment before trying again",
-
-             "**Technical difficulty encountered**\n\nSorry about that! I experienced an error while trying to handle your request. This is likely a temporary issue. Please try again or try a different request.",
-           ];
-
-          const errorText =
-            errorResponses[Math.floor(Math.random() * errorResponses.length)];
-
-          return {
-            type: "text",
-            text: errorText,
-            modelUsed: modelUsed.name || "N/A",
-            fallbackUsed: fallbackUsed,
-          };
+          return formatErrorResponse(error, "Tool call failed");
         }
       }
-    } else if (actionData.message && actionData.data) {
+    }
+    // Handle message with data table
+    else if (actionData.message && actionData.data) {
       const formattedTable = actionData.data.table
         ? this.formatTable(actionData.data.table)
         : "";
+
       const followUps = [
         "What's your next step with this?",
         "Anything here you want to dive into?",
         "Does this cover what you needed?",
         "Need me to expand on anything?",
       ];
-      const randomFollowUp =
-        followUps[Math.floor(Math.random() * followUps.length)];
+
+      const randomFollowUp = getRandomResponse(followUps);
       let text = `${actionData.message}\n\n${formattedTable}\n\n${randomFollowUp}`;
-      return {
-        type: "text",
-        text: fallbackUsed
+
+      return createTextResponse(
+        fallbackUsed
           ? `⚠️ The selected model is unavailable due to ***token limits***. Please use another best model.\n\n${text}`
           : text,
-        modelUsed: modelUsed.name || "N/A",
-        fallbackUsed: fallbackUsed,
-        tokenCount: tokenCount || 0,
-      };
-    } else if (actionData.chat) {
-      return {
-        type: "text",
-        text: fallbackUsed
+        modelUsed,
+        fallbackUsed,
+        tokenCount || 0
+      );
+    }
+    // Handle chat response
+    else if (actionData.chat) {
+      return createTextResponse(
+        fallbackUsed
           ? `⚠️ The selected model is unavailable due to ***token limits***. Please use another best model.\n\n${actionData.chat}`
           : actionData.chat,
-        modelUsed: modelUsed.name || "N/A",
-        fallbackUsed: fallbackUsed,
-        tokenCount: tokenCount || 0,
-      };
-    } else if (actionData.message) {
-      return {
-        type: "text",
-        text: fallbackUsed
+        modelUsed,
+        fallbackUsed,
+        tokenCount || 0
+      );
+    }
+    // Handle simple message response
+    else if (actionData.message) {
+      return createTextResponse(
+        fallbackUsed
           ? `⚠️ The selected model is unavailable due to ***token limits***. Please use another best model.\n\n${actionData.message}`
           : actionData.message,
-        modelUsed: modelUsed.name || "N/A",
-        fallbackUsed: fallbackUsed,
-        tokenCount: tokenCount || 0,
-      };
-    } else {
+        modelUsed,
+        fallbackUsed,
+        tokenCount || 0
+      );
+    }
+    // Handle unclear requests
+    else {
       const clarificationRequests = [
         "Not sure what you're after—can you fill me in more?",
         "I'm a tad confused—could you clarify that?",
         "Hmm, what do you mean? Give me a nudge!",
       ];
-      return {
-        type: "text",
-        text: clarificationRequests[
-          Math.floor(Math.random() * clarificationRequests.length)
-        ],
-        modelUsed: modelUsed.name || "N/A",
-        fallbackUsed: fallbackUsed,
-      };
+      return createTextResponse(
+        getRandomResponse(clarificationRequests),
+        modelUsed,
+        fallbackUsed
+      );
     }
   }
 }
