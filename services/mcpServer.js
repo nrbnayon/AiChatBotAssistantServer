@@ -20,6 +20,11 @@ const STANDARD_FALLBACK_CHAIN = [
 function estimateTokens(text) {
   return Math.ceil(text.length / 4);
 }
+// Helper functions for response generation
+const getRandomResponse = (responses) => {
+  return responses[Math.floor(Math.random() * responses.length)];
+};
+
 class ModelProvider {
   constructor() {
     this.groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -1031,7 +1036,11 @@ class MCPServer {
           return [
             {
               type: "text",
-              text: `I've updated the email draft for **${updatedRecipient}**:\n\n**To:** ${updatedRecipient}\n**Subject:** ${updatedSubject}\n\n${updatedMessage}\n\nDoes this look good? Say **"confirm send"** to send it, or let me know what else to tweak!`,
+              text: `I've updated the email draft for **${updatedRecipient}**:\n\n**To:** ${updatedRecipient}\n**Subject:** ${updatedSubject}\n\n${updatedMessage}\n\nDoes this look good? Say **"${getRandomResponse(
+                affirmativeResponses
+              )} send"** to send it, or let me know what else to tweak **"${getRandomResponse(
+                modificationKeywords
+              )}"**!`,
             },
           ];
         } else {
@@ -1090,18 +1099,32 @@ class MCPServer {
           const draftResponses = [
             `I've prepared an email for **${recipient}**:\n\n**To:** ${
               recipient_email || recipient
-            }\n**Subject:** ${subject}\n\n${body}\n\nDoes this look good? Let me know if you'd like any changes before sending. Or do you want to send it now? just say **"confirm send"** it`,
+            }\n**Subject:** ${subject}\n\n${body}\n\nDoes this look good? Let me know if you'd like any **"${getRandomResponse(
+              modificationKeywords
+            )}"** before sending. Or do you want to send it now? just say **"${getRandomResponse(
+              affirmativeResponses
+            )} send"** it`,
 
             `Here's a draft email for **${recipient}**:\n\n**To:** ${
               recipient_email || recipient
-            }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think? Is it ready to send or would you like to make adjustments?. Or do you want to send it now? just say **"confirm send"** it`,
+            }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think? Is it ready to send or would you like to make **"${getRandomResponse(
+              modificationKeywords
+            )}"**?. Or do you want to send it now? just say **"${getRandomResponse(
+              affirmativeResponses
+            )} send"** it`,
 
             `I've drafted an email for **${recipient}**:\n\n**To:** ${
               recipient_email || recipient
-            }\n**Subject:** ${subject}\n\n${body}\n\nPlease review and let me know if this works for you or if any changes are needed. Just confirm me when you're ready to send. write **"confirm send"** to send it`,
+            }\n**Subject:** ${subject}\n\n${body}\n\nPlease review and let me know if this works for you or if any **"${getRandomResponse(
+              modificationKeywords
+            )}"** are needed. Just confirm me when you're ready to send. write **"${getRandomResponse(
+              affirmativeResponses
+            )} send"** to send it`,
             `Here's a draft email for **${recipient}**:\n\n**To:** ${
               recipient_email || recipient
-            }\n**Subject:** ${subject}\n\n${body}\n\nLet me know if you want to send it as is or if you need to tweak anything. Or do you want to send it now? just say **"confirm sent"** it`,
+            }\n**Subject:** ${subject}\n\n${body}\n\nLet me know if you want to send it as is or if you need to **"${getRandomResponse(
+              modificationKeywords
+            )}"** anything. Or do you want to send it now? just say **"confirm sent"** it`,
           ];
           return [
             {
@@ -1119,7 +1142,6 @@ class MCPServer {
     }
   }
 
-  // Improved email analyzer with better output format selection
   // Improved email analyzer with better output format selection
   analyzeEmails(emails, query) {
     if (!emails || !emails.messages || emails.messages.length === 0) {
@@ -1266,11 +1288,6 @@ class MCPServer {
       topImportantEmails = [],
     } = context;
 
-    // Helper functions for response generation
-    const getRandomResponse = (responses) => {
-      return responses[Math.floor(Math.random() * responses.length)];
-    };
-
     const formatErrorResponse = (error, customMessage = "") => {
       console.error(customMessage || "Error:", error);
       const errorResponses = [
@@ -1304,6 +1321,84 @@ class MCPServer {
         tokenCount,
       };
     };
+
+    // Handle email details requests
+    const emailKeywordRegex =
+      /(detail|details|full email)\s*(?:(\d+))?\s*email(?:s)?(?:\s*from\s*(\w+))?/i;
+    const emailMatch = message.toLowerCase().match(emailKeywordRegex);
+
+    if (emailMatch) {
+      const numEmails = emailMatch[2] ? parseInt(emailMatch[2], 10) : 1; // Default to 1 if no number specified
+      const sender = emailMatch[3]; // Sender is optional
+      const maxEmails = Math.min(numEmails, 10); // Cap at 10 emails
+
+      try {
+        const fetchOptions = {
+          filter: "all",
+          maxResults: maxEmails,
+        };
+        if (sender) {
+          fetchOptions.query = `from:${sender}`; // Add sender filter if specified
+        }
+
+        const recentEmails = await this.emailService.fetchEmails(fetchOptions);
+        if (recentEmails.messages && recentEmails.messages.length > 0) {
+          const emails = recentEmails.messages;
+          this.lastEmailId = emails[0].id; // Track the last email ID (most recent)
+          this.lastListedEmails.set(userId, emails); // Store for future reference
+
+          // Format email details
+          let emailText = emails
+            .map((email, index) => {
+              return `**Email ${index + 1}:**\n**From:** ${
+                email.from
+              }\n**To:** ${email.to}\n**Subject:** ${
+                email.subject
+              }\n**Date:** ${email.date}\n\n**Body:** ${email.body}`;
+            })
+            .join("\n\n---\n\n");
+
+          const senderText = sender ? ` from ${sender}` : "";
+          const plural = maxEmails > 1 ? "s" : "";
+          return createTextResponse(
+            `Hey ${userName}, here${
+              maxEmails > 1 ? " are" : "'s"
+            } the full details of your ${
+              maxEmails > 1 ? `${maxEmails} most recent` : "last"
+            } email${plural}${senderText}:\n\n${emailText}`
+          );
+        } else {
+          const senderText = sender ? ` from ${sender}` : "";
+          return createTextResponse(
+            `Hi ${userName}, I couldn't find any emails${senderText} in your inbox. Want me to check again or try something else?`
+          );
+        }
+      } catch (error) {
+        console.error(
+          `Failed to fetch email${maxEmails > 1 ? "s" : ""}${
+            sender ? ` from ${sender}` : ""
+          }:`,
+          error
+        );
+        let errorText = `Sorry ${userName}, I ran into a problem fetching your email${
+          maxEmails > 1 ? "s" : ""
+        }${sender ? ` from ${sender}` : ""}:\n`;
+        if (error.message.includes("token") || error.status === 401) {
+          errorText +=
+            "• It looks like there's an issue with your email account connection. Please re-authenticate.\n";
+        } else if (error.message.includes("network")) {
+          errorText +=
+            "• The connection to your email provider seems interrupted.\n";
+        } else {
+          errorText +=
+            "• Something unexpected happened—could be a temporary glitch.\n";
+        }
+        errorText +=
+          "Could you try again, or let me know how else I can assist?";
+        return createTextResponse(errorText);
+      }
+    }
+    // ------- end of email details handling -------
 
     // Handle showing attachments
     const attachmentMatch = message.match(/show attachments for email (\d+)/i);
@@ -1376,12 +1471,18 @@ class MCPServer {
     // Handle email sending confirmations
     const lowerCaseMessage = message.toLowerCase();
     const confirmationPhrases = [
+      // "confirm",
+      // "confirmed",
+      // "yes send it",
+      // "go ahead",
+      // "proceed",
+      // "send it now",
+      "yes",
+      "ok",
+      "sure",
       "confirm",
-      "confirmed",
-      "yes send it",
       "go ahead",
       "proceed",
-      "send it now",
       "send draft 1",
       "send draft 2",
     ];
@@ -1486,8 +1587,6 @@ class MCPServer {
         "ok",
         "sure",
         "confirm",
-        "send",
-        "sent",
         "go ahead",
         "proceed",
       ];
@@ -1520,83 +1619,6 @@ class MCPServer {
           "I don't see a draft to send. How about we create one now?",
         ];
         return createTextResponse(getRandomResponse(noDraftResponses));
-      }
-    }
-
-    // Handle email details requests
-    const emailKeywordRegex =
-      /(detail|details|full email)\s*(?:(\d+))?\s*email(?:s)?(?:\s*from\s*(\w+))?/i;
-    const emailMatch = message.toLowerCase().match(emailKeywordRegex);
-
-    if (emailMatch) {
-      const numEmails = emailMatch[2] ? parseInt(emailMatch[2], 10) : 1; // Default to 1 if no number specified
-      const sender = emailMatch[3]; // Sender is optional
-      const maxEmails = Math.min(numEmails, 10); // Cap at 10 emails
-
-      try {
-        const fetchOptions = {
-          filter: "all",
-          maxResults: maxEmails,
-        };
-        if (sender) {
-          fetchOptions.query = `from:${sender}`; // Add sender filter if specified
-        }
-
-        const recentEmails = await this.emailService.fetchEmails(fetchOptions);
-        if (recentEmails.messages && recentEmails.messages.length > 0) {
-          const emails = recentEmails.messages;
-          this.lastEmailId = emails[0].id; // Track the last email ID (most recent)
-          this.lastListedEmails.set(userId, emails); // Store for future reference
-
-          // Format email details
-          let emailText = emails
-            .map((email, index) => {
-              return `**Email ${index + 1}:**\n**From:** ${
-                email.from
-              }\n**To:** ${email.to}\n**Subject:** ${
-                email.subject
-              }\n**Date:** ${email.date}\n\n**Body:** ${email.body}`;
-            })
-            .join("\n\n---\n\n");
-
-          const senderText = sender ? ` from ${sender}` : "";
-          const plural = maxEmails > 1 ? "s" : "";
-          return createTextResponse(
-            `Hey ${userName}, here${
-              maxEmails > 1 ? " are" : "'s"
-            } the full details of your ${
-              maxEmails > 1 ? `${maxEmails} most recent` : "last"
-            } email${plural}${senderText}:\n\n${emailText}`
-          );
-        } else {
-          const senderText = sender ? ` from ${sender}` : "";
-          return createTextResponse(
-            `Hi ${userName}, I couldn't find any emails${senderText} in your inbox. Want me to check again or try something else?`
-          );
-        }
-      } catch (error) {
-        console.error(
-          `Failed to fetch email${maxEmails > 1 ? "s" : ""}${
-            sender ? ` from ${sender}` : ""
-          }:`,
-          error
-        );
-        let errorText = `Sorry ${userName}, I ran into a problem fetching your email${
-          maxEmails > 1 ? "s" : ""
-        }${sender ? ` from ${sender}` : ""}:\n`;
-        if (error.message.includes("token") || error.status === 401) {
-          errorText +=
-            "• It looks like there's an issue with your email account connection. Please re-authenticate.\n";
-        } else if (error.message.includes("network")) {
-          errorText +=
-            "• The connection to your email provider seems interrupted.\n";
-        } else {
-          errorText +=
-            "• Something unexpected happened—could be a temporary glitch.\n";
-        }
-        errorText +=
-          "Could you try again, or let me know how else I can assist?";
-        return createTextResponse(errorText);
       }
     }
 
@@ -1714,7 +1736,7 @@ class MCPServer {
     else timeGreeting = "It's evening, ";
     messages.push({
       role: "system",
-      content: `${timeGreeting}the user might appreciate a response that acknowledges their busy schedule.`,
+      content: `Hey ${timeGreeting}the user might appreciate a response that acknowledges their busy schedule.`,
     });
 
     // Get model to use
@@ -1813,9 +1835,27 @@ class MCPServer {
 
           const recipientName = actionData.params.recipient_id.split("@")[0];
           const draftResponses = [
-            `I've put together an email for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nLooks okay? Say **"confirm send"** to send it, or let me know what to tweak!`,
-            `Here's an email draft for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nGood to go? Just say **"confirm send"**, or tell me what's off!`,
-            `Drafted something for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nHappy with it? Say **"confirm send"** or suggest changes!`,
+            `I've put together an email for **${recipientName}**:\n\n**To:** ${
+              actionData.params.recipient_id
+            }\n**Subject:** ${actionData.params.subject}\n\n${
+              actionData.params.message
+            }\n\nLooks okay? Say **"${getRandomResponse(
+              affirmativeResponses
+            )} send"** to send it, or let me know what to tweak!`,
+            `Here's an email draft for **${recipientName}**:\n\n**To:** ${
+              actionData.params.recipient_id
+            }\n**Subject:** ${actionData.params.subject}\n\n${
+              actionData.params.message
+            }\n\nGood to go? Just say **"${getRandomResponse(
+              affirmativeResponses
+            )} send"**, or tell me what's off!`,
+            `Drafted something for **${recipientName}**:\n\n**To:** ${
+              actionData.params.recipient_id
+            }\n**Subject:** ${actionData.params.subject}\n\n${
+              actionData.params.message
+            }\n\nHappy with it? Say **"${getRandomResponse(
+              affirmativeResponses
+            )} send"** or suggest changes!`,
           ];
 
           return createTextResponse(
