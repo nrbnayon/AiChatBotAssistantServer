@@ -1642,7 +1642,7 @@ class MCPServer {
     // Handle important email queries
     const importantTriggers = ["important", "priority", "urgent"];
     const isImportantQuery = importantTriggers.some((trigger) =>
-      message.toLowerCase().includes(trigger)
+      lowerMessage.includes(trigger)
     );
 
     if (isImportantQuery && importantCount > 0) {
@@ -1660,22 +1660,20 @@ class MCPServer {
           }\nImportance Score: ${score}%${snippet}${body}\n`;
         })
         .join("\n");
-
-      this.lastListedEmails.set(userId, topImportantEmails); // Store for future reference
-
-      return createTextResponse(
-        `Hey ${userName}, I found **${importantCount} important emails** that need your attention. Here are the top ones:\n\n${importantEmailsList}\nWant me to open any of these?`,
-        modelId ? (await getModelById(modelId)).name : "N/A",
-        false
-      );
+      return {
+        type: "text",
+        text: `Hey ${userName}, I found **${importantCount} important emails** that need your attention. Here are the top ones:\n\n${importantEmailsList}\nWant me to open any of these?`,
+        modelUsed: modelId ? (await getModelById(modelId)).name : "N/A",
+        fallbackUsed: false,
+      };
     } else if (isImportantQuery) {
-      return createTextResponse(
-        `Hi ${userName}, I didn't find any important emails right now. Anything else I can help with?`,
-        modelId ? (await getModelById(modelId)).name : "N/A",
-        false
-      );
+      return {
+        type: "text",
+        text: `Hi ${userName}, I didn’t find any important emails right now. Anything else I can help with?`,
+        modelUsed: modelId ? (await getModelById(modelId)).name : "N/A",
+        fallbackUsed: false,
+      };
     }
-
     // Process message and limit history
     let processedMessage = this.preprocessMessage(message, userId);
     const maxHistory = 5;
