@@ -1951,9 +1951,9 @@ class MCPServer {
     }
     // Handle message with data table
     else if (actionData.message && actionData.data) {
-      const formattedTable = actionData.data.table
-        ? this.formatTable(actionData.data.table)
-        : "";
+      // const formattedTable = actionData.data.table
+      //   ? this.formatTable(actionData.data.table)
+      //   : "";
 
       const followUps = [
         "What's your next step with this?",
@@ -1963,7 +1963,8 @@ class MCPServer {
       ];
 
       const randomFollowUp = getRandomResponse(followUps);
-      let text = `${actionData.message}\n\n${formattedTable}\n\n${randomFollowUp}`;
+      // let text = `${actionData.message}\n\n${formattedTable}\n\n${randomFollowUp}`;
+      let text = `${actionData.message}\n\n${randomFollowUp}`;
 
       return createTextResponse(
         fallbackUsed
