@@ -1,4 +1,4 @@
-import bcrypt from "bcryptjs";
+// config\seedAdmin.js
 import User from "../models/User.js";
 import AiModel from "../models/AiModel.js";
 import SystemMessage from "../models/SystemMessage.js";
@@ -24,7 +24,7 @@ const seedAdmin = async () => {
     if (aiModelCount === 0) {
       await AiModel.create([
         {
-          id: "gpt-4o",
+          modelId: "gpt-4o",
           name: "GPT-4.o",
           developer: "OpenAI",
           provider: "openai",
@@ -34,7 +34,7 @@ const seedAdmin = async () => {
           isDefault: false,
         },
         {
-          id: "llama-3.3-70b-versatile",
+          modelId: "llama-3.3-70b-versatile",
           name: "Llama 3.3 70B Versatile",
           developer: "Meta",
           provider: "groq",
@@ -44,7 +44,7 @@ const seedAdmin = async () => {
             "Meta's advanced 70B parameter model with versatile capabilities",
         },
         {
-          id: "llama-3.1-8b-instant",
+          modelId: "llama-3.1-8b-instant",
           name: "Llama 3.1 8B Instant",
           developer: "Meta",
           provider: "groq",
@@ -54,7 +54,7 @@ const seedAdmin = async () => {
         },
 
         {
-          id: "gpt-4o-mini",
+          modelId: "gpt-4o-mini",
           name: "GPT-4.o Mini",
           developer: "OpenAI",
           provider: "openai",
@@ -64,7 +64,7 @@ const seedAdmin = async () => {
           isDefault: true,
         },
         {
-          id: "gemma2-9b-it",
+          modelId: "gemma2-9b-it",
           name: "Gemma 2 9B IT",
           developer: "Google",
           provider: "groq",
@@ -73,7 +73,7 @@ const seedAdmin = async () => {
         },
 
         {
-          id: "llama3-70b-8192",
+          modelId: "llama3-70b-8192",
           name: "Llama 3 70B (8K)",
           developer: "Meta",
           provider: "groq",
@@ -81,7 +81,7 @@ const seedAdmin = async () => {
           description: "Meta's 70B parameter model with 8K context window",
         },
         {
-          id: "llama3-8b-8192",
+          modelId: "llama3-8b-8192",
           name: "Llama 3 8B (8K)",
           developer: "Meta",
           provider: "groq",
