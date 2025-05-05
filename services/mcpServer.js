@@ -1645,10 +1645,10 @@ class MCPServer {
       lowerMessage.includes(trigger)
     );
 
-    console.log("Is important query:", isImportantQuery);
+    console.log("Is important query:", !isImportantQuery);
     console.log("Important count:", importantCount);
-    console.log("Top important emails:", topImportantEmails);
-    
+    // console.log("Top important emails:", topImportantEmails);
+
 
     if (isImportantQuery && importantCount > 0) {
       const importantEmailsList = topImportantEmails

@@ -199,17 +199,11 @@ router.post(
   catchAsync(async (req, res) => {
     const startTime = Date.now();
     const emailService = await getEmailService(req);
-    const serviceTime = Date.now() - startTime;
-    // console.log(
-    //   `Email service ${
-    //     serviceTime < 100 ? "retrieved from cache" : "created"
-    //   } in ${serviceTime}ms`
-    // );
+    console.log(`Email service initialized in ${Date.now() - startTime}ms`);
 
     const mcpServer = new MCPServer(emailService);
     const { chatId } = req.params;
     const userId = req.user.id;
-
     const {
       message,
       maxResults = 1000,
@@ -217,16 +211,6 @@ router.post(
       history: providedHistory,
     } = req.body;
 
-    // console.log(
-    //   "Model ID:",
-    //   modelId,
-    //   "Max Results:",
-    //   maxResults,
-    //   "Chat ID:",
-    //   chatId,
-    //   "Message:",
-    //   message
-    // );
     if (!modelId) {
       return res.status(400).json({ error: "modelId is required" });
     }
@@ -280,7 +264,10 @@ router.post(
     }
 
     try {
+      console.log("Starting chat processing for user:", userId);
       const inboxStats = await emailService.getInboxStats();
+      console.log("Inbox stats fetched:", inboxStats);
+
       const user = await User.findById(userId);
       const combinedKeywords = [
         ...new Set([
@@ -289,41 +276,42 @@ router.post(
         ]),
       ];
 
-      const hasImportantKeyword = combinedKeywords.some((keyword) =>
-        userMessage.toLowerCase().includes(keyword.toLowerCase())
-      );
-
-      // console.log("Has Important Keyword:", hasImportantKeyword);
       const importantTriggers = ["important", "priority", "urgent"];
       const isImportantQuery = importantTriggers.some((trigger) =>
-        userMessage.includes(trigger)
+        userMessage.toLowerCase().includes(trigger)
       );
-      let importantEmails = [];
-      if (isImportantQuery) {
-        try {
-          const fetchStart = Date.now();
-          const emails = (await emailService.fetchEmails({ maxResults }))
-            .messages;
-          const fetchTime = Date.now() - fetchStart;
-          // console.log(`Fetched ${emails.length} emails in ${fetchTime}ms`);
-          const analysisStart = Date.now();
-          importantEmails = await emailService.filterImportantEmails(
-            emails,
-            combinedKeywords,
-            "daily",
-            modelId
-          );
-          // console.log(
-          //   `Analyzed important emails in ${
-          //     Date.now() - analysisStart
-          //   }ms. Found ${importantEmails.length} important emails.`
-          // );
-        } catch (error) {
-          console.error("Error filtering important emails:", error);
-          importantEmails = []; // Ensure we have a fallback
-        }
-      }
+      console.log("Is important query:", isImportantQuery);
 
+      let importantEmails = [];
+     if (isImportantQuery) {
+       try {
+         console.log("Fetching and filtering important emails...");
+         const fetchStart = Date.now();
+         // Change maxResults from 1000 to 100
+         const emails = (await emailService.fetchEmails({ maxResults: 100 }))
+           .messages;
+         const fetchTime = Date.now() - fetchStart;
+         console.log(`Fetched ${emails.length} emails in ${fetchTime}ms`);
+
+         const analysisStart = Date.now();
+         importantEmails = await emailService.filterImportantEmails(
+           emails,
+           combinedKeywords,
+           "daily", // Already set to "daily", ensuring today’s emails
+           modelId
+         );
+         console.log(
+           `Analyzed important emails in ${
+             Date.now() - analysisStart
+           }ms. Found ${importantEmails.length} important emails`
+         );
+       } catch (error) {
+         console.error("Error filtering important emails:", error);
+         importantEmails = [];
+       }
+     }
+
+      console.log("Calling chatWithBot with context...");
       const chatResponse = await mcpServer.chatWithBot(
         req,
         userMessage,
@@ -335,19 +323,17 @@ router.post(
           emailCount: inboxStats.totalEmails,
           unreadCount: inboxStats.unreadEmails,
           importantCount: importantEmails.length,
-          topImportantEmails:
-            importantEmails && importantEmails.length
-              ? importantEmails.slice(0, 10).map((email) => ({
-                  from: email.from,
-                  subject: email.subject,
-                  score: email.importanceScore,
-                  snippet: email.snippet,
-                  body: email.body,
-                }))
-              : [],
+          topImportantEmails: importantEmails.slice(0, 10).map((email) => ({
+            from: email.from,
+            subject: email.subject,
+            score: email.importanceScore,
+            snippet: email.snippet,
+            body: email.body,
+          })),
         },
         modelId
       );
+      console.log("chatWithBot response received");
 
       const newTokenCount =
         (user.subscription.dailyTokens || 0) + (chatResponse.tokenCount || 0);
@@ -368,7 +354,9 @@ router.post(
           model: chatResponse.modelUsed,
         }
       );
+      console.log("Saving chat messages...");
       await chat.save();
+      console.log("Chat messages saved");
 
       res.json({
         success: true,
@@ -379,10 +367,12 @@ router.post(
         data: chatResponse.artifact?.data || null,
       });
     } catch (error) {
-      console.error("Error processing request:", error);
+      console.error("Error processing chat request:", error);
       res.status(500).json({
         success: false,
         message: "Trouble processing your request. Try again?",
+        error:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
       });
     }
   })

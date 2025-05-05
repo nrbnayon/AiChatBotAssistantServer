@@ -199,13 +199,12 @@ class GmailService extends EmailService {
       const response = await client.users.messages.list(filteredParams);
       if (response.status !== 200 || !response.data) {
         console.error(
-          `[ERROR] Gmail API returned status ${response.status}: ${response.statusText}`
+          `Gmail API error - Status: ${response.status}, Text: ${response.statusText}`
         );
         return { messages: [], nextPageToken: null };
       }
 
       const messages = response.data.messages || [];
-      // console.log(`[DEBUG] Applied query: ${filteredParams.q}`);
       const emails = await Promise.all(
         messages.map(async (msg) => {
           try {
@@ -214,11 +213,9 @@ class GmailService extends EmailService {
               id: msg.id,
               format: "full",
             });
-            const formattedEmail = this.formatEmail(email.data);
-            // console.log(`[DEBUG] Email ${msg.id} date: ${formattedEmail.date}`);
-            return formattedEmail;
+            return this.formatEmail(email.data);
           } catch (error) {
-            console.error(`[ERROR] Failed to fetch email ${msg.id}:`, error);
+            console.error(`Failed to fetch email ${msg.id}:`, error);
             return null;
           }
         })
@@ -226,12 +223,10 @@ class GmailService extends EmailService {
 
       const pageTokenCache =
         statsCache.get(`pageTokens-${this.user.email}`) || [];
-      if (pageToken) {
-        pageTokenCache.push(pageToken);
-        statsCache.set(`pageTokens-${this.user.email}`, pageTokenCache);
-      }
+      if (pageToken) pageTokenCache.push(pageToken);
+      statsCache.set(`pageTokens-${this.user.email}`, pageTokenCache);
 
-      const result = {
+      return {
         messages: emails.filter(Boolean),
         nextPageToken: response.data.nextPageToken || null,
         prevPageToken:
@@ -240,18 +235,9 @@ class GmailService extends EmailService {
             : null,
         totalCount: response.data.resultSizeEstimate || 0,
       };
-
-      // console.log(
-      //   `[DEBUG] Fetched ${result.messages.length} emails with pageToken: ${pageToken}, nextPageToken: ${result.nextPageToken}, prevPageToken: ${result.prevPageToken}`
-      // );
-      // console.log(
-      //   `[DEBUG] Email IDs: ${result.messages.map((e) => e.id).join(", ")}`
-      // );
-
-      return result;
     } catch (error) {
-      console.error("[ERROR] Failed to fetch emails:", error);
-      return { messages: [], nextPageToken: null };
+      console.error("Failed to fetch emails from Gmail:", error);
+      return { messages: [], nextPageToken: null }; // Graceful fallback
     }
   }
 

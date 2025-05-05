@@ -223,52 +223,21 @@ class EmailService {
     timeFilter = "daily",
     modelId = null
   ) {
-    // console.log(
-    //   `Filtering ${emails.length} emails for importance, time range ${timeFilter}`
-    // );
-
-    // Validate and process timeFilter
-    let startDate, endDate;
-    if (["all", "daily", "weekly", "monthly"].includes(timeFilter)) {
-      if (timeFilter === "daily") {
-        startDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        endDate = new Date();
-      } else if (timeFilter === "weekly") {
-        startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-        endDate = new Date();
-      } else if (timeFilter === "monthly") {
-        startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-        endDate = new Date();
-      } else if (timeFilter === "all") {
-        startDate = null;
-        endDate = null;
-      }
-    } else if (/^\d{4}\/\d{2}\/\d{2}$/.test(timeFilter)) {
-      const [year, month, day] = timeFilter.split("/").map(Number);
-      startDate = new Date(Date.UTC(year, month - 1, day));
-      endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + 1);
-      // Validate date
-      if (
-        startDate.getFullYear() !== year ||
-        startDate.getMonth() + 1 !== month ||
-        startDate.getDate() !== day
-      ) {
-        throw new ApiError(
-          StatusCodes.BAD_REQUEST,
-          `Invalid date in timeFilter: ${timeFilter}`
-        );
-      }
-    } else {
-      throw new ApiError(
-        StatusCodes.BAD_REQUEST,
-        `Invalid timeFilter: ${timeFilter}. Must be 'all', 'daily', 'weekly', 'monthly', or a date in 'YYYY/MM/DD' format.`
-      );
-    }
-
+    console.log(`Filtering ${emails.length} emails for importance`);
     const userKeywords = this.user.userImportantMailKeywords || [];
     const keywords = [...new Set([...userKeywords, ...customKeywords])];
-    // console.log("Using keywords for filtering:", keywords);
+
+    let startDate, endDate;
+    if (timeFilter === "daily") {
+      startDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      endDate = new Date();
+    } else if (timeFilter === "weekly") {
+      startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      endDate = new Date();
+    } else if (timeFilter === "monthly") {
+      startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      endDate = new Date();
+    }
 
     const recentEmails =
       startDate && endDate
@@ -278,10 +247,6 @@ class EmailService {
           })
         : emails;
 
-    // console.log(
-    //   `Found ${recentEmails.length} emails within the ${timeFilter} time frame`
-    // );
-
     const emailsToAnalyze = [];
     const processedEmails = [];
 
@@ -290,7 +255,6 @@ class EmailService {
       const content = `${email.subject || ""} ${email.snippet || ""} ${
         email.body || ""
       }`.toLowerCase();
-
       const cachedEmail = this.analysisCache.get(emailKey);
       if (cachedEmail) {
         processedEmails.push(cachedEmail);
@@ -300,9 +264,8 @@ class EmailService {
       const hasKeyword = keywords.some(
         (keyword) => keyword && content.includes(keyword.toLowerCase())
       );
-      if (hasKeyword) {
-        emailsToAnalyze.push(email);
-      } else {
+      if (hasKeyword) emailsToAnalyze.push(email);
+      else {
         const nonImportantEmail = {
           ...email,
           importanceScore: 0,
@@ -312,10 +275,6 @@ class EmailService {
         this.analysisCache.set(emailKey, nonImportantEmail);
       }
     }
-
-    // console.log(
-    //   `Found ${emailsToAnalyze.length} emails containing keywords that need analysis`
-    // );
 
     if (emailsToAnalyze.length === 0) {
       return processedEmails
@@ -333,38 +292,15 @@ class EmailService {
         ", "
       )}.
       Consider context, sender, and urgency. Return only a valid JSON object: {"score": NUMBER_BETWEEN_0_AND_100, "isImportant": BOOLEAN_VALUE}
-
       Email content: "${content}"
       Sender: "${email.from || "Unknown"}"
     `;
 
       try {
         const modelResponse = await this.callModelWithFallback(prompt, modelId);
-        const responseText = modelResponse.content || "";
-        // console.log(
-        //   `Model response for email (${
-        //     email.id
-        //   }) analysis (first 50 chars): ${responseText.substring(0, 50)}...`
-        // );
-
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        const jsonStr = jsonMatch
-          ? jsonMatch[0]
-          : '{"score": 25, "isImportant": false}';
-
-        let result;
-        try {
-          result = JSON.parse(jsonStr);
-        } catch (parseError) {
-          console.error(
-            "JSON parse error:",
-            parseError,
-            "Response text:",
-            responseText
-          );
-          result = { score: 25, isImportant: false };
-        }
-
+        const result = JSON.parse(
+          modelResponse.content || '{"score": 25, "isImportant": false}'
+        );
         const analyzedEmail = {
           ...email,
           importanceScore: result.score,
@@ -375,7 +311,7 @@ class EmailService {
         this.analysisCache.set(emailKey, analyzedEmail);
         return analyzedEmail;
       } catch (error) {
-        console.error("Error analyzing email:", error);
+        console.error(`Error analyzing email ${email.id}:`, error);
         const fallbackEmail = {
           ...email,
           importanceScore: 0,
@@ -386,31 +322,19 @@ class EmailService {
       }
     });
 
-    let analyzedEmails;
-    try {
-      analyzedEmails = await Promise.all(analysisPromises);
-    } catch (error) {
-      console.error("Error in Promise.all for email analysis:", error);
-      analyzedEmails = [];
-    }
-
+    const analyzedEmails = await Promise.all(analysisPromises);
     const allEmails = [...analyzedEmails, ...processedEmails];
-    const importantEmails = allEmails
+    return allEmails
       .filter((email) => email.isImportant)
-      .sort((a, b) => b.importanceScore - a.importanceScore);
-
-    // console.log(
-    //   `Found ${importantEmails.length} important emails after analysis`
-    // );
-
-    return importantEmails.map((email) => ({
-      ...email,
-      score: email.importanceScore,
-      subject: email.subject,
-      from: email.from,
-      snippet: email.snippet,
-      body: email.body,
-    }));
+      .sort((a, b) => b.importanceScore - a.importanceScore)
+      .map((email) => ({
+        ...email,
+        score: email.importanceScore,
+        subject: email.subject,
+        from: email.from,
+        snippet: email.snippet,
+        body: email.body,
+      }));
   }
 
   clearCache() {
