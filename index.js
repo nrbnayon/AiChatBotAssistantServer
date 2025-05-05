@@ -202,8 +202,8 @@ const monitor = serverMonitor(app, PORT, IP_ADDRESS, 2000);
     // Set up memory usage monitoring
     const memoryMonitorInterval = setInterval(() => {
       const memoryUsage = process.memoryUsage();
-      const heapUsed = Math.round(memoryUsage.heapUsed / 1024 / 1024);
-      const heapTotal = Math.round(memoryUsage.heapTotal / 1024 / 1024);
+      const heapUsed = Math.round(memoryUsage.heapUsed / 2048 / 2048);
+      const heapTotal = Math.round(memoryUsage.heapTotal / 2048 / 2048);
 
       // Log memory usage if it's getting high (over 80% of total)
       if (heapUsed > heapTotal * 0.8) {
