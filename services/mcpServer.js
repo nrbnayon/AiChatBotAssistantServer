@@ -816,7 +816,7 @@ class MCPServer {
             return [
               {
                 type: "text",
-                text: "Snippet: **This email’s empty—nothing to summarize!**",
+                text: "**Snippet:** **This email’s empty—nothing to summarize!**",
               },
             ];
           }
@@ -890,7 +890,7 @@ class MCPServer {
             return [
               {
                 type: "text",
-                text: `Snippet: **${fallbackSummary}**`,
+                text: `**Snippet:** **${fallbackSummary}**`,
               },
             ];
           }
@@ -918,7 +918,7 @@ class MCPServer {
           return [
             {
               type: "text",
-              text: `Snippet: **Couldn’t summarize due to an error—here’s the subject: ${subject}**`,
+              text: `**Snippet:** **Couldn’t summarize due to an error—here’s the subject: ${subject}**`,
             },
           ];
         }
@@ -1654,15 +1654,17 @@ class MCPServer {
       const importantEmailsList = topImportantEmails
         .map((email, index) => {
           const score = Math.round(email.score);
-          const snippet = email.snippet ? `\nSnippet: ${email.snippet}` : "";
+          const snippet = email.snippet
+            ? `\n**Snippet:** ${email.snippet}`
+            : "";
           const body = email.body
-            ? `\nContent: ${email.body.substring(0, 1000)}${
+            ? `\n**Content:** ${email.body.substring(0, 1000)}${
                 email.body.length > 1000 ? "..." : ""
               }`
             : "";
-          return `**${index + 1}.** From: ${email.from}\nSubject: ${
+          return `**${index + 1}.**\n**From:** ${email.from}\n**Subject:** ${
             email.subject
-          }\nImportance Score: ${score}%${snippet}${body}\n`;
+          }\n**Importance Score:** ${score}%${snippet}${body}\n`;
         })
         .join("\n");
       return {
