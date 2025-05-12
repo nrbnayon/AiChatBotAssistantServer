@@ -1246,6 +1246,8 @@ class MCPServer {
     const userName = req.user.name || "User";
     const userEmail = req.user.email;
 
+    
+
     const {
       timeContext = "",
       emailCount = 0,

@@ -78,7 +78,7 @@ class GmailService extends EmailService {
 
   async fetchEmails({
     query = "",
-    maxResults = 1000,
+    maxResults = 500,
     pageToken,
     filter = "all",
     timeFilter = "all",
@@ -362,7 +362,10 @@ class GmailService extends EmailService {
         id: emailId,
         format: "full",
       });
-      return this.formatEmail(email?.data || "No email data found please try again with a different approach");
+      return this.formatEmail(
+        email?.data ||
+          "No email data found please try again with a different approach"
+      );
     } catch (error) {
       console.error("[ERROR] Failed to get email:", error);
       throw new ApiError(
@@ -463,7 +466,7 @@ class GmailService extends EmailService {
       const totalUnreadResponse = await client.users.messages.list({
         userId: "me",
         q: "in:inbox is:unread",
-        maxResults: 5000,
+        maxResults: 500,
       });
 
       let totalEmails = inboxResponse.data.messagesTotal ?? 0;
