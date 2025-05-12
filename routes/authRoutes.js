@@ -39,7 +39,11 @@ router.get(
           "https://www.googleapis.com/auth/gmail.send",
           "https://www.googleapis.com/auth/gmail.compose",
         ],
-        options: { accessType: "offline", prompt: "consent" },
+        options: {
+          accessType: "offline",
+          // prompt: "consent"
+          prompt: "select_account",
+        },
       },
       microsoft: {
         strategy: "microsoft",
@@ -119,11 +123,7 @@ router.get("/error", authError);
  * @access Public/Authenticated
  */
 // Local user login
-router.post(
-  "/login",
-  authRateLimit(),
-  localLogin
-);
+router.post("/login", authRateLimit(), localLogin);
 
 // User registration
 router.post("/register", authRateLimit(), register);

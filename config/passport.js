@@ -257,7 +257,7 @@ const strategies = {
         "https://www.googleapis.com/auth/gmail.compose",
       ],
       accessType: "offline",
-      prompt: "consent",
+      // prompt: "consent",
     },
     Strategy: GoogleStrategy,
   },
