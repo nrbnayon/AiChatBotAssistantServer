@@ -17,12 +17,15 @@ const STANDARD_FALLBACK_CHAIN = [
   "gpt-4o-mini",
 ];
 
-function estimateTokens(text) {
-  return Math.ceil(text.length / 4);
-}
 // Helper functions for response generation
 const getRandomResponse = (responses) => {
   return responses[Math.floor(Math.random() * responses.length)];
+};
+
+// Estimate token count and manage token limits
+const estimateTokenCount = (text) => {
+  // A very rough approximation: ~10 chars per token
+  return Math.ceil(text.length / 10);
 };
 
 class ModelProvider {
@@ -236,7 +239,6 @@ class MCPServer {
 
     const lowerMessage = message.toLowerCase();
     if (lowerMessage.includes("this emails")) {
-      // Replace "this emails" with comma-separated IDs of last listed emails
       const emailIds = lastListed.map((e) => e.id).join(", ");
       return message.replace(/this\s+emails?/i, `emails ${emailIds}`);
     } else if (
@@ -301,11 +303,6 @@ class MCPServer {
         } = args;
 
         let processedQuery = query ? this.processQuery(query) : "";
-        // Enhanced search to handle sender variations
-        if (processedQuery.toLowerCase().includes("from:")) {
-          processedQuery = processedQuery.replace(/from:/i, "").trim();
-        }
-
         const emails = await this.emailService.fetchEmails({
           filter,
           query: processedQuery,
@@ -324,14 +321,12 @@ class MCPServer {
           ];
         }
 
-        // Restore the email analysis functionality
         const analyzedData = this.analyzeEmails(
           emails,
           processedQuery || filter || ""
         );
 
         let text = "";
-        // Check if we have table data from analysis
         if (analyzedData.table) {
           const introTexts = [
             "Here's what I dug up from your emails:",
@@ -354,23 +349,17 @@ class MCPServer {
           const count = emails.messages.length;
           const previewCount = Math.min(count, 10);
           const previewEmails = emails.messages.slice(0, previewCount);
-          // this.lastListedEmails.set(userId, previewEmails);
 
-          // Automatically summarize if 3 or fewer emails, or if explicitly requested
           const autoSummarize = previewCount <= 3;
           const shouldSummarize = autoSummarize || summarize;
 
           if (count === 0) {
             const noEmailResponses = [
-              `**No matching emails found**\n\nI couldn't find any emails that match your search for "${query}". You could try:\n• Using different keywords\n• Broadening your date range\n• Checking a different folder\n• Try a variation like \`from:${query}\` or \`subject:${query}\``,
-
-              `**Your search returned no results**\n\nI searched for "${query}" but found nothing. Possible next steps:\n• Try different search terms\n• Remove some filters\n• Check for typos in names or email addresses\n• Try \`to:${query}\` if you're looking for emails sent to someone`,
-
-              `**No emails match "${query}"**\n\nSuggestions:\n1. Use broader search terms than "${query}"\n2. Check a different time period\n3. Try searching in 'All Mail' instead`,
-
-              `**I couldn't find any matching emails for "${query}"**\n\nThis might be because:\n• Your search was too specific\n• There might be a connection issue\n• The emails might be in another folder\n• Try alternatives like \`label:${query}\` or \`category:${query}\``,
-
-              `**No matching results for "${query}"**\n\nLet's try a different approach:\n• Show me email \`from:${query}\` to find emails from specific people\n• Find all emails with \`subject:${query}\` to search subject lines`,
+              "**No matching emails found**\n\nI couldn't find any emails that match your search criteria. You could try:\n• Using different keywords\n• Broadening your date range\n• Checking a different folder",
+              "**Your search returned no results**\n\nPossible next steps:\n• Try different search terms\n• Remove some filters\n• Check for typos in names or email addresses",
+              "**No emails match this query**\n\nSuggestions:\n1. Use broader search terms\n2. Check a different time period\n3. Try searching in 'All Mail' instead",
+              "**I couldn't find any matching emails**\n\nThis might be because:\n• Your search was too specific\n• There might be a connection issue\n• The emails might be in another folder",
+              "**No results for this search**\n\nLet's try a different approach:\n• Show me email `from:[sender]` to find emails from specific people\n• Find all emails from `{query}`\n• Any email from `{query}`",
             ];
             text =
               noEmailResponses[
@@ -410,19 +399,17 @@ class MCPServer {
                   let attachmentNote = "";
                   if (e.hasAttachments) {
                     if (e.attachments && e.attachments.length > 0) {
-                      // For Gmail, where attachments are available
                       const attachmentLinks = e.attachments
                         .map(
                           (att) =>
                             `[${att.filename}](https://server.inbox-buddy.ai/api/v1/emails/download/attachment?emailId=${e.id}&attachmentId=${att.id})`
                         )
                         .join(", ");
-                      attachmentNote = `\n**Attachments:** **${attachmentLinks}** just click on it to download.`;
+                      attachmentNote = `\n**Attachments:** **${attachmentLinks}**`;
                     } else {
-                      // For Outlook or when attachments aren't fetched
                       attachmentNote = `\n**Attachments:** Yes (say **show attachments for email ${
                         i + 1
-                      }** to this are the download links just click on it to see them)`;
+                      }** to see them)`;
                     }
                   }
                   return `**${i + 1}.** **From:** ${e.from}\n**Subject:** ${
@@ -439,16 +426,14 @@ class MCPServer {
                   let attachmentNote = "";
                   if (e.hasAttachments) {
                     if (e.attachments && e.attachments.length > 0) {
-                      // For Gmail, where attachments are available
                       const attachmentLinks = e.attachments
                         .map(
                           (att) =>
                             `[${att.filename}](https://server.inbox-buddy.ai/api/v1/emails/download/attachment?emailId=${e.id}&attachmentId=${att.id})`
                         )
                         .join(", ");
-                      attachmentNote = `\n Here have **Attachments:** **${attachmentLinks}** just click on it to download.`;
+                      attachmentNote = `\nHere have **Attachments for Download click:** **${attachmentLinks}**`;
                     } else {
-                      // For Outlook or when attachments aren't fetched
                       attachmentNote = `\n**Attachments:** Yes (say **show attachments for email ${
                         i + 1
                       }** to see them)`;
@@ -490,7 +475,7 @@ class MCPServer {
         }
         const attachmentList = attachments
           .map((att, index) => {
-            const downloadLink = `https://inbox-buddy.ai/api/v1/emails/download/attachment?emailId=${email_id}&attachmentId=${att.id}`;
+            const downloadLink = `http://172.16.0.2:3000/api/v1/emails/download/attachment?emailId=${email_id}&attachmentId=${att.id}`;
             return `${index + 1}. [${att.filename}](${downloadLink})`;
           })
           .join("\n");
@@ -579,6 +564,7 @@ class MCPServer {
         }
         return [{ type: "text", text }];
       }
+
       case "read-email": {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID parameter");
@@ -599,6 +585,7 @@ class MCPServer {
           },
         ];
       }
+
       case "trash-email": {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID parameter");
@@ -630,6 +617,7 @@ class MCPServer {
           throw error;
         }
       }
+
       case "reply-to-email": {
         const { email_id, message, attachments = [] } = args;
 
@@ -733,11 +721,11 @@ class MCPServer {
           },
         ];
       }
+
       case "search-emails": {
-        const { query, timeFilter = "weekly" } = args; // Default to "weekly"
+        const { query, timeFilter = "weekly" } = args;
         if (!query) throw new Error("Missing query parameter");
 
-        // Normalize timeFilter to YYYY/MM/DD
         let normalizedTimeFilter = timeFilter;
         if (
           timeFilter &&
@@ -749,7 +737,6 @@ class MCPServer {
               2,
               "0"
             )}/${String(day).padStart(2, "0")}`;
-            // Validate date
             const date = new Date(year, month - 1, day);
             if (
               date.getFullYear() !== year ||
@@ -785,6 +772,7 @@ class MCPServer {
           },
         ];
       }
+
       case "mark-email-as-read": {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID parameter");
@@ -803,6 +791,7 @@ class MCPServer {
           },
         ];
       }
+
       case "summarize-email": {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID");
@@ -816,7 +805,7 @@ class MCPServer {
             return [
               {
                 type: "text",
-                text: "**Snippet:** **This email’s empty—nothing to summarize!**",
+                text: "Snippet: **This email’s empty—nothing to summarize!**",
               },
             ];
           }
@@ -890,7 +879,7 @@ class MCPServer {
             return [
               {
                 type: "text",
-                text: `**Snippet:** **${fallbackSummary}**`,
+                text: `Snippet: **${fallbackSummary}**`,
               },
             ];
           }
@@ -918,7 +907,7 @@ class MCPServer {
           return [
             {
               type: "text",
-              text: `**Snippet:** **Couldn’t summarize due to an error—here’s the subject: ${subject}**`,
+              text: `Snippet: **Couldn’t summarize due to an error—here’s the subject: ${subject}**`,
             },
           ];
         }
@@ -952,12 +941,12 @@ class MCPServer {
         if (
           pendingDraft &&
           modificationKeywords.some((keyword) =>
-            message.toLowerCase().includes(keyword)
+            content.toLowerCase().includes(keyword)
           )
         ) {
           const defaultModel = await getDefaultModel();
           const modificationPrompt = `
-      Modify the following email draft based on the user's request: "${message}".
+      Modify the following email draft based on the user's request: "${content}".
       Keep the original structure intact, including line breaks and formatting, and only update the requested parts.
       Provide the updated draft clearly with To:, Subject:, and the body separated by newlines.
       Ensure To: and Subject: are each on their own line, and the body starts after a blank line.
@@ -1036,16 +1025,12 @@ class MCPServer {
           return [
             {
               type: "text",
-              text: `I've updated the email draft for **${updatedRecipient}**:\n\n**To:** ${updatedRecipient}\n**Subject:** ${updatedSubject}\n\n${updatedMessage}\n\nDoes this look good? Say **"${getRandomResponse(
-                affirmativeResponses
-              )} send"** to send it, or let me know what else to tweak **"${getRandomResponse(
-                modificationKeywords
-              )}"**!`,
+              text: `I've updated the email draft for **${updatedRecipient}**:\n\n**To:** ${updatedRecipient}\n**Subject:** ${updatedSubject}\n\n${updatedMessage}\n\nDoes this look good? Say **"confirm send"** to send it, or let me know what else to tweak!`,
             },
           ];
         } else {
           const defaultModel = await getDefaultModel();
-          const userName = this.emailService.user?.name || "Nayon Halder";
+          const userName = this.emailService.user?.name || "User";
           const prompt = `Draft a polite and professional email from ${userName} to ${recipient} based on the following message: "${content}". Include a suitable subject line starting with 'Subject:'. If the message is brief, expand it into a complete email body with appropriate greetings, context, and a sign-off using the sender's name "${userName}". Ensure the email is clear, courteous, and professional.`;
 
           const draftResponse = await this.modelProvider.callWithFallbackChain(
@@ -1099,32 +1084,13 @@ class MCPServer {
           const draftResponses = [
             `I've prepared an email for **${recipient}**:\n\n**To:** ${
               recipient_email || recipient
-            }\n**Subject:** ${subject}\n\n${body}\n\nDoes this look good? Let me know if you'd like any **"${getRandomResponse(
-              modificationKeywords
-            )}"** before sending. Or do you want to send it now? just say **"${getRandomResponse(
-              affirmativeResponses
-            )} send"** it`,
-
+            }\n**Subject:** ${subject}\n\n${body}\n\nDoes this look good? Let me know if you'd like any changes before sending. Or say **"confirm send"** to send it now!`,
             `Here's a draft email for **${recipient}**:\n\n**To:** ${
               recipient_email || recipient
-            }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think? Is it ready to send or would you like to make **"${getRandomResponse(
-              modificationKeywords
-            )}"**?. Or do you want to send it now? just say **"${getRandomResponse(
-              affirmativeResponses
-            )} send"** it`,
-
+            }\n**Subject:** ${subject}\n\n${body}\n\nWhat do you think? Ready to send or need adjustments? Say **"confirm send"** to proceed!`,
             `I've drafted an email for **${recipient}**:\n\n**To:** ${
               recipient_email || recipient
-            }\n**Subject:** ${subject}\n\n${body}\n\nPlease review and let me know if this works for you or if any **"${getRandomResponse(
-              modificationKeywords
-            )}"** are needed. Just confirm me when you're ready to send. write **"${getRandomResponse(
-              affirmativeResponses
-            )} send"** to send it`,
-            `Here's a draft email for **${recipient}**:\n\n**To:** ${
-              recipient_email || recipient
-            }\n**Subject:** ${subject}\n\n${body}\n\nLet me know if you want to send it as is or if you need to **"${getRandomResponse(
-              modificationKeywords
-            )}"** anything. Or do you want to send it now? just say **"confirm sent"** it`,
+            }\n**Subject:** ${subject}\n\n${body}\n\nPlease review. Say **"confirm send"** to send it or suggest changes!`,
           ];
           return [
             {
@@ -1473,7 +1439,6 @@ class MCPServer {
       }
     }
 
-    // Create system prompt
     const systemPrompt = await this.getDefaultSystemMessage();
     const personalizedSystemPrompt =
       systemPrompt
@@ -1482,40 +1447,68 @@ class MCPServer {
         .replace(/{{TIME_CONTEXT}}/g, timeContext)
         .replace(/{{EMAIL_COUNT}}/g, emailCount.toString())
         .replace(/{{UNREAD_COUNT}}/g, unreadCount.toString()) +
-      "\n\nWhen there's a pending email draft, interpret affirmative responses like 'confirm sent', 'yes', or 'send it' as a command to send the email, returning {\"action\": \"send-email\", \"params\": {...}}. If the user latest draft: say **'send draft 1'** or Old draft: say **'send draft 2'** after a list of drafts, select the corresponding draft (1 for the most recent, 2 for the second most recent) and return the same action." +
+      "\n\nWhen there's a pending email draft, interpret affirmative responses like 'confirm sent', 'yes', or 'send it' as a command to send the email, returning {\"action\": \"send-email\", \"params\": {...}}. If the user mentions 'send draft 1' or 'send draft 2' after a list of drafts, select the corresponding draft (1 for the most recent, 2 for the second most recent) and return the same action." +
       "\n\nWhen the user uploads a file, the file content is included in the message. Analyze it directly and provide responses based on its text. Do not attempt to fetch emails or use undefined tools unless explicitly requested.";
 
-    // Handle email sending confirmations
-    const lowerCaseMessage = message.toLowerCase();
-    const confirmationPhrases = [
-      // "confirm",
-      // "confirmed",
-      // "yes send it",
-      // "go ahead",
-      // "proceed",
-      // "send it now",
-      "yes",
-      "ok",
-      "sure",
-      "confirm",
-      "go ahead",
-      "proceed",
-      "send draft 1",
-      "send draft 2",
-    ];
-    const isConfirmation = confirmationPhrases.some((phrase) =>
-      lowerCaseMessage.includes(phrase)
-    );
+    if (message.toLowerCase().includes("send draft")) {
+      const draftNumberMatch = message.match(/send draft (\d+)/i);
+      if (draftNumberMatch) {
+        const draftNumber = parseInt(draftNumberMatch[1], 10);
+        const drafts = await EmailDraft.find({ userId }).sort({
+          createdAt: -1,
+        });
+        if (draftNumber > 0 && draftNumber <= drafts.length) {
+          const selectedDraft = drafts[draftNumber - 1];
+          const pendingDraft = {
+            recipient_id: selectedDraft.recipientId,
+            subject: selectedDraft.subject,
+            message: selectedDraft.message,
+          };
+          try {
+            const toolResponse = await this.callTool(
+              "send-email",
+              pendingDraft,
+              userId
+            );
+            // await EmailDraft.deleteOne({ _id: selectedDraft._id });
+            await EmailDraft.deleteMany({ userId: userId });
 
-    if (isConfirmation) {
+            return {
+              ...toolResponse[0],
+              modelUsed: modelId ? (await getModelById(modelId)).name : "N/A",
+              fallbackUsed: false,
+            };
+          } catch (error) {
+            console.error("Failed to send email:", error);
+            return createTextResponse(
+              "Oops, something went wrong while sending the email. Please try again later."
+            );
+          }
+        } else {
+          return createTextResponse(
+            `Sorry, draft number ${draftNumber} is out of range. There are only ${drafts.length} drafts available.`
+          );
+        }
+      }
+    } else if (
+      (message.toLowerCase().includes("confirm") &&
+        (message.toLowerCase().includes("send") ||
+          message.toLowerCase().includes("sent"))) ||
+      message.toLowerCase().includes("confirm") ||
+      message.toLowerCase().includes("confirmed") ||
+      message.toLowerCase().includes("yes send it") ||
+      message.toLowerCase().includes("go ahead") ||
+      message.toLowerCase().includes("proceed") ||
+      message.toLowerCase().includes("send it now") ||
+      message.toLowerCase().includes("send draft 1") ||
+      message.toLowerCase().includes("send draft 2")
+    ) {
       let pendingDraft = null;
 
-      // Check for draft in last assistant message
       const lastAssistantMessage = history
         .slice()
         .reverse()
         .find((msg) => msg.role === "assistant")?.content;
-
       if (
         lastAssistantMessage &&
         (lastAssistantMessage.includes("Drafted something for") ||
@@ -1527,7 +1520,6 @@ class MCPServer {
         let subject = null;
         let messageStartIndex = -1;
 
-        // Parse email components from last message
         for (let i = 0; i < lines.length; i++) {
           if (lines[i].startsWith("**To:**")) {
             to = lines[i].replace("**To:**", "").trim();
@@ -1540,51 +1532,92 @@ class MCPServer {
         if (to && subject && messageStartIndex !== -1) {
           let messageLines = [];
           for (let i = messageStartIndex; i < lines.length; i++) {
-            const endMarkers = [
-              "Looks good?",
-              "What do you think—",
-              "Happy with it?",
-              "Let me know if this works",
-            ];
-            if (endMarkers.some((marker) => lines[i].includes(marker))) {
+            if (
+              lines[i].includes("Looks good?") ||
+              lines[i].includes("What do you think—") ||
+              lines[i].includes("Happy with it?") ||
+              lines[i].includes("Let me know if this works")
+            ) {
               break;
             }
             messageLines.push(lines[i]);
           }
-          const messageContent = messageLines.join("\n").trim();
-          if (messageContent) {
+          const message = messageLines.join("\n").trim();
+          if (message) {
             pendingDraft = {
               recipient_id: to,
               subject: subject,
-              message: messageContent,
+              message: message,
             };
           }
         }
       }
 
-      // Handle multiple drafts
-      const drafts = await EmailDraft.find({ userId }).sort({ createdAt: -1 });
-      if (drafts.length > 1 && !pendingDraft) {
-        if (lowerCaseMessage.includes("send draft 1")) {
+      const drafts = await EmailDraft.find({ userId }).sort({
+        createdAt: -1,
+      });
+
+      if (drafts.length === 1) {
+        const selectedDraft = drafts[0];
+        const pendingDraft = {
+          recipient_id: selectedDraft.recipientId,
+          subject: selectedDraft.subject,
+          message: selectedDraft.message,
+        };
+        try {
+          const toolResponse = await this.callTool(
+            "send-email",
+            pendingDraft,
+            userId
+          );
+          await EmailDraft.deleteMany({ userId: userId });
+          // await EmailDraft.deleteOne({ _id: selectedDraft._id }); // Delete the sent draft
+          return {
+            ...toolResponse[0],
+            modelUsed: modelId ? (await getModelById(modelId)).name : "N/A",
+            fallbackUsed: false,
+          };
+        } catch (error) {
+          console.error("Failed to send email:", error);
+          return createTextResponse(
+            "Oops, something went wrong while sending the email. Please try again later."
+          );
+        }
+      } else if (drafts.length > 1) {
+        const draftList = drafts
+          .map(
+            (draft, index) =>
+              `${index + 1}. To: ${draft.recipientId}, Subject: ${
+                draft.subject
+              }`
+          )
+          .join("\n");
+        return createTextResponse(
+          `I found ${drafts.length} drafts:\n${draftList}\nWhich one? Say "send draft 1" or "send draft 2", etc.`
+        );
+      } else if (drafts.length > 1 && !pendingDraft) {
+        if (message.toLowerCase().includes("send draft 1")) {
           pendingDraft = {
             recipient_id: drafts[0].recipientId,
             subject: drafts[0].subject,
             message: drafts[0].message,
           };
-        } else if (lowerCaseMessage.includes("send draft 2")) {
+        } else if (message.toLowerCase().includes("send draft 2")) {
           pendingDraft = {
             recipient_id: drafts[1].recipientId,
             subject: drafts[1].subject,
             message: drafts[1].message,
           };
         } else {
-          return createTextResponse(
-            `I found ${drafts.length} drafts:\n1. To: ${drafts[0].recipientId}, Subject: ${drafts[0].subject}\n2. To: ${drafts[1].recipientId}, Subject: ${drafts[1].subject}\nWhich one? Say **"send draft 1"** or **"send draft 2"**.`
-          );
+          return {
+            type: "text",
+            text: `I found ${drafts.length} drafts:\n1. To: ${drafts[0].recipientId}, Subject: ${drafts[0].subject}\n2. To: ${drafts[1].recipientId}, Subject: ${drafts[1].subject}\nWhich one? Say **"send draft 1"** or **"send draft 2"**.`,
+            modelUsed: "N/A",
+            fallbackUsed: false,
+          };
         }
       }
 
-      // Check for a single draft
       if (!pendingDraft) {
         const recentDraft = await EmailDraft.findOne({ userId }).sort({
           createdAt: -1,
@@ -1600,16 +1633,16 @@ class MCPServer {
 
       // Process the draft sending
       const affirmativeResponses = [
-        "yes",
-        "ok",
-        "sure",
+        "sure send",
         "confirm",
         "go ahead",
         "proceed",
       ];
       if (
         pendingDraft &&
-        affirmativeResponses.some((word) => lowerCaseMessage.includes(word))
+        affirmativeResponses.some((word) =>
+          message.toLowerCase().includes(word)
+        )
       ) {
         try {
           const toolResponse = await this.callTool(
@@ -1645,10 +1678,9 @@ class MCPServer {
       lowerMessage.includes(trigger)
     );
 
-    console.log("Is important query:", !isImportantQuery);
-    console.log("Important count:", importantCount);
+    // console.log("Is important query:", !isImportantQuery);
+    // console.log("Important count:", importantCount);
     // console.log("Top important emails:", topImportantEmails);
-
 
     if (isImportantQuery && importantCount > 0) {
       const importantEmailsList = topImportantEmails
@@ -1685,12 +1717,6 @@ class MCPServer {
     let processedMessage = this.preprocessMessage(message, userId);
     const maxHistory = 5;
     const limitedHistory = history.slice(-maxHistory);
-
-    // Estimate token count and manage token limits
-    const estimateTokenCount = (text) => {
-      // A very rough approximation: ~4 chars per token
-      return Math.ceil(text.length / 4);
-    };
 
     const systemTokens = estimateTokenCount(personalizedSystemPrompt);
     const userMessageTokens = estimateTokenCount(processedMessage);
@@ -1857,27 +1883,9 @@ class MCPServer {
 
           const recipientName = actionData.params.recipient_id.split("@")[0];
           const draftResponses = [
-            `I've put together an email for **${recipientName}**:\n\n**To:** ${
-              actionData.params.recipient_id
-            }\n**Subject:** ${actionData.params.subject}\n\n${
-              actionData.params.message
-            }\n\nLooks okay? Say **"${getRandomResponse(
-              affirmativeResponses
-            )} send"** to send it, or let me know what to tweak!`,
-            `Here's an email draft for **${recipientName}**:\n\n**To:** ${
-              actionData.params.recipient_id
-            }\n**Subject:** ${actionData.params.subject}\n\n${
-              actionData.params.message
-            }\n\nGood to go? Just say **"${getRandomResponse(
-              affirmativeResponses
-            )} send"**, or tell me what's off!`,
-            `Drafted something for **${recipientName}**:\n\n**To:** ${
-              actionData.params.recipient_id
-            }\n**Subject:** ${actionData.params.subject}\n\n${
-              actionData.params.message
-            }\n\nHappy with it? Say **"${getRandomResponse(
-              affirmativeResponses
-            )} send"** or suggest changes!`,
+            `I've put together an email for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nLooks okay? Say**"confirm send"** to send it, or let me know what to tweak!`,
+            `Here's an email draft for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nGood to go? Just say**"confirm send"** or tell me what's off!`,
+            `Drafted something for **${recipientName}**:\n\n**To:** ${actionData.params.recipient_id}\n**Subject:** ${actionData.params.subject}\n\n${actionData.params.message}\n\nHappy with it? Say **"confirm send"** or suggest changes!`,
           ];
 
           return createTextResponse(

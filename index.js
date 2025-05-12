@@ -199,17 +199,17 @@ const monitor = serverMonitor(app, PORT, IP_ADDRESS, 2000);
     // Start server
     await monitor.start();
 
-    // Set up memory usage monitoring
-    const memoryMonitorInterval = setInterval(() => {
-      const memoryUsage = process.memoryUsage();
-      const heapUsed = Math.round(memoryUsage.heapUsed / 2048 / 2048);
-      const heapTotal = Math.round(memoryUsage.heapTotal / 2048 / 2048);
+    // // Set up memory usage monitoring
+    // const memoryMonitorInterval = setInterval(() => {
+    //   const memoryUsage = process.memoryUsage();
+    //   const heapUsed = Math.round(memoryUsage.heapUsed / 2048 / 2048);
+    //   const heapTotal = Math.round(memoryUsage.heapTotal / 2048 / 2048);
 
-      // Log memory usage if it's getting high (over 80% of total)
-      if (heapUsed > heapTotal * 0.8) {
-        console.warn(`⚠️ High memory usage: ${heapUsed}MB / ${heapTotal}MB`);
-      }
-    }, 60000); // Check every minute
+    //   // Log memory usage if it's getting high (over 80% of total)
+    //   if (heapUsed > heapTotal * 0.8) {
+    //     console.warn(`⚠️ High memory usage: ${heapUsed}MB / ${heapTotal}MB`);
+    //   }
+    // }, 60000); // Check every minute
 
     // Handle process termination
     const handleTermination = async (signal) => {

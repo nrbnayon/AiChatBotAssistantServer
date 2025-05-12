@@ -59,7 +59,7 @@ router.get(
     }
     const { strategy, scope, options = {} } = providers[provider];
     const state = Buffer.from(
-      JSON.stringify({ redirect: req.query.redirect || "/dashboard" })
+      JSON.stringify({ redirect: req.query.redirect || "/chat" })
     ).toString("base64");
 
     passport.authenticate(strategy, { scope, state, ...options })(
