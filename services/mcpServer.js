@@ -793,15 +793,14 @@ class MCPServer {
       }
 
       case "summarize-email": {
-        const { email_id } = args;
+        let { email_id } = args;
         if (!email_id) throw new Error("Missing email ID");
-
 
         if (
           email_id === "latest" ||
-          email_id === 'last' ||
-          email_id === 'recent' ||
-          email_id === 'newest'
+          email_id === "last" ||
+          email_id === "recent" ||
+          email_id === "newest"
         ) {
           try {
             // Fetch the most recent email
@@ -819,7 +818,7 @@ class MCPServer {
               ];
             }
 
-            // Use the actual ID of the latest email
+            // Reassign email_id with the actual ID
             email_id = recentEmails.messages[0].id;
           } catch (error) {
             console.error("Failed to fetch latest email:", error);
@@ -1281,8 +1280,6 @@ class MCPServer {
     const userId = req.user.id;
     const userName = req.user.name || "User";
     const userEmail = req.user.email;
-
-    
 
     const {
       timeContext = "",
