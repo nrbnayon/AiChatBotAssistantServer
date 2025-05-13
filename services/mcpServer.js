@@ -796,6 +796,42 @@ class MCPServer {
         const { email_id } = args;
         if (!email_id) throw new Error("Missing email ID");
 
+
+        if (
+          email_id === "latest" ||
+          email_id === 'last' ||
+          email_id === 'recent' ||
+          email_id === 'newest'
+        ) {
+          try {
+            // Fetch the most recent email
+            const recentEmails = await this.emailService.fetchEmails({
+              filter: "all",
+              maxResults: 1, // Get only the latest email
+            });
+
+            if (!recentEmails.messages || recentEmails.messages.length === 0) {
+              return [
+                {
+                  type: "text",
+                  text: "No emails found in your inbox to summarize.",
+                },
+              ];
+            }
+
+            // Use the actual ID of the latest email
+            email_id = recentEmails.messages[0].id;
+          } catch (error) {
+            console.error("Failed to fetch latest email:", error);
+            return [
+              {
+                type: "text",
+                text: "Sorry, I couldn’t find your latest email. Try again later?",
+              },
+            ];
+          }
+        }
+
         let emailContent;
         try {
           emailContent = await this.emailService.getEmail(email_id);
@@ -848,11 +884,11 @@ class MCPServer {
               {
                 role: "system",
                 content:
-                  "You are a helpful AI that summarizes emails in 1-2 concise sentences.",
+                  "You are a helpful AI that summarizes emails in 3-4 concise sentences.",
               },
               {
                 role: "user",
-                content: `Summarize this email in 1-2 sentences: ${summaryText}`,
+                content: `Summarize this email in 3-4 sentences: ${summaryText}`,
               },
             ],
             temperature: 1.0,
