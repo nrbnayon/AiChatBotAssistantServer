@@ -1293,6 +1293,9 @@ class MCPServer {
     // Flexible email details detection
     const lowerMessage = message.toLowerCase();
     const emailKeywords = ["email", "emails"];
+    const latestEmailMatch = lowerMessage.match(
+      /(?:show|see|read|open|find)\s+(?:my\s+)?(?:latest|last|newest|recent)\s+email/i
+    );
     const detailKeywords = ["detail", "details", "full", "body"];
     const hasEmail = emailKeywords.some((keyword) =>
       lowerMessage.includes(keyword)
@@ -1300,6 +1303,33 @@ class MCPServer {
     const hasDetail = detailKeywords.some((keyword) =>
       lowerMessage.includes(keyword)
     );
+
+    if (latestEmailMatch) {
+      try {
+        const recentEmails = await this.emailService.fetchEmails({
+          filter: "all", // Fetch from all emails (not just unread or inbox)
+          maxResults: 1, // Get only the most recent email
+        });
+        if (recentEmails.messages && recentEmails.messages.length > 0) {
+          const email = recentEmails.messages[0];
+          const fullEmail = await this.emailService.getEmail(email.id); // Get full details
+          const emailText = `**From:** ${fullEmail.from}\n**To:** ${fullEmail.to}\n**Subject:** ${fullEmail.subject}\n**Date:** ${fullEmail.date}\n\n${fullEmail.body}`;
+          this.lastListedEmails.set(userId, [email]); // Store it so you can refer to it as "email 1"
+          return createTextResponse(
+            `Here's your latest email, ${userName}:\n\n${emailText}`
+          );
+        } else {
+          return createTextResponse(
+            `Hi ${userName}, I couldn't find any emails in your inbox. Maybe it's empty, or there’s a connection issue—want me to try again?`
+          );
+        }
+      } catch (error) {
+        console.error("Failed to fetch latest email:", error);
+        return createTextResponse(
+          `Sorry ${userName}, I couldn’t grab your latest email. It might be a glitch—try again in a sec?`
+        );
+      }
+    }
 
     if (hasEmail && hasDetail) {
       // Extract number of emails (default to 1 if not specified)
