@@ -792,10 +792,167 @@ class MCPServer {
         ];
       }
 
+      // case "summarize-email": {
+      //   let { email_id } = args;
+      //   if (!email_id) throw new Error("Missing email ID");
+
+      //   if (
+      //     email_id === "latest" ||
+      //     email_id === "last" ||
+      //     email_id === "recent" ||
+      //     email_id === "newest"
+      //   ) {
+      //     try {
+      //       // Fetch the most recent email
+      //       const recentEmails = await this.emailService.fetchEmails({
+      //         filter: "all",
+      //         maxResults: 1, // Get only the latest email
+      //       });
+
+      //       if (!recentEmails.messages || recentEmails.messages.length === 0) {
+      //         return [
+      //           {
+      //             type: "text",
+      //             text: "No emails found in your inbox to summarize.",
+      //           },
+      //         ];
+      //       }
+
+      //       // Reassign email_id with the actual ID
+      //       email_id = recentEmails.messages[0].id;
+      //     } catch (error) {
+      //       console.error("Failed to fetch latest email:", error);
+      //       return [
+      //         {
+      //           type: "text",
+      //           text: "Sorry, I couldn’t find your latest email. Try again later?",
+      //         },
+      //       ];
+      //     }
+      //   }
+
+      //   let emailContent;
+      //   try {
+      //     emailContent = await this.emailService.getEmail(email_id);
+
+      //     if (!emailContent.body || emailContent.body.trim() === "") {
+      //       console.warn(`[WARN] Email ${email_id} has no body content.`);
+      //       return [
+      //         {
+      //           type: "text",
+      //           text: "Snippet: **This email’s empty—nothing to summarize!**",
+      //         },
+      //       ];
+      //     }
+
+      //     const plainTextBody = emailContent.body.includes("<html")
+      //       ? convert(emailContent.body, {
+      //           wordwrap: false,
+      //           ignoreHref: true,
+      //           ignoreImage: true,
+      //           preserveNewlines: true,
+      //           formatters: {
+      //             block: (elem, walk, builder) => {
+      //               if (elem.name === "p" || elem.name === "div") {
+      //                 builder.addBlock(
+      //                   elem.children ? walk(elem.children) : elem.text
+      //                 );
+      //               } else if (elem.name === "table") {
+      //                 builder.addBlock(" [Table content] ");
+      //               } else {
+      //                 builder.addInline(
+      //                   elem.children ? walk(elem.children) : elem.text
+      //                 );
+      //               }
+      //             },
+      //           },
+      //         })
+      //       : emailContent.body;
+
+      //     const cleanedText = plainTextBody.replace(/\n\s*\n/g, "\n").trim();
+
+      //     const MAX_TEXT_LENGTH = 5500;
+      //     let summaryText = cleanedText;
+      //     if (cleanedText.length > MAX_TEXT_LENGTH) {
+      //       summaryText =
+      //         cleanedText.substring(0, MAX_TEXT_LENGTH) + "... (truncated)";
+      //     }
+
+      //     const aiOptions = {
+      //       messages: [
+      //         {
+      //           role: "system",
+      //           content:
+      //             "You are a helpful AI that summarizes emails in 3-4 concise sentences.",
+      //         },
+      //         {
+      //           role: "user",
+      //           content: `Summarize this email in 3-4 sentences: ${summaryText}`,
+      //         },
+      //       ],
+      //       temperature: 1.0,
+      //       max_tokens: 5500,
+      //     };
+
+      //     const defaultModel = await getDefaultModel();
+      //     const summaryResponse =
+      //       await this.modelProvider.callWithFallbackChain(
+      //         modelId || defaultModel.id,
+      //         aiOptions,
+      //         STANDARD_FALLBACK_CHAIN
+      //       );
+
+      //     const summary =
+      //       summaryResponse.result.choices[0]?.message?.content?.trim();
+
+      //     if (!summary) {
+      //       console.error(`[ERROR] No summary returned for email ${email_id}`);
+      //       const fallbackSummary =
+      //         emailContent.snippet ||
+      //         emailContent.subject ||
+      //         "No details available";
+      //       return [
+      //         {
+      //           type: "text",
+      //           text: `Snippet: **${fallbackSummary}**`,
+      //         },
+      //       ];
+      //     }
+
+      //     const summaryIntros = [
+      //       `Here’s the gist: **${summary}**`,
+      //       `Quick take: **${summary}**`,
+      //       `In a nutshell: **${summary}**`,
+      //     ];
+      //     const randomIntro =
+      //       summaryIntros[Math.floor(Math.random() * summaryIntros.length)];
+
+      //     return [
+      //       {
+      //         type: "text",
+      //         text: randomIntro,
+      //       },
+      //     ];
+      //   } catch (error) {
+      //     console.error(
+      //       `[ERROR] Failed to summarize email ${email_id}:`,
+      //       error.stack
+      //     );
+      //     const subject = emailContent?.subject || "No subject available";
+      //     return [
+      //       {
+      //         type: "text",
+      //         text: `Snippet: **Couldn’t summarize due to an error—here’s the subject: ${subject}**`,
+      //       },
+      //     ];
+      //   }
+      // }
+
       case "summarize-email": {
-        let { email_id } = args;
+        let { email_id } = args; // Use 'let' so we can reassign it
         if (!email_id) throw new Error("Missing email ID");
 
+        // Handle keywords like "latest," "last," etc.
         if (
           email_id === "latest" ||
           email_id === "last" ||
@@ -818,7 +975,7 @@ class MCPServer {
               ];
             }
 
-            // Reassign email_id with the actual ID
+            // Use the actual ID of the latest email
             email_id = recentEmails.messages[0].id;
           } catch (error) {
             console.error("Failed to fetch latest email:", error);
@@ -831,12 +988,12 @@ class MCPServer {
           }
         }
 
+        // Proceed with summarizing the email using the resolved email_id
         let emailContent;
         try {
           emailContent = await this.emailService.getEmail(email_id);
 
           if (!emailContent.body || emailContent.body.trim() === "") {
-            console.warn(`[WARN] Email ${email_id} has no body content.`);
             return [
               {
                 type: "text",
@@ -883,11 +1040,11 @@ class MCPServer {
               {
                 role: "system",
                 content:
-                  "You are a helpful AI that summarizes emails in 3-4 concise sentences.",
+                  "You are a helpful AI that summarizes emails in 2-3 concise sentences.",
               },
               {
                 role: "user",
-                content: `Summarize this email in 3-4 sentences: ${summaryText}`,
+                content: `Summarize this email in 2-3 sentences: ${summaryText}`,
               },
             ],
             temperature: 1.0,
@@ -906,7 +1063,6 @@ class MCPServer {
             summaryResponse.result.choices[0]?.message?.content?.trim();
 
           if (!summary) {
-            console.error(`[ERROR] No summary returned for email ${email_id}`);
             const fallbackSummary =
               emailContent.snippet ||
               emailContent.subject ||
