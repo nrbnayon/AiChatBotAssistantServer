@@ -1,9 +1,0 @@
-.env
-node_modules
-.node_modules
-./node_modules
-
-.env.original
-.gitignore
-
-AI_Chatbot_Auth.postman_collection.json
